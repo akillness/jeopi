@@ -5,6 +5,10 @@
 <h1 align="center">jeopi</h1>
 
 <p align="center">
+  <img src="assets/character.gif" alt="animated jeopi hooded doll mascot with split cyan and magenta pants, watched by a curious jeo-code crayfish" width="320">
+</p>
+
+<p align="center">
   <strong>Encode intention. Decode software.</strong><br>
   The oh-my-pi engine, rebuilt around one belief: <em>a gate that didn't pass is reported as not passed.</em>
 </p>
