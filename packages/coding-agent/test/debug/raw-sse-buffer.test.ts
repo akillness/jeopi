@@ -153,7 +153,7 @@ describe("RawSseDebugBuffer", () => {
 
 		// Dropped records 1..5: each "data: N" is 7 chars → 9 chars/record → 45.
 		const text = buffer.toRawText();
-		expect(text.startsWith(": omp-debug-dropped records=5 chars=45\n\n")).toBe(true);
+		expect(text.startsWith(": jeopi-debug-dropped records=5 chars=45\n\n")).toBe(true);
 
 		// Body data lines, oldest-first, are exactly records 6..1005 — no dropped
 		// record leaks and order survives the head-index window.
