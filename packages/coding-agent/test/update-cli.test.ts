@@ -111,7 +111,7 @@ describe("update-cli bun install command", () => {
 			"-g",
 			"--no-cache",
 			"--registry=https://registry.npmjs.org/",
-			"jeopi@15.7.6",
+			"jeopi-cli@15.7.6",
 		]);
 	});
 
