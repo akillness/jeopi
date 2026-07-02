@@ -18,8 +18,8 @@
  *   bun scripts/ci-release-notes.ts 15.4.3 notes.md     # custom output path
  *
  * The lower bound is resolved by `gh release list`. Set
- * `OMP_RELEASE_NOTES_FLOOR=v15.12.4` to override (empty string forces
- * single-version mode, matching the pre-#2596 behavior). `OMP_REPO` /
+ * `JEOPI_RELEASE_NOTES_FLOOR=v15.12.4` to override (empty string forces
+ * single-version mode, matching the pre-#2596 behavior). `JEOPI_REPO` /
  * `GITHUB_REPOSITORY` control the queried repo.
  *
  * Intended for the `release_github` CI job: the output is passed to
@@ -31,7 +31,7 @@
 import { $, Glob } from "bun";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
-const REPO = process.env.OMP_REPO ?? process.env.GITHUB_REPOSITORY ?? "can1357/oh-my-pi";
+const REPO = process.env.JEOPI_REPO ?? process.env.GITHUB_REPOSITORY ?? "can1357/oh-my-pi";
 
 // Canonical ordering used by `fix-changelogs`; unknown categories sort
 // alphabetically after these.
@@ -193,18 +193,18 @@ async function loadPackageName(pkgDir: string): Promise<string> {
  * below `targetVersion` via `gh release list`.
  *
  * Failure semantics:
- *   - `OMP_RELEASE_NOTES_FLOOR` set → honored verbatim (`""` forces null).
+ *   - `JEOPI_RELEASE_NOTES_FLOOR` set → honored verbatim (`""` forces null).
  *   - `gh` succeeded, no candidate < target → `null` (legitimate first-ever
  *     publish; legacy single-version output is correct).
  *   - `gh` itself failed (missing binary, missing `GH_TOKEN` in Actions,
  *     network/auth error) → throws. Letting this degrade to single-version
  *     output silently re-strands silent-tag entries (#2596 review); the CI
  *     step must die loudly so the release is rebuilt with the token wired.
- *     Local runs without `gh` should set `OMP_RELEASE_NOTES_FLOOR=` to opt
+ *     Local runs without `gh` should set `JEOPI_RELEASE_NOTES_FLOOR=` to opt
  *     into legacy mode explicitly.
  */
 async function resolvePublishedFloorTag(targetVersion: string): Promise<string | null> {
-	const override = process.env.OMP_RELEASE_NOTES_FLOOR;
+	const override = process.env.JEOPI_RELEASE_NOTES_FLOOR;
 	if (override !== undefined) {
 		const stripped = override.replace(/^v/, "").trim();
 		return stripped.length === 0 ? null : stripped;
@@ -218,7 +218,7 @@ async function resolvePublishedFloorTag(targetVersion: string): Promise<string |
 		throw new Error(
 			`gh release list exited ${res.exitCode}.\nstderr: ${stderr || "(empty)"}\n` +
 				`Hint: in GitHub Actions, pass GH_TOKEN: \${{ secrets.GITHUB_TOKEN }} to this step. ` +
-				`Locally without gh, set OMP_RELEASE_NOTES_FLOOR= to fall back to single-version notes.`,
+				`Locally without gh, set JEOPI_RELEASE_NOTES_FLOOR= to fall back to single-version notes.`,
 		);
 	}
 	let raw: unknown;

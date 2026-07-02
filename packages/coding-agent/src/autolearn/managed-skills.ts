@@ -14,7 +14,7 @@ import { YAML } from "bun";
 import { getAgentDir, isEnoent } from "jeopi-utils";
 
 /** Provider id stamped on discovered managed skills (distinguishes them from authored). */
-export const MANAGED_SKILLS_PROVIDER_ID = "omp-managed";
+export const MANAGED_SKILLS_PROVIDER_ID = "jeopi-managed";
 
 /** Hard cap on a managed SKILL.md body to keep generated skills bounded. */
 export const MAX_MANAGED_SKILL_BYTES = 64_000;

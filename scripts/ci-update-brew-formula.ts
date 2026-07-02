@@ -1,17 +1,17 @@
 #!/usr/bin/env bun
 //
-// Render the Homebrew formula for `omp` from a published GitHub release and write
+// Render the Homebrew formula for `jeopi` from a published GitHub release and write
 // it to a tap checkout. The release publishes per-platform bare binaries
-// (omp-<platform>-<arch>); this reads their sha256 digests straight from the
+// (jeopi-<platform>-<arch>); this reads their sha256 digests straight from the
 // release metadata so the formula never drifts from the shipped assets.
 //
 // Usage:
-//   bun scripts/ci-update-brew-formula.ts <tag> --out <path/to/Formula/omp.rb>
+//   bun scripts/ci-update-brew-formula.ts <tag> --out <path/to/Formula/jeopi.rb>
 //   bun scripts/ci-update-brew-formula.ts v15.10.3        # prints to stdout
 
 import { $ } from "bun";
 
-const REPO = process.env.OMP_REPO ?? "akillness/jeopi";
+const REPO = process.env.JEOPI_REPO ?? "akillness/jeopi";
 const HOMEPAGE = "https://github.com/akillness/jeopi";
 const DESC = "Coding agent with the IDE wired in";
 
@@ -58,8 +58,8 @@ export function renderFormula(version: string, sums: Record<string, string>): st
 	// Each `url` carries `using: :nounzip` because the release assets are bare
 	// Mach-O/ELF executables, not archives. Without it Homebrew's default
 	// CurlDownloadStrategy routes through UnpackStrategy::Uncompressed#extract_nestedly,
-	// which nests the file outside the staging CWD; `Dir["omp-*"].first` then
-	// returns `nil` and `bin.install nil => "omp"` raises.
+	// which nests the file outside the staging CWD; `Dir["jeopi-*"].first` then
+	// returns `nil` and `bin.install nil => "jeopi"` raises.
 	//
 	// `with_env(HOME: buildpath)` redirects the CLI's `os.homedir()` lookup to
 	// the writable staging dir so `generate_completions_from_executable` does
@@ -106,7 +106,7 @@ export function renderFormula(version: string, sums: Record<string, string>): st
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/omp --version")
+    assert_match version.to_s, shell_output("#{bin}/jeopi --version")
   end
 end
 `;

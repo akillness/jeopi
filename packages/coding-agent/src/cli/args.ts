@@ -349,7 +349,7 @@ export function getExtraHelpText(): string {
   ANTHROPIC_SEARCH_BASE_URL  - Anthropic web search base URL (override; pairs with ANTHROPIC_SEARCH_API_KEY)
 
   ${chalk.dim("# Configuration")}
-  OMP_PROFILE                 - Named profile for isolated agent state (same as --profile)
+  JEOPI_PROFILE               - Named profile for isolated agent state (same as --profile)
   Use \`${APP_NAME} --profile <name> --alias <command>\` to create a shell shortcut for a profile
   PI_CODING_AGENT_DIR        - Session storage directory (default: ~/${CONFIG_DIR_NAME}/agent)
   PI_PACKAGE_DIR             - Override package directory (for Nix/Guix store paths)

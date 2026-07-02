@@ -513,12 +513,12 @@ describe("autoresearch slash command", () => {
 
 	beforeEach(() => {
 		dbOverride = TempDir.createSync("@pi-autoresearch-cmd-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.JEOPI_AUTORESEARCH_DB_DIR = dbOverride.path();
 		cleanups.push(dbOverride);
 	});
 
 	afterEach(() => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.JEOPI_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		for (const dir of cleanups.splice(0)) {
 			dir.removeSync();
@@ -580,12 +580,12 @@ describe("autoresearch tool-call hook", () => {
 
 	beforeEach(() => {
 		dbOverride = TempDir.createSync("@pi-autoresearch-hook-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.JEOPI_AUTORESEARCH_DB_DIR = dbOverride.path();
 		cleanups.push(dbOverride);
 	});
 
 	afterEach(() => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.JEOPI_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		for (const dir of cleanups.splice(0)) {
 			dir.removeSync();

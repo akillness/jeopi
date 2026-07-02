@@ -29,7 +29,7 @@ let typesDescription: string | undefined;
 const TYPES_DESCRIPTION = (): string => (typesDescription ??= prompt.render(typesDescriptionPrompt));
 
 /**
- * Execute the omp commit pipeline for staged changes.
+ * Execute the jeopi commit pipeline for staged changes.
  */
 export async function runCommitCommand(args: CommitCommandArgs): Promise<void> {
 	if (args.legacy) {

@@ -10,14 +10,14 @@
 # (`No package.json was found for directory "$HOME/.bun/install/global"`) on
 # fresh hosts where the global install has not been initialized. Falling
 # through that error would expand `$(bun pm -g bin)/jeopi` to `/jeopi` and try
-# to write under `/` — see https://github.com/can1357/oh-my-pi/issues/3701.
+# to write under `/` — see https://github.com/akillness/jeopi/issues/3701.
 set -e
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 target=$repo_root/packages/coding-agent/scripts/jeopi
 
 if [ ! -x "$target" ]; then
-	echo "link-omp: target wrapper not found or not executable: $target" >&2
+	echo "link-jeopi: target wrapper not found or not executable: $target" >&2
 	exit 1
 fi
 
@@ -28,4 +28,4 @@ fi
 
 mkdir -p "$global_bin"
 ln -sfn "$target" "$global_bin/jeopi"
-echo "link-omp: linked $global_bin/jeopi -> $target"
+echo "link-jeopi: linked $global_bin/jeopi -> $target"

@@ -242,6 +242,28 @@ const cancelTemplate = cancelRaw?.startsWith('"') && cancelRaw.endsWith('"') ? c
 if (!groupTemplate || !cancelTemplate) {
 	throw new Error("could not locate concurrency.group / cancel-in-progress in ci.yml");
 }
+function unquoteYamlScalar(value: string): string {
+	const trimmed = value.trim();
+	return trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1) : trimmed;
+}
+
+function collectRunnerLabels(yaml: string): string[] {
+	const labels: string[] = [];
+	for (const rawLine of yaml.split("\n")) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) continue;
+
+		const runsOnMatch = /^runs-on:\s*(.+)$/.exec(line);
+		if (runsOnMatch) {
+			labels.push(unquoteYamlScalar(runsOnMatch[1]!));
+			continue;
+		}
+
+		const inlineOsMatch = /^-\s*\{.*\bos:\s*([^,\s}]+).*\}/.exec(line);
+		if (inlineOsMatch) labels.push(unquoteYamlScalar(inlineOsMatch[1]!));
+	}
+	return labels;
+}
 
 const RELEASE_SUBJECT = "chore: bump version to 15.12.6";
 
@@ -320,5 +342,22 @@ describe("ci.yml concurrency", () => {
 		});
 		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/main");
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("true");
+	});
+});
+
+describe("ci.yml runner scheduling", () => {
+	it("uses schedulable GitHub-hosted runner labels for release-critical jobs", () => {
+		const labels = collectRunnerLabels(workflowYaml);
+		const matrixRunnerLabel = "$" + "{{ matrix.os }}";
+		const hostedLabels = new Set([
+			matrixRunnerLabel,
+			"ubuntu-22.04",
+			"ubuntu-24.04-arm",
+			"macos-15-intel",
+			"macos-14",
+		]);
+
+		expect(labels.length).toBeGreaterThan(0);
+		expect(labels.filter(label => !hostedLabels.has(label))).toEqual([]);
 	});
 });

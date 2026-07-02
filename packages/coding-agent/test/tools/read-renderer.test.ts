@@ -67,7 +67,7 @@ describe("readToolRenderer hyperlinks", () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 
-		const examplePath = path.resolve("/tmp/omp-read/example.ts");
+		const examplePath = path.resolve("/tmp/jeopi-read/example.ts");
 		const component = readToolRenderer.renderCall(
 			{ path: `${examplePath}:10-12` },
 			{ expanded: false, isPartial: false },

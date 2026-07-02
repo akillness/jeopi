@@ -1053,7 +1053,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			const sessionFile = this.session.getSessionFile();
 			root = sessionFile?.endsWith(".jsonl")
 				? sessionFile.slice(0, -6)
-				: path.join(os.tmpdir(), "omp-read-pdf-images");
+				: path.join(os.tmpdir(), "jeopi-read-pdf-images");
 		}
 		const basename = path.basename(absolutePdfPath).replace(/[^A-Za-z0-9._-]/g, "_");
 		return path.join(root, "read-pdf-images", `${basename}-${Bun.hash(absolutePdfPath).toString(36)}`);

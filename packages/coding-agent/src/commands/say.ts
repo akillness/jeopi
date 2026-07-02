@@ -79,7 +79,7 @@ export default class Say extends Command {
 				return;
 			}
 
-			const tmp = path.join(os.tmpdir(), `omp-say-${Snowflake.next()}.wav`);
+			const tmp = path.join(os.tmpdir(), `jeopi-say-${Snowflake.next()}.wav`);
 			await Bun.write(tmp, wav);
 			try {
 				await playAudioFile(tmp);

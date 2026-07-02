@@ -19,7 +19,7 @@ const MCP_OAUTH_URL_CREDENTIAL_PREFIX = "mcp_oauth:";
 const MCP_OAUTH_PROFILE_CREDENTIAL_PREFIX = `${MCP_OAUTH_URL_CREDENTIAL_PREFIX}profile:`;
 
 /**
- * Deterministic credential id for an MCP server URL scoped to an OMP profile.
+ * Deterministic credential id for an MCP server URL scoped to a jeopi profile.
  *
  * Local profile stores are already separate, but auth-broker storage shares one
  * provider namespace across profiles. Including the profile in the provider key

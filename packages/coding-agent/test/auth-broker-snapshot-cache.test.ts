@@ -14,10 +14,10 @@ import { discoverAuthStorage } from "jeopi-cli/sdk";
 import { removeWithRetries } from "jeopi-utils";
 
 const ENV_KEYS = [
-	"OMP_AUTH_BROKER_URL",
-	"OMP_AUTH_BROKER_TOKEN",
-	"OMP_AUTH_BROKER_SNAPSHOT_CACHE",
-	"OMP_AUTH_BROKER_SNAPSHOT_TTL_MS",
+	"JEOPI_AUTH_BROKER_URL",
+	"JEOPI_AUTH_BROKER_TOKEN",
+	"JEOPI_AUTH_BROKER_SNAPSHOT_CACHE",
+	"JEOPI_AUTH_BROKER_SNAPSHOT_TTL_MS",
 ] as const;
 const PROVIDER = "unit-auth-broker-cache";
 const TOKEN = "coding-agent-cache-token";
@@ -75,10 +75,10 @@ describe("discoverAuthStorage auth-broker snapshot cache", () => {
 	test("boots from a fresh encrypted cache when the broker is down", async () => {
 		const cachePath = path.join(tempDir, "snapshot.enc");
 		const downUrl = "http://127.0.0.1:1";
-		process.env.OMP_AUTH_BROKER_URL = downUrl;
-		process.env.OMP_AUTH_BROKER_TOKEN = TOKEN;
-		process.env.OMP_AUTH_BROKER_SNAPSHOT_CACHE = cachePath;
-		process.env.OMP_AUTH_BROKER_SNAPSHOT_TTL_MS = "3600000";
+		process.env.JEOPI_AUTH_BROKER_URL = downUrl;
+		process.env.JEOPI_AUTH_BROKER_TOKEN = TOKEN;
+		process.env.JEOPI_AUTH_BROKER_SNAPSHOT_CACHE = cachePath;
+		process.env.JEOPI_AUTH_BROKER_SNAPSHOT_TTL_MS = "3600000";
 		await writeAuthBrokerSnapshotCache({
 			path: cachePath,
 			token: TOKEN,
@@ -109,10 +109,10 @@ describe("discoverAuthStorage auth-broker snapshot cache", () => {
 				bearerTokens: [TOKEN],
 				disableRefresher: true,
 			});
-			process.env.OMP_AUTH_BROKER_URL = handle.url;
-			process.env.OMP_AUTH_BROKER_TOKEN = TOKEN;
-			process.env.OMP_AUTH_BROKER_SNAPSHOT_CACHE = cachePath;
-			process.env.OMP_AUTH_BROKER_SNAPSHOT_TTL_MS = "3600000";
+			process.env.JEOPI_AUTH_BROKER_URL = handle.url;
+			process.env.JEOPI_AUTH_BROKER_TOKEN = TOKEN;
+			process.env.JEOPI_AUTH_BROKER_SNAPSHOT_CACHE = cachePath;
+			process.env.JEOPI_AUTH_BROKER_SNAPSHOT_TTL_MS = "3600000";
 
 			storage = await discoverAuthStorage(tempDir);
 			expect(await storage.getApiKey(PROVIDER)).toBe("broker-api-key");

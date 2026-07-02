@@ -247,7 +247,7 @@ export const OPTIONAL_VALUE_FLAGS: ReadonlySet<string> = new Set(Object.keys(OPT
  * value of a preceding optional/extension flag. `parseArgs` ignores it, but its
  * flag-looking shape preserves argv boundaries during the second parse.
  */
-export const PROFILE_BOOTSTRAP_BOUNDARY_ARG = "--omp-profile-boundary";
+export const PROFILE_BOOTSTRAP_BOUNDARY_ARG = "--jeopi-profile-boundary";
 
 /**
  * Long-form launch flags that take NO value (booleans). The bootstrap pre-parser

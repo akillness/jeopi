@@ -11,7 +11,13 @@ import { getConfigDirPaths } from "../../config";
 import { resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import { installLegacyPiSpecifierShim } from "./legacy-pi-compat";
 import { normalizePluginRuntimeConfig } from "./runtime-config";
-import type { InstalledPlugin, PluginManifest, PluginRuntimeConfig, ProjectPluginOverrides } from "./types";
+import type {
+	InstalledPlugin,
+	PluginManifest,
+	PluginPackageJson,
+	PluginRuntimeConfig,
+	ProjectPluginOverrides,
+} from "./types";
 
 /** Installed plugin plus the root scope that supplied its runtime metadata. */
 export interface ScopedInstalledPlugin extends InstalledPlugin {
@@ -101,7 +107,7 @@ async function collectPluginsAtRoot(
 	const plugins: ScopedInstalledPlugin[] = [];
 	for (const name of names) {
 		const pluginPkgPath = path.join(nodeModulesPath, name, "package.json");
-		let pluginPkg: { version: string; omp?: PluginManifest; pi?: PluginManifest };
+		let pluginPkg: PluginPackageJson;
 		try {
 			pluginPkg = await Bun.file(pluginPkgPath).json();
 		} catch (err) {
@@ -111,9 +117,9 @@ async function collectPluginsAtRoot(
 			throw err;
 		}
 
-		const manifest: PluginManifest | undefined = pluginPkg.omp || pluginPkg.pi;
+		const manifest: PluginManifest | undefined = pluginPkg.jeopi || pluginPkg.pi;
 		if (!manifest) {
-			// No omp/pi plugin manifest, skip
+			// No jeopi/pi plugin manifest, skip
 			continue;
 		}
 		manifest.version = pluginPkg.version;
@@ -235,13 +241,13 @@ function readDeclaredManifestEntries(dir: string): DeclaredManifestEntries {
 	} catch {
 		return { declared: false, files: [] };
 	}
-	let pkg: { omp?: { extensions?: unknown }; pi?: { extensions?: unknown } };
+	let pkg: { jeopi?: { extensions?: unknown }; pi?: { extensions?: unknown } };
 	try {
-		pkg = JSON.parse(raw) as { omp?: { extensions?: unknown }; pi?: { extensions?: unknown } };
+		pkg = JSON.parse(raw) as { jeopi?: { extensions?: unknown }; pi?: { extensions?: unknown } };
 	} catch {
 		return { declared: false, files: [] };
 	}
-	const declared = (pkg.omp ?? pkg.pi)?.extensions;
+	const declared = (pkg.jeopi ?? pkg.pi)?.extensions;
 	if (!Array.isArray(declared) || declared.length === 0) {
 		return { declared: false, files: [] };
 	}

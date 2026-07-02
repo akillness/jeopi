@@ -3,7 +3,7 @@
   "name": "jeopi-collab-web",
   "version": "15.11.7",
   "private": true,
-  "description": "Browser guest client and local relay tools for omp collab live sessions",
+  "description": "Browser guest client and local relay tools for jeopi collab live sessions",
   "homepage": "https://github.com/akillness/jeopi",
   "author": "Can Boluk",
   "license": "MIT",

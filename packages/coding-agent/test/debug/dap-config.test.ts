@@ -6,8 +6,8 @@ import { getAdapterConfigs, resolveAdapter, selectLaunchAdapter } from "../../sr
 import { injectPluginDirRoots } from "../../src/discovery/helpers";
 
 const tempDirs: string[] = [];
-const ORIGINAL_OMP_PLUGIN_DIR = process.env.OMP_PLUGIN_DIR;
-const ORIGINAL_OMP_MARKETPLACE_DIR = process.env.OMP_MARKETPLACE_DIR;
+const ORIGINAL_JEOPI_PLUGIN_DIR = process.env.JEOPI_PLUGIN_DIR;
+const ORIGINAL_JEOPI_MARKETPLACE_DIR = process.env.JEOPI_MARKETPLACE_DIR;
 
 async function makeTempDir(prefix: string): Promise<string> {
 	const cwd = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -17,15 +17,15 @@ async function makeTempDir(prefix: string): Promise<string> {
 
 afterEach(async () => {
 	vi.restoreAllMocks();
-	if (ORIGINAL_OMP_PLUGIN_DIR === undefined) {
-		delete process.env.OMP_PLUGIN_DIR;
+	if (ORIGINAL_JEOPI_PLUGIN_DIR === undefined) {
+		delete process.env.JEOPI_PLUGIN_DIR;
 	} else {
-		process.env.OMP_PLUGIN_DIR = ORIGINAL_OMP_PLUGIN_DIR;
+		process.env.JEOPI_PLUGIN_DIR = ORIGINAL_JEOPI_PLUGIN_DIR;
 	}
-	if (ORIGINAL_OMP_MARKETPLACE_DIR === undefined) {
-		delete process.env.OMP_MARKETPLACE_DIR;
+	if (ORIGINAL_JEOPI_MARKETPLACE_DIR === undefined) {
+		delete process.env.JEOPI_MARKETPLACE_DIR;
 	} else {
-		process.env.OMP_MARKETPLACE_DIR = ORIGINAL_OMP_MARKETPLACE_DIR;
+		process.env.JEOPI_MARKETPLACE_DIR = ORIGINAL_JEOPI_MARKETPLACE_DIR;
 	}
 	await injectPluginDirRoots(os.homedir(), []);
 	await Promise.all(tempDirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true })));
@@ -166,8 +166,8 @@ describe("DAP adapter configuration", () => {
 				},
 			}),
 		);
-		process.env.OMP_PLUGIN_DIR = path.join(cwd, "plugins");
-		process.env.OMP_MARKETPLACE_DIR = path.join(cwd, "marketplaces");
+		process.env.JEOPI_PLUGIN_DIR = path.join(cwd, "plugins");
+		process.env.JEOPI_MARKETPLACE_DIR = path.join(cwd, "marketplaces");
 		await injectPluginDirRoots(cwd, [pluginRoot], cwd);
 
 		expect(getAdapterConfigs(cwd)["acme-ruby"]?.command).toBe("ruby-debug-adapter");

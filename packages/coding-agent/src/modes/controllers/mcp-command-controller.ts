@@ -986,8 +986,8 @@ export class MCPCommandController {
 			const usesMcpRemote = [config.command, ...(config.args ?? [])].some(part => part?.includes("mcp-remote"));
 			throw new Error(
 				usesMcpRemote
-					? `this server proxies OAuth through mcp-remote, which caches tokens machine-wide in ~/.mcp-auth (shared across every OMP profile). Clear ~/.mcp-auth to force a fresh login, or replace the proxy with ${httpHint} so OMP manages OAuth per profile.`
-					: `stdio servers manage their own credentials, so OMP has no OAuth to reauthorize. If the service supports OAuth over HTTP, configure it as ${httpHint} instead.`,
+					? `this server proxies OAuth through mcp-remote, which caches tokens machine-wide in ~/.mcp-auth (shared across every jeopi profile). Clear ~/.mcp-auth to force a fresh login, or replace the proxy with ${httpHint} so jeopi manages OAuth per profile.`
+					: `stdio servers manage their own credentials, so jeopi has no OAuth to reauthorize. If the service supports OAuth over HTTP, configure it as ${httpHint} instead.`,
 			);
 		}
 		// First test if server actually needs auth by connecting without OAuth

@@ -32,7 +32,7 @@ export const VERSION: string = version;
 export const MIN_BUN_VERSION: string = engines.bun.replace(/[^0-9.]/g, "");
 
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-const PROFILE_ENV_KEYS = ["OMP_PROFILE", "PI_PROFILE"] as const;
+const PROFILE_ENV_KEYS = ["JEOPI_PROFILE", "PI_PROFILE"] as const;
 
 /**
  * Names Windows treats as reserved device aliases. Matches the basename
@@ -63,7 +63,7 @@ export function normalizeProfileName(profile: string | undefined): string | unde
 		WINDOWS_RESERVED_BASENAME_RE.test(normalized)
 	) {
 		throw new Error(
-			`Invalid OMP profile "${profile}". Profile names must match ${PROFILE_NAME_RE.source}, ` +
+			`Invalid jeopi profile "${profile}". Profile names must match ${PROFILE_NAME_RE.source}, ` +
 				`cannot be "." or "..", cannot end with ".", and cannot be a Windows reserved device name ` +
 				`(CON, PRN, AUX, NUL, COM0-9, LPT0-9, or any of those with an extension).`,
 		);
@@ -72,28 +72,28 @@ export function normalizeProfileName(profile: string | undefined): string | unde
 }
 
 /**
- * Resolve the active profile from the two profile env vars. `OMP_PROFILE` is the
- * canonical variable and takes precedence; `PI_PROFILE` is the legacy
- * compatibility fallback, consulted only when `OMP_PROFILE` is undefined. An
- * explicitly-empty `OMP_PROFILE` therefore selects the default profile rather
+ * Resolve the active profile from the two profile env vars. `JEOPI_PROFILE` is
+ * the canonical variable and takes precedence; `PI_PROFILE` is the legacy
+ * compatibility fallback, consulted only when `JEOPI_PROFILE` is undefined. An
+ * explicitly-empty `JEOPI_PROFILE` therefore selects the default profile rather
  * than silently inheriting `PI_PROFILE`. Delegates validation/normalization to
  * {@link normalizeProfileName} (which throws on a syntactically invalid value).
  */
-export function resolveProfileEnv(omp: string | undefined, pi: string | undefined): string | undefined {
-	return normalizeProfileName(omp !== undefined ? omp : pi);
+export function resolveProfileEnv(jeopi: string | undefined, pi: string | undefined): string | undefined {
+	return normalizeProfileName(jeopi !== undefined ? jeopi : pi);
 }
 
 function getProfileFromEnv(): string | undefined {
-	return resolveProfileEnv(process.env.OMP_PROFILE, process.env.PI_PROFILE);
+	return resolveProfileEnv(process.env.JEOPI_PROFILE, process.env.PI_PROFILE);
 }
 
 /**
  * Module-load profile resolution. Unlike {@link getProfileFromEnv}, an invalid
- * OMP_PROFILE/PI_PROFILE value does NOT throw here — a bad env var must not
+ * JEOPI_PROFILE/PI_PROFILE value does NOT throw here — a bad env var must not
  * crash a bare `import` of this module with an uncaught stack trace before the
  * CLI's error handling is in scope. The default profile is used instead; the
  * CLI re-validates the env (see `runCli` in coding-agent/src/cli.ts) so the
- * user still gets a clean "Invalid OMP profile" message.
+ * user still gets a clean "Invalid jeopi profile" message.
  */
 function readProfileFromEnvSafe(): string | undefined {
 	try {
@@ -328,7 +328,7 @@ class DirResolver {
  * (propagated by a parent's `setProfile`), so it must NOT be snapshotted as the
  * default-mode baseline — otherwise default mode would resolve to the profile's
  * agent dir. The profile source can be the active profile or a lower-priority
- * `PI_PROFILE` that was bypassed because `OMP_PROFILE` explicitly selected the
+ * `PI_PROFILE` that was bypassed because `JEOPI_PROFILE` explicitly selected the
  * default profile. Returns `undefined` in those cases so reset falls back to the
  * standard `~/.jeopi/agent`.
  */
@@ -509,7 +509,7 @@ export function setProfile(profile: string | undefined): void {
 	activeProfile = next;
 	if (activeProfile) {
 		dirs = new DirResolver({ profile: activeProfile });
-		process.env.OMP_PROFILE = activeProfile;
+		process.env.JEOPI_PROFILE = activeProfile;
 		process.env.PI_PROFILE = activeProfile;
 		process.env.PI_CODING_AGENT_DIR = dirs.agentDir;
 	} else {
@@ -624,7 +624,7 @@ let worktreesDirOverride: string | undefined;
  * Relocate the base directory for agent-managed worktrees (PR checkouts, task
  * isolation, and `jeopi worktree` cleanup all read the same base). Driven by the
  * `worktree.base` setting in coding-agent; pass `undefined`/empty to clear and
- * fall back to `OMP_WORKTREE_DIR` or the `~/.jeopi/wt` default.
+ * fall back to `JEOPI_WORKTREE_DIR` or the `~/.jeopi/wt` default.
  *
  * `~` is expanded and a relative path is rejected (see {@link resolveWorktreeBase}).
  * Returns the absolute path that took effect, or `undefined` if the input was
@@ -638,13 +638,13 @@ export function setWorktreesDir(dir: string | undefined): string | undefined {
 
 /**
  * Get the agent-managed worktrees directory. Resolution order: the
- * `OMP_WORKTREE_DIR` env var, then the {@link setWorktreesDir} override (the
+ * `JEOPI_WORKTREE_DIR` env var, then the {@link setWorktreesDir} override (the
  * `worktree.base` setting), then the `~/.jeopi/wt` default. The env var and the
  * override are both `~`-expanded and must be absolute; a relative value is
  * ignored and resolution falls through.
  */
 export function getWorktreesDir(): string {
-	return resolveWorktreeBase(process.env.OMP_WORKTREE_DIR) ?? worktreesDirOverride ?? dirs.rootSubdir("wt", "data");
+	return resolveWorktreeBase(process.env.JEOPI_WORKTREE_DIR) ?? worktreesDirOverride ?? dirs.rootSubdir("wt", "data");
 }
 
 /** Get the SSH control socket directory (~/.jeopi/ssh-control). */
@@ -706,22 +706,22 @@ export function getGpuCachePath(): string {
 
 /**
  * Get the GitHub view cache database path (~/.jeopi/cache/github-cache.db).
- * Honors the `OMP_GITHUB_CACHE_DB` env var when set so tests can isolate the
+ * Honors the `JEOPI_GITHUB_CACHE_DB` env var when set so tests can isolate the
  * cache file without touching the rest of the config root.
  */
 export function getGithubCacheDbPath(): string {
-	const override = process.env.OMP_GITHUB_CACHE_DB;
+	const override = process.env.JEOPI_GITHUB_CACHE_DB;
 	if (override) return override;
 	return dirs.rootSubdir(path.join("cache", "github-cache.db"), "cache");
 }
 
 /**
  * Get the encrypted auth-broker snapshot cache path (~/.jeopi/cache/auth-broker-snapshot.enc).
- * Honors the `OMP_AUTH_BROKER_SNAPSHOT_CACHE` env var when set so tests and
+ * Honors the `JEOPI_AUTH_BROKER_SNAPSHOT_CACHE` env var when set so tests and
  * operators can isolate or relocate the cache file.
  */
 export function getAuthBrokerSnapshotCachePath(): string {
-	const override = process.env.OMP_AUTH_BROKER_SNAPSHOT_CACHE;
+	const override = process.env.JEOPI_AUTH_BROKER_SNAPSHOT_CACHE;
 	if (override) return override;
 	return dirs.rootSubdir(path.join("cache", "auth-broker-snapshot.enc"), "cache");
 }

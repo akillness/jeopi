@@ -2,9 +2,9 @@ name: "bun install (shared cache)"
 description: >
    Ensure bun is on PATH, then run `bun install --frozen-lockfile` with a shared
    package store. bun setup is skipped when the runner image already ships it
-   (the preloaded omp-kata image), and only fetched on runners that lack it
-   (e.g. GitHub-hosted). Self-hosted omp-kata runners use the mounted Bun store
-   PVC; GitHub-hosted runners use the stock actions/cache backend.
+   (a preloaded self-hosted image), and only fetched on runners that lack it
+   (e.g. GitHub-hosted). Self-hosted runners use the mounted Bun store PVC;
+   GitHub-hosted runners use the stock actions/cache backend.
 
 runs:
    using: composite
@@ -13,9 +13,9 @@ runs:
         id: env
         shell: bash
         run: |
-           # bun is baked into the omp-kata runner image — only fetch it when the
-           # runner doesn't already provide it (GitHub-hosted), so we don't
-           # re-download bun from GitHub releases on every job.
+           # bun is baked into the optional self-hosted runner image — only fetch
+           # it when the runner doesn't already provide it (GitHub-hosted), so we
+           # don't re-download bun from GitHub releases on every job.
            if command -v bun >/dev/null 2>&1; then
              echo "setup_bun=false" >> "$GITHUB_OUTPUT"
              echo "bun present: $(bun --version) (preloaded image)"
@@ -49,7 +49,7 @@ runs:
            path: ~/.bun/install/cache
            key: bun-${{ runner.os }}-${{ hashFiles('**/bun.lock') }}
 
-      # On-infra (omp-kata): the pod mounts a shared PVC at bun's store path.
+      # On-infra: the pod mounts a shared PVC at bun's store path.
       - name: Prepare mounted bun store
         if: steps.env.outputs.cache == 'mounted'
         shell: bash
@@ -58,7 +58,7 @@ runs:
       - name: Install dependencies
         shell: bash
         run: |
-           # The shared bun store (mounted PVC on omp-kata, actions/cache
+           # The shared bun store (mounted PVC on self-hosted runners, actions/cache
            # elsewhere) can hand a job a corrupt or partially written tarball
            # when parallel jobs touch the same cache entry, so `bun install`
            # aborts with `Fail extracting tarball for "<pkg>"`. That blob is

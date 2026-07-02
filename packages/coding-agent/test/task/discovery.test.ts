@@ -5,10 +5,10 @@ import * as path from "node:path";
 import { discoverAgents } from "jeopi-cli/task/discovery";
 import { removeWithRetries } from "jeopi-utils";
 
-const OMP_AGENT_MD = [
+const JEOPI_AGENT_MD = [
 	"---",
-	"name: omp-test-agent",
-	"description: OMP-native test agent.",
+	"name: jeopi-test-agent",
+	"description: jeopi-native test agent.",
 	"---",
 	"You are an OMP task agent.",
 ].join("\n");
@@ -40,7 +40,7 @@ describe("discoverAgents", () => {
 
 	test("loads OMP agents but skips Claude Code custom agents", async () => {
 		await fs.mkdir(path.join(projectDir, ".jeopi", "agents"), { recursive: true });
-		await fs.writeFile(path.join(projectDir, ".jeopi", "agents", "omp-test-agent.md"), OMP_AGENT_MD);
+		await fs.writeFile(path.join(projectDir, ".jeopi", "agents", "jeopi-test-agent.md"), JEOPI_AGENT_MD);
 
 		await fs.mkdir(path.join(tempHome, ".claude", "agents"), { recursive: true });
 		await fs.writeFile(path.join(tempHome, ".claude", "agents", "user-cc-test-agent.md"), CLAUDE_AGENT_MD);
@@ -50,7 +50,7 @@ describe("discoverAgents", () => {
 		const { agents, projectAgentsDir } = await discoverAgents(projectDir, tempHome);
 		const names = agents.map(agent => agent.name);
 
-		expect(names).toContain("omp-test-agent");
+		expect(names).toContain("jeopi-test-agent");
 		expect(names).not.toContain("cc-test-agent");
 		expect(projectAgentsDir).toBe(path.join(projectDir, ".jeopi", "agents"));
 	});
