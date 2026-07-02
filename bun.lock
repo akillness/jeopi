@@ -21,7 +21,7 @@
     },
     "packages/agent": {
       "name": "jeopi-agent-core",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
         "jeopi-ai": "catalog:",
@@ -39,7 +39,7 @@
     },
     "packages/ai": {
       "name": "jeopi-ai",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/catalog": {
       "name": "jeopi-catalog",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -69,7 +69,7 @@
     },
     "packages/coding-agent": {
       "name": "jeopi-cli",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "bin": {
         "jeopi": "dist/cli.js",
       },
@@ -137,7 +137,7 @@
     },
     "packages/hashline": {
       "name": "jeopi-hashline",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "dependencies": {
         "diff": "catalog:",
         "lru-cache": "catalog:",
@@ -148,7 +148,7 @@
     },
     "packages/mnemopi": {
       "name": "jeopi-mnemopi",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
@@ -174,7 +174,7 @@
     },
     "packages/natives": {
       "name": "jeopi-natives",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
@@ -182,7 +182,7 @@
     },
     "packages/snapcompact": {
       "name": "jeopi-snapcompact",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "dependencies": {
         "jeopi-ai": "catalog:",
         "jeopi-natives": "catalog:",
@@ -195,7 +195,7 @@
     },
     "packages/stats": {
       "name": "jeopi-stats",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "bin": {
         "jeopi-stats": "./src/index.ts",
       },
@@ -221,7 +221,7 @@
     },
     "packages/swarm-extension": {
       "name": "jeopi-swarm-extension",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "bin": {
         "jeopi-swarm": "src/cli.ts",
       },
@@ -247,7 +247,7 @@
     },
     "packages/tui": {
       "name": "jeopi-tui",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "dependencies": {
         "jeopi-natives": "catalog:",
         "jeopi-utils": "catalog:",
@@ -288,7 +288,7 @@
     },
     "packages/utils": {
       "name": "jeopi-utils",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "dependencies": {
         "handlebars": "catalog:",
         "jeopi-natives": "catalog:",
@@ -301,7 +301,7 @@
     },
     "packages/wire": {
       "name": "jeopi-wire",
-      "version": "16.2.19",
+      "version": "16.2.20",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
@@ -364,18 +364,18 @@
     "fflate": "0.8.3",
     "ghostty-web": "^0.4.0",
     "handlebars": "^4.7.9",
-    "jeopi-agent-core": "16.2.19",
-    "jeopi-ai": "16.2.19",
-    "jeopi-catalog": "16.2.19",
-    "jeopi-cli": "16.2.19",
-    "jeopi-hashline": "16.2.19",
-    "jeopi-mnemopi": "16.2.19",
-    "jeopi-natives": "16.2.19",
-    "jeopi-snapcompact": "16.2.19",
-    "jeopi-stats": "16.2.19",
-    "jeopi-tui": "16.2.19",
-    "jeopi-utils": "16.2.19",
-    "jeopi-wire": "16.2.19",
+    "jeopi-agent-core": "16.2.20",
+    "jeopi-ai": "16.2.20",
+    "jeopi-catalog": "16.2.20",
+    "jeopi-cli": "16.2.20",
+    "jeopi-hashline": "16.2.20",
+    "jeopi-mnemopi": "16.2.20",
+    "jeopi-natives": "16.2.20",
+    "jeopi-snapcompact": "16.2.20",
+    "jeopi-stats": "16.2.20",
+    "jeopi-tui": "16.2.20",
+    "jeopi-utils": "16.2.20",
+    "jeopi-wire": "16.2.20",
     "linkedom": "^0.18.12",
     "lint-staged": "^17.0.7",
     "lru-cache": "11.5.1",
@@ -1234,7 +1234,7 @@
 
     "ms": ["ms@2.1.3", "", {}, "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="],
 
-    "mupdf": ["mupdf@1.27.0", "", {}, "sha512-vEPUYwZeu5NgiFLz4e20R7Vp2pNY7szirGEvTxHyQQpQs6ab4DeGdonwT6sH1JZG5EhyHSrojZrZn2/0ee6qZQ=="],
+    "mupdf": ["mupdf@1.28.0", "", {}, "sha512-ACUnbpECaQ5JLq04pwd89lS+0IGMest5qL5tb08g9TAR7bDtfqflHEkb2Xm3o4rvC/szguLiV+WEbW9kstj8Sg=="],
 
     "mute-stream": ["mute-stream@3.0.0", "", {}, "sha512-dkEJPVvun4FryqBmZ5KhDo0K9iDXAwn08tMLDinNdRBNPcYEDiWYysLcc6k3mjTMlbP9KyylvRpd4wFtwrT9rw=="],
 
