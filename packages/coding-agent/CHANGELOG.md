@@ -2,11 +2,17 @@
 
 ## [Unreleased]
 
-## [16.2.15] - 2026-07-02
+## [16.2.16] - 2026-07-02
+
 ### Changed
 
 - Removed remaining `omp`-branded release surfaces from jeopi: CI runner labels and artifact names, Homebrew formula generation, issue templates, profile alias markers, plugin manifest discovery, local helper scripts, auth-broker/autoresearch/MCP/cache environment variables, and user-facing command examples now use `jeopi`/`JEOPI_*` names while keeping explicit `~/.omp` legacy migration references intact.
 
+### Fixed
+
+- Fixed the source-install smoke path to create the `jeopi` dev-bin link via `scripts/link-jeopi.sh` after `bun link`, matching the repo `setup` flow and preventing CI from looking for a missing Bun global bin shim.
+
+## [16.2.15] - 2026-07-02
 
 ### Fixed
 

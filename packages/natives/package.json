@@ -1,6 +1,6 @@
 {
 	"name": "jeopi-natives",
-	"version": "16.2.15",
+	"version": "16.2.16",
 	"description": "Native Rust bindings for grep, clipboard, image processing, syntax highlighting, PTY, and shell operations via N-API",
 	"type": "module",
 	"homepage": "https://github.com/akillness/jeopi",
@@ -65,12 +65,5 @@
 			"types": "./native/index.d.ts",
 			"import": "./native/index.js"
 		}
-	},
-	"optionalDependencies": {
-		"jeopi-natives-linux-x64": "16.2.13",
-		"jeopi-natives-linux-arm64": "16.2.13",
-		"jeopi-natives-darwin-x64": "16.2.13",
-		"jeopi-natives-darwin-arm64": "16.2.13",
-		"jeopi-natives-win32-x64": "16.2.13"
 	}
 }

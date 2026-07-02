@@ -18,7 +18,7 @@ COPY . .
 # Install dependencies, build native addon, and link globally
 RUN bun install --frozen-lockfile
 RUN bun --cwd=packages/natives run build
-RUN cd packages/coding-agent && bun link
+RUN cd packages/coding-agent && bun link && sh ../../scripts/link-jeopi.sh
 
 # Verify
-RUN omp --version
+RUN jeopi --version

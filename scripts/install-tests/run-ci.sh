@@ -57,6 +57,7 @@ SOURCE_BUN_HOME="$WORK_DIR/bun-source"
    export BUN_INSTALL="$SOURCE_BUN_HOME"
    export PATH="$BUN_INSTALL/bin:$PATH"
    bun --cwd="$ROOT_DIR/packages/coding-agent" link
+   sh "$ROOT_DIR/scripts/link-jeopi.sh"
    smoke_cli "$BUN_INSTALL/bin/jeopi"
 )
 

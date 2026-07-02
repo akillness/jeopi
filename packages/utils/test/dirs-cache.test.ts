@@ -24,13 +24,13 @@ function restoreEnv(key: string, value: string | undefined): void {
 describe("document conversion cache directory", () => {
 	let tempRoot = "";
 	let originalPiCodingAgentDir: string | undefined;
-	let originalOmpProfile: string | undefined;
+	let originalJeopiProfile: string | undefined;
 	let originalPiProfile: string | undefined;
 	let originalXdgCacheHome: string | undefined;
 
 	beforeEach(async () => {
 		originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
-		originalOmpProfile = process.env.OMP_PROFILE;
+		originalJeopiProfile = process.env.JEOPI_PROFILE;
 		originalPiProfile = process.env.PI_PROFILE;
 		originalXdgCacheHome = process.env.XDG_CACHE_HOME;
 		tempRoot = path.join(os.tmpdir(), "pi-utils-document-cache", Snowflake.next());
@@ -39,7 +39,7 @@ describe("document conversion cache directory", () => {
 
 	afterEach(async () => {
 		restoreEnv("PI_CODING_AGENT_DIR", originalPiCodingAgentDir);
-		restoreEnv("OMP_PROFILE", originalOmpProfile);
+		restoreEnv("JEOPI_PROFILE", originalJeopiProfile);
 		restoreEnv("PI_PROFILE", originalPiProfile);
 		restoreEnv("XDG_CACHE_HOME", originalXdgCacheHome);
 		__resetDirsFromEnvForTests();
@@ -72,11 +72,11 @@ describe("document conversion cache directory", () => {
 describe("test directory state cleanup", () => {
 	it("restores the active profile from the current env after setAgentDir mutations", () => {
 		const originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
-		const originalOmpProfile = process.env.OMP_PROFILE;
+		const originalJeopiProfile = process.env.JEOPI_PROFILE;
 		const originalPiProfile = process.env.PI_PROFILE;
 		const originalXdgCacheHome = process.env.XDG_CACHE_HOME;
 		try {
-			process.env.OMP_PROFILE = "cache-profile";
+			process.env.JEOPI_PROFILE = "cache-profile";
 			delete process.env.PI_PROFILE;
 			delete process.env.PI_CODING_AGENT_DIR;
 			delete process.env.XDG_CACHE_HOME;
@@ -85,7 +85,7 @@ describe("test directory state cleanup", () => {
 			setAgentDir(path.join(os.tmpdir(), "pi-utils-document-cache", Snowflake.next(), "agent"));
 			expect(getActiveProfile()).toBeUndefined();
 
-			process.env.OMP_PROFILE = "cache-profile";
+			process.env.JEOPI_PROFILE = "cache-profile";
 			delete process.env.PI_PROFILE;
 			delete process.env.PI_CODING_AGENT_DIR;
 			__resetDirsFromEnvForTests();
@@ -96,7 +96,7 @@ describe("test directory state cleanup", () => {
 			);
 		} finally {
 			restoreEnv("PI_CODING_AGENT_DIR", originalPiCodingAgentDir);
-			restoreEnv("OMP_PROFILE", originalOmpProfile);
+			restoreEnv("JEOPI_PROFILE", originalJeopiProfile);
 			restoreEnv("PI_PROFILE", originalPiProfile);
 			restoreEnv("XDG_CACHE_HOME", originalXdgCacheHome);
 			__resetDirsFromEnvForTests();
