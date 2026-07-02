@@ -54,7 +54,7 @@ afterAll(async () => {
 	await tmp.remove();
 });
 
-test("omp models surfaces extension-registered providers (issue #905)", async () => {
+test("jeopi models surfaces extension-registered providers (issue #905)", async () => {
 	const authStorage = await AuthStorage.create(dbPath);
 	try {
 		const modelRegistry = new ModelRegistry(authStorage);

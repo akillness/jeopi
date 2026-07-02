@@ -329,7 +329,7 @@ describe("AgentSession retry fallback", () => {
 		]);
 	});
 
-	it("drops classifier refusal messages before later prompts", async () => {
+	it("drops surfaced classifier refusal messages before later prompts", async () => {
 		const primaryModel = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!primaryModel) {
 			throw new Error("Expected bundled test model to exist");
@@ -371,11 +371,13 @@ describe("AgentSession retry fallback", () => {
 			streamFn: (model, context, options) => mock.stream(model, context, options),
 		});
 
+		// With retries enabled a classifier refusal now auto-resends (rung-4
+		// backoff) instead of surfacing. Disable retries to exercise the
+		// surfaced-refusal prune path (#3591): displayed as an error, but
+		// dropped from active and saved context before the next prompt.
 		const settings = Settings.isolated({
 			"compaction.enabled": false,
-			"retry.baseDelayMs": 5,
-			"retry.maxRetries": 1,
-			"retry.modelFallback": false,
+			"retry.enabled": false,
 		});
 		settings.setModelRole("default", `${primaryModel.provider}/${primaryModel.id}`);
 
@@ -426,101 +428,161 @@ describe("AgentSession retry fallback", () => {
 		});
 	});
 
-	it("does not exceed retry.maxRetries for classifier fallback chains", async () => {
+	it("keeps resending with capped backoff after the refusal fallback ladder is exhausted", async () => {
 		const primaryModel = getBundledModel("anthropic", "claude-sonnet-4-5");
 		const firstFallback = getBundledModel("openai", "gpt-4o-mini");
-		const secondFallback = getBundledModel("openai", "gpt-4o");
-		if (!primaryModel || !firstFallback || !secondFallback) {
+		if (!primaryModel || !firstFallback) {
 			throw new Error("Expected bundled test models to exist");
 		}
 
-		const requestedModels: string[] = [];
-		const fallbackAppliedEvents: Array<Extract<AgentSessionEvent, { type: "retry_fallback_applied" }>> = [];
-		const retryEndEvents: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
-		const mock = createMockModel();
-		const refusalMessage = "Refusal (cyber): Classifier declined this fallback turn.";
-		const agent = new Agent({
-			getApiKey: model => `${model.provider}-test-key`,
-			initialState: {
-				model: primaryModel,
-				systemPrompt: ["Test"],
-				tools: [],
-				messages: [],
-			},
-			streamFn: (model, context, options) => {
-				requestedModels.push(`${model.provider}/${model.id}`);
-				if (model.provider === primaryModel.provider && model.id === primaryModel.id) {
-					mock.push({ throw: "overloaded_error: provider returned error 503" });
-				} else if (model.provider === firstFallback.provider && model.id === firstFallback.id) {
+		process.env.PI_REFUSAL_BACKOFF_BASE_MS = "5";
+		try {
+			const requestedModels: string[] = [];
+			const mock = createMockModel();
+			let fallbackAttempts = 0;
+			const agent = new Agent({
+				getApiKey: model => `${model.provider}-test-key`,
+				initialState: {
+					model: primaryModel,
+					systemPrompt: ["Test"],
+					tools: [],
+					messages: [],
+				},
+				streamFn: (model, context, options) => {
+					requestedModels.push(`${model.provider}/${model.id}`);
+					if (model.provider === primaryModel.provider && model.id === primaryModel.id) {
+						mock.push({ throw: "overloaded_error: provider returned error 503" });
+					} else if (model.provider === firstFallback.provider && model.id === firstFallback.id) {
+						fallbackAttempts += 1;
+						if (fallbackAttempts <= 2) {
+							mock.push({
+								stopReason: "error",
+								stopDetails: {
+									type: "refusal",
+									category: "cyber",
+									explanation: "Classifier declined this fallback turn.",
+								},
+								errorMessage: "Refusal (cyber): Classifier declined this fallback turn.",
+							});
+						} else {
+							mock.push({ content: [`recovered:${fallbackAttempts}`] });
+						}
+					} else {
+						throw new Error(
+							`Unexpected model requested during refusal backoff test: ${model.provider}/${model.id}`,
+						);
+					}
+					return mock.stream(model, context, options);
+				},
+			});
+
+			const settings = Settings.isolated({
+				"compaction.enabled": false,
+				"retry.baseDelayMs": 5,
+				"retry.maxRetries": 1,
+				"retry.fallbackChains": {
+					default: [`${firstFallback.provider}/${firstFallback.id}`],
+				},
+			});
+			settings.setModelRole("default", `${primaryModel.provider}/${primaryModel.id}`);
+
+			session = new AgentSession({
+				agent,
+				sessionManager: SessionManager.inMemory(),
+				settings,
+				modelRegistry,
+			});
+			const { retryStartEvents, retryEndEvents } = trackRetryEvents(session);
+
+			await session.prompt("Recover after the refusal ladder is exhausted");
+			await session.waitForIdle();
+
+			// 503 → ladder switch (delay 0), then two rung-4 refusal resends with
+			// capped exponential backoff (5ms base → 5, 10) before recovery. The
+			// refusal resends run past retry.maxRetries (1): the streak is bounded
+			// by its wall-clock budget and abortRetry(), not the attempt budget.
+			expect(requestedModels).toEqual([
+				`${primaryModel.provider}/${primaryModel.id}`,
+				`${firstFallback.provider}/${firstFallback.id}`,
+				`${firstFallback.provider}/${firstFallback.id}`,
+				`${firstFallback.provider}/${firstFallback.id}`,
+			]);
+			expect(retryStartEvents.map(event => event.delayMs)).toEqual([0, 5, 10]);
+			expect(retryEndEvents).toEqual([{ type: "auto_retry_end", success: true, attempt: 1 }]);
+			expect(getLastAssistantMessage(session).content).toEqual([{ type: "text", text: "recovered:3" }]);
+		} finally {
+			delete process.env.PI_REFUSAL_BACKOFF_BASE_MS;
+		}
+	});
+
+	it("cancels a refusal backoff resend wait via abortRetry", async () => {
+		const primaryModel = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!primaryModel) {
+			throw new Error("Expected bundled test model to exist");
+		}
+
+		// Large base so the test deterministically aborts mid-wait (capped at 30s).
+		process.env.PI_REFUSAL_BACKOFF_BASE_MS = "30000";
+		try {
+			const mock = createMockModel();
+			const agent = new Agent({
+				getApiKey: model => `${model.provider}-test-key`,
+				initialState: {
+					model: primaryModel,
+					systemPrompt: ["Test"],
+					tools: [],
+					messages: [],
+				},
+				streamFn: (model, context, options) => {
 					mock.push({
 						stopReason: "error",
-						stopDetails: {
-							type: "refusal",
-							category: "cyber",
-							explanation: "Classifier declined this fallback turn.",
-						},
-						errorMessage: refusalMessage,
+						stopDetails: { type: "refusal", category: "bio", explanation: "Classifier declined this turn." },
+						errorMessage: "Refusal (bio): Classifier declined this turn.",
 					});
-				} else {
-					throw new Error(
-						`Unexpected model requested after retry budget exhaustion: ${model.provider}/${model.id}`,
-					);
+					return mock.stream(model, context, options);
+				},
+			});
+
+			const settings = Settings.isolated({
+				"compaction.enabled": false,
+				"retry.baseDelayMs": 5,
+				"retry.modelFallback": false,
+			});
+			settings.setModelRole("default", `${primaryModel.provider}/${primaryModel.id}`);
+
+			session = new AgentSession({
+				agent,
+				sessionManager: SessionManager.inMemory(),
+				settings,
+				modelRegistry,
+			});
+			const { retryStartEvents, retryEndEvents } = trackRetryEvents(session);
+			const retryStarted = Promise.withResolvers<void>();
+			session.subscribe(event => {
+				if (event.type === "auto_retry_start") {
+					retryStarted.resolve();
 				}
-				return mock.stream(model, context, options);
-			},
-		});
+			});
 
-		const settings = Settings.isolated({
-			"compaction.enabled": false,
-			"retry.baseDelayMs": 5,
-			"retry.maxRetries": 1,
-			"retry.fallbackChains": {
-				default: [
-					`${firstFallback.provider}/${firstFallback.id}`,
-					`${secondFallback.provider}/${secondFallback.id}`,
-				],
-			},
-		});
-		settings.setModelRole("default", `${primaryModel.provider}/${primaryModel.id}`);
-
-		session = new AgentSession({
-			agent,
-			sessionManager: SessionManager.inMemory(),
-			settings,
-			modelRegistry,
-		});
-		session.subscribe(event => {
-			if (event.type === "retry_fallback_applied") {
-				fallbackAppliedEvents.push(event);
+			const promptPromise = session.prompt("Refusal backoff should be cancellable");
+			await retryStarted.promise;
+			// The abort can race the wait installing its controller; retry until
+			// the cancel lands (equivalent of the user pressing Esc).
+			while (retryEndEvents.length === 0) {
+				session.abortRetry();
+				await scheduler.wait(5);
 			}
-			if (event.type === "auto_retry_end") {
-				retryEndEvents.push(event);
-			}
-		});
+			await promptPromise;
+			await session.waitForIdle();
 
-		await session.prompt("Stop after the configured retry budget");
-		await session.waitForIdle();
-
-		expect(requestedModels).toEqual([
-			`${primaryModel.provider}/${primaryModel.id}`,
-			`${firstFallback.provider}/${firstFallback.id}`,
-		]);
-		expect(fallbackAppliedEvents).toEqual([
-			{
-				type: "retry_fallback_applied",
-				from: `${primaryModel.provider}/${primaryModel.id}`,
-				to: `${firstFallback.provider}/${firstFallback.id}`,
-				role: "default",
-			},
-		]);
-		expect(retryEndEvents).toEqual([
-			{
-				type: "auto_retry_end",
-				success: false,
-				attempt: 1,
-				finalError: refusalMessage,
-			},
-		]);
+			expect(mock.calls).toHaveLength(1);
+			expect(retryStartEvents.map(event => event.delayMs)).toEqual([30_000]);
+			expect(retryEndEvents).toEqual([
+				{ type: "auto_retry_end", success: false, attempt: 1, finalError: "Retry cancelled" },
+			]);
+		} finally {
+			delete process.env.PI_REFUSAL_BACKOFF_BASE_MS;
+		}
 	});
 
 	it("uses Google retry hints in quota errors before quota backoff", async () => {

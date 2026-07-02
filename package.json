@@ -181,6 +181,7 @@
     "gen:docs": "bun --cwd=packages/coding-agent run gen:docs",
     "gen:docs:reset": "bun --cwd=packages/coding-agent run gen:docs:reset",
     "gen:changelog": "bun scripts/rewrite-changelog.ts",
+    "gen:readme-changelog": "bun scripts/sync-readme-changelog.ts",
     "gen:tool-views": "bun --cwd=packages/collab-web run gen:tool-views",
     "gen:bundle": "bun --cwd=packages/coding-agent run gen:bundle",
     "gen:mupdf": "bun --cwd=packages/coding-agent run gen:mupdf",

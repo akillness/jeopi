@@ -6,7 +6,7 @@ import { discoverAndLoadExtensions } from "jeopi-cli/extensibility/extensions/lo
 import { getAgentDir, getPluginsDir, removeSyncWithRetries, setAgentDir, TempDir } from "jeopi-utils";
 
 const currentPiCodingAgentPath = Bun.resolveSync("jeopi-cli", import.meta.dir);
-const currentPiExtensionsPath = Bun.resolveSync("jeopi/extensibility/extensions", import.meta.dir);
+const currentPiExtensionsPath = Bun.resolveSync("jeopi-cli/extensibility/extensions", import.meta.dir);
 
 describe("plugin extension discovery", () => {
 	let projectDir: TempDir;

@@ -525,6 +525,15 @@ export const TERMINAL: RuntimeTerminal = (() => {
 	// ignores DECCARA) exercises the padded-string fallback. Integration tests opt
 	// in explicitly through setTerminalDeccara.
 	resolved.deccara = detectRectangularSgrSupport(resolved.id, Bun.env) && !isBunTestRuntime();
+	// OSC 66 text-sizing. The static per-terminal capability lives on
+	// KNOWN_TERMINALS (true for kitty/ghostty/wezterm/iterm2) and is otherwise
+	// gated behind the `tui.textSizing` setting at runtime — but resolving it raw
+	// here means running the test suite itself from inside one of those terminals
+	// (e.g. kitty) leaks `TERM_PROGRAM` into `Bun.env` and flips the "disabled by
+	// default" assumption every heading test relies on. Force it off under the
+	// test runtime, same as deccara above; tests opt in explicitly via
+	// setTerminalTextSizing.
+	resolved.textSizing = resolved.textSizing && !isBunTestRuntime();
 	return resolved;
 })();
 

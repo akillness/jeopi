@@ -2,15 +2,15 @@ name: CI
 
 on:
    push:
-      branches: [main]
+      branches: [jeopi]
       # Vouch bookkeeping commits (mitchellh/vouch writes VOUCHED.td back to
-      # main on !vouch/!denounce/!unvouch) only edit the vouch list and need no
-      # build. Skip CI when a main push changes nothing but the vouch file; a
+      # jeopi on !vouch/!denounce/!unvouch) only edit the vouch list and need no
+      # build. Skip CI when a jeopi push changes nothing but the vouch file; a
       # push that also touches anything else still runs the full matrix.
       paths-ignore:
          - .github/VOUCHED.td
    pull_request:
-      branches: [main]
+      branches: [jeopi]
    workflow_dispatch:
       inputs:
          skip_npm:
@@ -18,14 +18,14 @@ on:
             type: boolean
             default: false
 
-# Release runs publish a `v*` tag pushed atomically with main HEAD; sharing
-# the cheap branch-wide `CI-refs/heads/main` group meant a later main push
+# Release runs publish a `v*` tag pushed atomically with jeopi HEAD; sharing
+# the cheap branch-wide `CI-refs/heads/jeopi` group meant a later jeopi push
 # silently cancelled the in-flight release and left the tag without a GitHub
 # Release or npm publish (#2564). Detect release runs at workflow-scheduling
 # time via the release-script commit subject (`chore: bump version to vX.Y.Z`),
 # via `v*` tag-ref dispatches, and via manual dispatches whose tag-on-HEAD
 # status is only known after checkout; scope them to a per-sha group with no
-# cancellation. Every other event keeps branch-wide cancellation for PR/main churn.
+# cancellation. Every other event keeps branch-wide cancellation for PR/jeopi churn.
 concurrency:
    group: "${{ github.workflow }}-${{ (startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && format('release-{0}', github.sha) || github.ref }}"
    cancel-in-progress: "${{ !(startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}"
@@ -45,15 +45,15 @@ permissions:
 
 jobs:
    # scripts/release.ts pushes the version-bump commit and its `v*` tag
-   # atomically (`git push --atomic origin refs/heads/main:refs/heads/main
+   # atomically (`git push --atomic origin refs/heads/jeopi:refs/heads/jeopi
    # <sha>:refs/tags/v<version>`), so a release now arrives as a single `push` to
-   # `refs/heads/main` — we no longer trigger on the tag ref at all (see
+   # `refs/heads/jeopi` — we no longer trigger on the tag ref at all (see
    # `on.push`). This one branch-push run is therefore authoritative: it runs the
    # full build AND, when HEAD carries a release tag, the release/publish jobs.
    # `release_metadata` resolves that tag once so downstream jobs switch on
    # `is-release` and address the tag by name — `github.ref` is
-   # `refs/heads/main` here, not the tag. A `workflow_dispatch` from a `v*` tag
-   # ref (or from a tagged main HEAD) is also treated as a release.
+   # `refs/heads/jeopi` here, not the tag. A `workflow_dispatch` from a `v*` tag
+   # ref (or from a tagged jeopi HEAD) is also treated as a release.
    release_metadata:
       name: Resolve release metadata
       runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
@@ -61,14 +61,14 @@ jobs:
          is-release: ${{ steps.detect.outputs.is-release }}
          release-tag: ${{ steps.detect.outputs.release-tag }}
       steps:
-         # Only a main-branch run needs tags fetched, so `git tag --points-at
+         # Only a jeopi-branch run needs tags fetched, so `git tag --points-at
          # HEAD` can see the freshly-pushed `v*`. A tag-ref dispatch reads the
          # tag straight from `github.ref_name`, and fetching `--tags` while
          # checkout uses an explicit tag refspec makes git refuse — so scope
-         # fetch-tags to main refs.
+         # fetch-tags to jeopi refs.
          - uses: actions/checkout@v4
            with:
-              fetch-tags: ${{ github.ref == 'refs/heads/main' }}
+              fetch-tags: ${{ github.ref == 'refs/heads/jeopi' }}
          - name: Detect release tag at HEAD
            id: detect
            shell: bash
@@ -79,7 +79,7 @@ jobs:
                 refs/tags/v[0-9]*)
                   release_tag="${{ github.ref_name }}"
                   ;;
-                refs/heads/main)
+                refs/heads/jeopi)
                   if [ "${{ github.event_name }}" != "pull_request" ]; then
                     release_tag=$(git tag --points-at HEAD | grep -E '^v[0-9]' | head -n1 || true)
                   fi
@@ -95,14 +95,14 @@ jobs:
               } >> "$GITHUB_OUTPUT"
 
    # Compute a stable hash of every input that affects the native cdylib output,
-   # then look for any prior successful main run that already uploaded the
+   # then look for any prior successful jeopi run that already uploaded the
    # native artifacts for this hash. Two independent outputs:
    #   * `linux-x64-run-id` — set when the linux x64 canary
-   #     (`pi-natives-linux-x64-modern-h<hash>`) is present on a prior main run,
+   #     (`pi-natives-linux-x64-modern-h<hash>`) is present on a prior jeopi run,
    #     so native-dependent TS test jobs and `native_linux_x64` can reuse it.
    #   * `cross-platform-run-id` — set when ALL cross-platform native artifacts
    #     also have non-expired artifacts on that same prior run, so
-   #     `native_cross_platform` can skip the cold rebuild on main pushes after
+   #     `native_cross_platform` can skip the cold rebuild on jeopi pushes after
    #     dep changes have already warmed sccache there.
    # Non-release native jobs are skipped when their canary hits; the canary
    # retention window (see build-native action) is the effective TTL.
@@ -151,7 +151,7 @@ jobs:
               linux_x64_run_id=""
               cross_platform_run_id=""
               for candidate in $(gh run list \
-                  --workflow=ci.yml --branch=main --status=success --event=push \
+                  --workflow=ci.yml --branch=jeopi --status=success --event=push \
                   --limit=20 --json databaseId --jq='.[].databaseId'); do
                 names=$(gh api "/repos/${{ github.repository }}/actions/runs/$candidate/artifacts?per_page=100" \
                     --jq '.artifacts[] | select(.expired == false) | .name')
@@ -232,15 +232,15 @@ jobs:
               variant: ${{ matrix.variant }}
               glibc: ${{ env.GLIBC_FLOOR }}
               rust_checks: ${{ matrix.rust_checks && 'true' || 'false' }}
-              save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+              save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/jeopi' }}
 
-   # Pre-warm the cross-platform native build cache on `main`, in addition to
-   # building the artifacts that ship in releases. Skipped on main when
+   # Pre-warm the cross-platform native build cache on `jeopi`, in addition to
+   # building the artifacts that ship in releases. Skipped on jeopi when
    # native_artifact_lookup already found a recent run with all artifacts intact.
    native_cross_platform_kata:
       name: "Native: ${{ matrix.platform }} ${{ matrix.arch }}"
       needs: [release_metadata, native_artifact_lookup]
-      if: ${{ needs.release_metadata.outputs.is-release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native_artifact_lookup.outputs.cross-platform-run-id == '') }}
+      if: ${{ needs.release_metadata.outputs.is-release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/jeopi' && needs.native_artifact_lookup.outputs.cross-platform-run-id == '') }}
       strategy:
          fail-fast: false
          matrix:
@@ -258,12 +258,12 @@ jobs:
               variant: ${{ matrix.variant }}
               target: ${{ matrix.target }}
               glibc: ${{ matrix.platform == 'linux' && env.GLIBC_FLOOR || '' }}
-              save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+              save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/jeopi' }}
 
    native_cross_platform_macos:
       name: "Native: ${{ matrix.platform }} ${{ matrix.arch }}"
       needs: [release_metadata, native_artifact_lookup]
-      if: ${{ needs.release_metadata.outputs.is-release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native_artifact_lookup.outputs.cross-platform-run-id == '') }}
+      if: ${{ needs.release_metadata.outputs.is-release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/jeopi' && needs.native_artifact_lookup.outputs.cross-platform-run-id == '') }}
       strategy:
          fail-fast: false
          matrix:
@@ -280,7 +280,7 @@ jobs:
               arch: ${{ matrix.arch }}
               variant: ${{ matrix.variant }}
               target: ${{ matrix.target }}
-              save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+              save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/jeopi' }}
    test_workspace:
       name: Test TS workspace fast
       runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}

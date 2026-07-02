@@ -5,7 +5,7 @@ import { loadExtensions } from "jeopi-cli/extensibility/extensions/loader";
 import { TempDir } from "jeopi-utils";
 
 const currentPiCodingAgentPath = Bun.resolveSync("jeopi-cli", import.meta.dir);
-const currentPiExtensionsPath = Bun.resolveSync("jeopi/extensibility/extensions", import.meta.dir);
+const currentPiExtensionsPath = Bun.resolveSync("jeopi-cli/extensibility/extensions", import.meta.dir);
 
 describe("issue #973: legacy Pi plugin imports", () => {
 	let projectDir: TempDir;

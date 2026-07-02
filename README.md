@@ -628,6 +628,18 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[brush-core](crates/vendor/brush-core)**         | Vendored fork of [brush-shell](https://github.com/reubeno/brush) for embedded bash execution        |
 | **[brush-builtins](crates/vendor/brush-builtins)** | Vendored bash builtins (cd, echo, test, printf, read, export, etc.)                                 |
 
+## Changelog
+
+<!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
+- **[16.2.13]** (2026-07-01) — Fixed `models.yml` remote compaction schema support for V2 streaming endpoint fields. (#4146)
+- **[16.2.12]** (2026-07-01) — Removed the canonical-alias grouping and resolution layer. The `equivalence` key (`overrides`/`exclude`) in `models.yml`/`models.json` is now inert, and canonical-related methods have been removed…
+- **[16.2.11]** (2026-07-01) — Fixed model-discovery requests (Ollama, Llama.cpp, LM Studio, OpenAI, LiteLLM, vLLM) failing to clear timeouts after completion, preventing potential memory and timer leaks.
+- **[16.2.10]** (2026-06-30) — Updated grep warnings to clarify that large files are partially searched rather than entirely skipped
+- **[16.2.9]** (2026-06-30) — Renamed the built-in quick_task subagent to sonic; update any task spawns or configurations referencing quick_task by name.
+
+See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
+<!-- CHANGELOG:END -->
+
 ## Contributing
 
 Issues and PRs are open at [akillness/jeopi](https://github.com/akillness/jeopi). Keep diffs small, name the acceptance criterion your change serves, and bring the verification evidence — the same contract the agent itself is held to. Upstream engine work belongs in [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi); jeopi tracks it.
