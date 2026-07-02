@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [16.2.21] - 2026-07-02
+
+### Fixed
+
+- Fixed long-window quota exhaustion (including Cloud Code Assist daily quota) being shown as a generic `Retry failed after 1 attempts` error. When the provider retry window exceeds `retry.maxDelayMs`, jeopi now explains that the quota is exhausted, reports the provider wait, and avoids the retry-failed wrapper because no sleep/retry was started.
+
+## [16.2.20] - 2026-07-02
+
+### Fixed
+
+- Made `jeopi update` failures diagnosable: a registry 404 on the update check now names the phantom package and prints the manual `bun install -g jeopi-cli` recovery (globals built before the `jeopi` → `jeopi-cli` rename died with a bare `Failed to fetch release info: Not Found` and could never self-update out of it), and other registry errors now include the package, registry, and HTTP status.
+
+## [16.2.19] - 2026-07-02
+
+### Fixed
+
+- Fixed the startup update notice never appearing: the version check queried the nonexistent `jeopi` npm package (renamed CLI ships as `jeopi-cli`), so the 404 silently suppressed the "New version X is available" banner. The check now shares the updater's `NPM_PACKAGE`/`NPM_REGISTRY` constants so the notice and `jeopi update` can never target different packages.
+- Fixed Windows npm installs never finding a prebuilt native addon: the npm registry's name heuristic rejects `jeopi-natives-win32-x64` as spam, so the win32 leaf now publishes under the `jeopi-natives-windows-x64` alias. The native loader probes the alias first (falling back to the tag-derived name), and `jeopi update` pins the aliased leaf in lock-step with `jeopi-natives`.
+
 ## [16.2.18] - 2026-07-02
 
 ### Fixed

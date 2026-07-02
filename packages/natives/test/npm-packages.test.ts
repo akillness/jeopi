@@ -2,7 +2,34 @@ import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildLeafManifest, generateNpmPackages } from "../scripts/gen-npm-packages";
+import { leafPackageNamesForTag } from "../native/loader-state.js";
+import { buildLeafManifest, generateNpmPackages, LEAF_TARGETS, leafPackageName } from "../scripts/gen-npm-packages";
+
+describe("native leaf package naming", () => {
+	it("publishes the win32 leaf under the windows-x64 alias and keeps the loader probing both names", () => {
+		// The registry rejects `jeopi-natives-win32-x64` with `403 … spam
+		// detection`; the alias is the published name, so the generator, the
+		// core optionalDependencies source (LEAF_TARGETS), and the runtime
+		// loader must agree on it.
+		const win32 = LEAF_TARGETS.find(target => target.tag === "win32-x64");
+		expect(win32 && leafPackageName(win32)).toBe("jeopi-natives-windows-x64");
+		expect(leafPackageNamesForTag("win32-x64")).toEqual(["jeopi-natives-windows-x64", "jeopi-natives-win32-x64"]);
+		// Every other tag keeps the derived name with no alias probing.
+		for (const target of LEAF_TARGETS.filter(target => target.tag !== "win32-x64")) {
+			expect(leafPackageName(target)).toBe(`jeopi-natives-${target.tag}`);
+			expect(leafPackageNamesForTag(target.tag)).toEqual([`jeopi-natives-${target.tag}`]);
+		}
+		const manifest = buildLeafManifest({
+			tag: "win32-x64",
+			os: "win32",
+			cpu: "x64",
+			npmName: "jeopi-natives-windows-x64",
+			files: ["pi_natives.win32-x64-baseline.node"],
+			version: "15.5.15",
+		});
+		expect(manifest.name).toBe("jeopi-natives-windows-x64");
+	});
+});
 
 describe("generated native npm leaf packages", () => {
 	it("builds an x64 leaf manifest that exposes all addon files without package exports", () => {

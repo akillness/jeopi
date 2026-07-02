@@ -35,7 +35,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $ } from "bun";
-import { LEAF_TARGETS } from "../packages/natives/scripts/gen-npm-packages.ts";
+import { LEAF_TARGETS, leafPackageName } from "../packages/natives/scripts/gen-npm-packages.ts";
 import { packages } from "./ci-release-publish.ts";
 
 const repoRoot = path.join(import.meta.dir, "..");
@@ -168,7 +168,7 @@ async function collectTargets(): Promise<{ names: string[]; repoFromManifest: st
 		// own published package and needs its own trusted-publisher link.
 		if (pkg.kind === "native") {
 			for (const target of LEAF_TARGETS) {
-				const leaf = `jeopi-natives-${target.tag}`;
+				const leaf = leafPackageName(target);
 				if (!seen.has(leaf)) {
 					seen.add(leaf);
 					names.push(leaf);
@@ -245,13 +245,9 @@ async function waitForPackageExists(name: string): Promise<boolean> {
 	return false;
 }
 
-function nativeLeafName(tag: string): string {
-	return `jeopi-natives-${tag}`;
-}
-
 function nativeLeafTargetForPackage(name: string): NativeLeafTarget | null {
 	for (const target of LEAF_TARGETS) {
-		if (nativeLeafName(target.tag) === name) return target;
+		if (leafPackageName(target) === name) return target;
 	}
 	return null;
 }

@@ -8,6 +8,8 @@ import {
 	buildHomebrewUpdateArgs,
 	buildMiseForceInstallArgs,
 	buildMiseUpgradeArgs,
+	fetchNewerPublishedVersion,
+	getLatestRelease,
 	pruneBunInstallCache,
 	replaceBinaryForUpdate,
 	resolveBunGlobalNodeModulesDirFromLocations,
@@ -117,16 +119,22 @@ describe("update-cli bun install command", () => {
 
 	it("pins the native addon core and the platform-specific leaf to the same version so the loader sentinel cannot drift on supported tags", () => {
 		// Regression: bun install -g <pkg>@<v> would update only the top-level
-		// package, leaving jeopi-natives and jeopi-natives-<tag>
+		// package, leaving jeopi-natives and the platform leaf
 		// at their previous version. The next launch then loaded a stale .node
 		// file and aborted at validateLoadedBindings with `The .node file on
 		// disk is from a different release than this loader`. See
 		// https://github.com/can1357/oh-my-pi/issues/1824.
-		for (const tag of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"]) {
+		for (const tag of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]) {
 			const args = buildBunInstallArgs("15.9.0", tag);
 			expect(args).toContain("jeopi-natives@15.9.0");
 			expect(args).toContain(`jeopi-natives-${tag}@15.9.0`);
 		}
+		// win32 publishes under the `windows-x64` alias — the registry's name
+		// heuristic rejects `jeopi-natives-win32-x64` as spam.
+		const win32Args = buildBunInstallArgs("15.9.0", "win32-x64");
+		expect(win32Args).toContain("jeopi-natives@15.9.0");
+		expect(win32Args).toContain("jeopi-natives-windows-x64@15.9.0");
+		expect(win32Args).not.toContain("jeopi-natives-win32-x64@15.9.0");
 	});
 
 	it("omits the leaf on unsupported platform tags so an EBADPLATFORM swap does not mask the underlying `no matching version` error", () => {
@@ -138,6 +146,69 @@ describe("update-cli bun install command", () => {
 		const args = buildBunInstallArgs("15.9.0", "linux-arm");
 		expect(args).toContain("jeopi-natives@15.9.0");
 		expect(args.some(arg => arg.startsWith("jeopi-natives-"))).toBe(false);
+	});
+
+	it("startup update notice queries the published CLI package on the pinned registry and surfaces only newer versions", async () => {
+		// Regression: the startup notice fetched https://registry.npmjs.org/jeopi/latest —
+		// a package that does not exist — so the 404 silently suppressed the
+		// "New version X is available" banner forever. The check MUST target the
+		// same package `jeopi update` installs.
+		const requested: string[] = [];
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(((input: string | URL | Request) => {
+			requested.push(String(input instanceof Request ? input.url : input));
+			return Promise.resolve(Response.json({ version: "99.0.0" }));
+		}) as typeof fetch);
+		try {
+			await expect(fetchNewerPublishedVersion("1.0.0")).resolves.toBe("99.0.0");
+			await expect(fetchNewerPublishedVersion("99.0.0")).resolves.toBeUndefined();
+			await expect(fetchNewerPublishedVersion("100.0.0")).resolves.toBeUndefined();
+			expect(requested[0]).toBe("https://registry.npmjs.org/jeopi-cli/latest");
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("startup update notice swallows registry failures instead of breaking startup", async () => {
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((() =>
+			Promise.resolve(new Response("not found", { status: 404 }))) as unknown as typeof fetch);
+		try {
+			await expect(fetchNewerPublishedVersion("1.0.0")).resolves.toBeUndefined();
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("names the phantom package and the manual reinstall escape hatch when the registry 404s the update check", async () => {
+		// Regression: globals built before the `jeopi` → `jeopi-cli` rename query
+		// the nonexistent `jeopi` package and died with a bare
+		// `Failed to fetch release info: Not Found` — zero hint which package the
+		// check targeted or how to recover. Self-update can never fix itself once
+		// the tracked package name is wrong, so the 404 path must name the
+		// package and the manual `bun install -g` recovery.
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((() =>
+			Promise.resolve(new Response("not found", { status: 404 }))) as unknown as typeof fetch);
+		try {
+			await expect(getLatestRelease()).rejects.toThrow(
+				'Package "jeopi-cli" was not found on https://registry.npmjs.org/',
+			);
+			await expect(getLatestRelease()).rejects.toThrow("bun install -g jeopi-cli");
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("reports the failing package and HTTP status on non-404 registry errors", async () => {
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((() =>
+			Promise.resolve(
+				new Response("boom", { status: 503, statusText: "Service Unavailable" }),
+			)) as unknown as typeof fetch);
+		try {
+			await expect(getLatestRelease()).rejects.toThrow(
+				"Failed to fetch release info for jeopi-cli from https://registry.npmjs.org/: HTTP 503",
+			);
+		} finally {
+			fetchSpy.mockRestore();
+		}
 	});
 
 	it("derives global node_modules from supported bun global locations", () => {

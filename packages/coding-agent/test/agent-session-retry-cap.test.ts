@@ -145,6 +145,72 @@ describe("AgentSession retry delay cap", () => {
 		expect(session.isRetrying).toBe(false);
 	});
 
+	it("reports Cloud Code Assist quota exhaustion without the generic retry-failed wrapper", async () => {
+		const model = getBundledModel("google-antigravity", "gemini-3-flash");
+		if (!model) {
+			throw new Error("Expected bundled Antigravity test model to exist");
+		}
+
+		authStorage.setRuntimeApiKey(
+			"google-antigravity",
+			JSON.stringify({ token: "token", projectId: "proj-123", email: "user@example.com" }),
+		);
+
+		const quotaError =
+			"Cloud Code Assist API error (429): Cloud Code Assist quota exhausted for gemini-3-flash-agent on user@example.com. Your quota will reset after 28h48m25.991228095s (2026-07-03T18:44:59Z). Add another Google account with /login, switch models/providers, or wait for the reset.";
+		const mock = createMockModel({ handler: () => ({ throw: quotaError }) });
+		const agent = new Agent({
+			getApiKey: requestedModel => `${requestedModel.provider}-test-key`,
+			initialState: {
+				model,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
+			streamFn: (requestedModel, context, options) => mock.stream(requestedModel, context, options),
+		});
+
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"retry.baseDelayMs": 5,
+			"retry.maxDelayMs": 300_000,
+			"retry.maxRetries": 1,
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry,
+		});
+
+		const waitSpy = vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
+		const retryStartEvents: AutoRetryStartEvent[] = [];
+		const retryEndEvents: AutoRetryEndEvent[] = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_start") retryStartEvents.push(event);
+			if (event.type === "auto_retry_end") retryEndEvents.push(event);
+		});
+
+		await session.prompt("Trigger Cloud Code Assist quota exhaustion");
+		await session.waitForIdle();
+
+		expect(retryStartEvents).toHaveLength(0);
+		expect(retryEndEvents).toHaveLength(1);
+		expect(retryEndEvents[0].finalError).toStartWith("Quota exhausted.");
+		expect(retryEndEvents[0].finalError).toContain("so jeopi did not sleep");
+		expect(retryEndEvents[0].finalError).toContain("Cloud Code Assist quota exhausted for gemini-3-flash-agent");
+		expect(retryEndEvents[0].finalError).not.toContain("Retry failed after");
+		for (const call of waitSpy.mock.calls) {
+			expect(call[0]).toBeLessThanOrEqual(300_000);
+		}
+		const last = lastAssistant(session);
+		expect(last.stopReason).toBe("error");
+		expect(last.errorMessage).toContain("quota exhausted");
+		expect(session.isRetrying).toBe(false);
+	});
+
 	it("auto-retries OpenAI Responses stream_read_error instead of stopping the conversation", async () => {
 		const model = getBundledModel("openai", "gpt-5");
 		if (!model) {

@@ -1227,7 +1227,12 @@ export class EventController {
 			this.ctx.statusContainer.clear();
 		}
 		if (!event.success) {
-			this.ctx.showError(`Retry failed after ${event.attempt} attempts: ${event.finalError || "Unknown error"}`);
+			const finalError = event.finalError || "Unknown error";
+			this.ctx.showError(
+				finalError.startsWith("Quota exhausted.")
+					? finalError
+					: `Retry failed after ${event.attempt} attempts: ${finalError}`,
+			);
 		}
 		this.#ensureWorkingLoaderWhileStreaming();
 		this.ctx.ui.requestRender();
