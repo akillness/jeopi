@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/hero.gif" alt="jeopi — pixel-art π wizard mascot and wordmark, blinking terminal cursor" width="100%">
-</p>
-
 <h1 align="center">jeopi</h1>
 
 <p align="center">
