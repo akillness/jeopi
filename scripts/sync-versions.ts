@@ -11,6 +11,7 @@ import { join } from "node:path";
 interface PackageJson {
 	name: string;
 	version: string;
+	private?: boolean;
 	dependencies?: Record<string, string>;
 	devDependencies?: Record<string, string>;
 }
@@ -33,6 +34,7 @@ for (const dir of packageDirs) {
 	const pkgPath = join(packagesDir, dir, "package.json");
 	try {
 		const pkg = (await Bun.file(pkgPath).json()) as PackageJson;
+		if (pkg.private) continue;
 		packages[dir] = { path: pkgPath, data: pkg };
 		versionMap[pkg.name] = pkg.version;
 	} catch (e) {

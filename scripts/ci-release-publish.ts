@@ -103,6 +103,7 @@ export const packages: PublishPackage[] = [
 	},
 	{ dir: "packages/agent", kind: "typescript" },
 	{ dir: "packages/coding-agent", kind: "typescript", publishBin: { jeopi: "dist/cli.js" } },
+	{ dir: "packages/swarm-extension", kind: "typescript" },
 ];
 
 function rewriteSrcPath(value: string): string {
