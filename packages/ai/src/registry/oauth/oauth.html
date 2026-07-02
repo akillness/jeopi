@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>jeopi · authentication</title>
+		<style>
+			:root {
+				/* dark, slightly purple-tinted neutrals — never #000 */
+				--ink-0: oklch(0.135 0.018 295);
+				--ink-1: oklch(0.172 0.022 295);
+				--ink-2: oklch(0.21 0.024 295);
+				--ink-4: oklch(0.36 0.024 295);
+				--ink-5: oklch(0.5 0.022 290);
+				--ink-6: oklch(0.66 0.018 290);
+				--ink-7: oklch(0.82 0.014 285);
+				--ink-9: oklch(0.97 0.008 90);
+
+				/* brand: magenta lead, cyan reply */
+				--magenta: oklch(0.7 0.24 340);
+				--iris: oklch(0.62 0.21 295);
+				--cyan: oklch(0.81 0.14 200);
+
+				/* signal */
+				--success: oklch(0.78 0.16 150);
+				--error: oklch(0.66 0.22 25);
+
+				--bg: var(--ink-0);
+				--fg: var(--ink-9);
+				--fg-dim: var(--ink-7);
+				--fg-faint: var(--ink-5);
+				--rule: oklch(1 0 0 / 0.07);
+				--rule-strong: oklch(1 0 0 / 0.14);
+				--accent: var(--magenta);
+				--accent-2: var(--cyan);
+
+				color-scheme: dark;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				font-family: "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+				background:
+					radial-gradient(ellipse 80vw 60vh at 18% -10%, oklch(0.7 0.24 340 / 0.13), transparent 60%),
+					radial-gradient(ellipse 70vw 70vh at 110% 30%, oklch(0.81 0.14 200 / 0.09), transparent 60%),
+					var(--bg);
+				color: var(--fg);
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				min-height: 100vh;
+				margin: 0;
+				padding: 1.5rem;
+				-webkit-font-smoothing: antialiased;
+				text-rendering: optimizeLegibility;
+				overflow-x: clip;
+			}
+
+			/* ascii grid backdrop */
+			.grid-bg {
+				position: fixed;
+				inset: 0;
+				background-image:
+					linear-gradient(to right, oklch(1 0 0 / 0.025) 1px, transparent 1px),
+					linear-gradient(to bottom, oklch(1 0 0 / 0.025) 1px, transparent 1px);
+				background-size: 56px 56px;
+				background-position: -1px -1px;
+				mask-image: radial-gradient(ellipse at 50% 30%, #000 30%, transparent 75%);
+				pointer-events: none;
+				z-index: 0;
+			}
+
+			.container {
+				position: relative;
+				z-index: 1;
+				background: oklch(0.172 0.022 295 / 0.72);
+				backdrop-filter: blur(16px);
+				-webkit-backdrop-filter: blur(16px);
+				border: 1px solid var(--rule);
+				border-radius: 16px;
+				padding: 2.5rem 2.5rem 2rem;
+				width: 100%;
+				max-width: 420px;
+				text-align: center;
+				box-shadow:
+					0 24px 48px -12px oklch(0 0 0 / 0.55),
+					0 0 0 1px oklch(1 0 0 / 0.03) inset;
+				opacity: 0;
+				transform: translateY(10px);
+				animation: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+			}
+			@keyframes rise {
+				to {
+					opacity: 1;
+					transform: none;
+				}
+			}
+
+			/* brand header */
+			.brand {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 0.5rem;
+				margin-bottom: 2rem;
+			}
+			.brand .wordmark-img {
+				height: 40px;
+				width: auto;
+				border-radius: 8px;
+				filter: drop-shadow(0 0 14px oklch(0.62 0.21 295 / 0.35));
+			}
+
+			/* status mark */
+			.mark-wrap {
+				position: relative;
+				width: 72px;
+				height: 72px;
+				margin: 0 auto 1.5rem;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+			.mark-wrap::before {
+				content: "";
+				position: absolute;
+				inset: 0;
+				border-radius: 50%;
+				background: oklch(1 0 0 / 0.05);
+				z-index: 0;
+			}
+			.mark {
+				width: 40px;
+				height: 40px;
+				z-index: 2;
+			}
+			.timer-svg {
+				position: absolute;
+				top: -2px;
+				left: -2px;
+				width: 76px;
+				height: 76px;
+				transform: rotate(-90deg);
+				z-index: 1;
+				pointer-events: none;
+			}
+			.timer-circle {
+				fill: none;
+				stroke-width: 2;
+				stroke-linecap: round;
+				stroke-dasharray: 226;
+				stroke-dashoffset: 0;
+			}
+			.countdown .timer-circle {
+				animation: countdown 3s linear forwards;
+			}
+			@keyframes countdown {
+				to {
+					stroke-dashoffset: 226;
+				}
+			}
+
+			h1 {
+				font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+				font-size: 1.6rem;
+				font-weight: 500;
+				letter-spacing: -0.022em;
+				line-height: 1.15;
+				margin: 0 0 0.75rem;
+				text-wrap: balance;
+			}
+			p {
+				color: var(--fg-dim);
+				line-height: 1.6;
+				margin: 0 0 1.75rem;
+				font-size: 0.95rem;
+			}
+
+			.btn {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.5rem;
+				background: var(--fg);
+				color: var(--bg);
+				font-family: inherit;
+				font-weight: 500;
+				padding: 0.65rem 1.4rem;
+				border-radius: 8px;
+				text-decoration: none;
+				font-size: 0.9rem;
+				transition: opacity 0.2s, transform 0.2s;
+				cursor: pointer;
+				border: none;
+			}
+			.btn:hover {
+				opacity: 0.88;
+				transform: translateY(-1px);
+			}
+			.btn:active {
+				transform: translateY(0);
+			}
+
+			/* State: success */
+			.success .mark-wrap::before {
+				background: oklch(0.78 0.16 150 / 0.12);
+			}
+			.success .mark {
+				color: var(--success);
+			}
+			.success .timer-circle {
+				stroke: var(--success);
+			}
+			.success .icon-error {
+				display: none;
+			}
+
+			/* State: error */
+			.error .mark-wrap::before {
+				background: oklch(0.66 0.22 25 / 0.12);
+			}
+			.error .mark {
+				color: var(--error);
+			}
+			.error .timer-circle {
+				stroke: var(--error);
+			}
+			.error .icon-success,
+			.error .timer-svg {
+				display: none;
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				.container,
+				.countdown .timer-circle {
+					animation: none;
+				}
+				.container {
+					opacity: 1;
+					transform: none;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<span aria-hidden="true" class="grid-bg"></span>
+		<div id="app" class="container">
+			<div class="brand">
+				<!--
+					"jeopi" wordmark — heavy forged monospace lettering on the neon
+					blue→violet→pink synthwave gradient (jeo-code mascot palette),
+					generated via god-tibo-imagen (gti) from assets/oauth/jeopi-wordmark.png
+					and inlined as a data URI so this page renders standalone from a
+					compiled binary with no static-asset pipeline. Regenerate with gti,
+					re-crop + `cwebp -q 82`, and re-inline if the palette changes.
+				-->
+				<img class="wordmark-img" alt="jeopi" src="data:image/webp;base64,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" />
+			</div>
+
+			<div class="mark-wrap">
+				<svg class="timer-svg" viewBox="0 0 76 76">
+					<circle class="timer-circle" cx="38" cy="38" r="36"></circle>
+				</svg>
+				<svg class="mark icon-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+				</svg>
+				<svg class="mark icon-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</div>
+
+			<h1 id="title">Authentication</h1>
+			<p id="message"></p>
+			<button onclick="window.close()" class="btn">Close Window</button>
+		</div>
+
+		<script id="server-state" type="application/json">
+			__OAUTH_STATE__
+		</script>
+
+		<script>
+			let serverState;
+			try {
+				serverState = JSON.parse(document.getElementById("server-state").textContent);
+			} catch {
+				const params = new URLSearchParams(window.location.search);
+				serverState = {
+					ok: params.get("ok") === "1",
+					error: params.get("error") || "Authentication failed",
+				};
+			}
+
+			const app = document.getElementById("app");
+			const title = document.getElementById("title");
+			const message = document.getElementById("message");
+
+			if (serverState.ok) {
+				app.classList.add("success", "countdown");
+				title.textContent = "Authentication Successful";
+				message.innerHTML = "You have successfully logged in.<br>This window will close automatically.";
+				setTimeout(() => window.close(), 3000);
+			} else {
+				app.classList.add("error");
+				title.textContent = "Authentication Failed";
+				message.textContent = serverState.error || "An error occurred";
+			}
+		</script>
+	</body>
+</html>
