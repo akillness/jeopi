@@ -13,6 +13,7 @@
 
 - Rebranded the CLI from `omp` to `jeopi`: the `bin` entry, dev launcher (`scripts/jeopi`), compiled binary output (`dist/jeopi`), release asset names (`jeopi-<os>-<arch>`), and all user-facing help/error/tip text now use the `jeopi` name. The config directory stays `~/.omp`, so existing auth, sessions, and settings carry over unchanged.
 - Infused jeo-code's working philosophy into the core system prompt and the `task` worker prompt: spec-first crystallization of vague asks, a running task-state picture, failure-lesson feedback (change the next attempt, split stuck subgoals), and an artifact gate (an acceptance criterion with no supporting command+result is reported unresolved, never implied met).
+- Replaced the welcome-screen and setup-wizard π block mark with a "jeopi" block-glyph wordmark (typography only on ASCII surfaces), added the persona tagline "Encode intention. Decode software." to the welcome box, retuned the logo gradient to the brand's electric-blue→violet→hot-pink sweep, and updated the setup splash/outro to render the new mark (compact splash text is now `j e o p i`).
 
 - Significantly optimized session loading and rendering performance, including a 10x speedup for streaming reveals on large messages, 35% faster session resumes for large files using native streaming JSONL parsing, and reduced overhead for edit-patch fallbacks.
 - Improved TUI responsiveness and reduced CPU usage during long-running tool sessions by throttling status-line redraws and optimizing subagent persistence checks.

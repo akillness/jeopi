@@ -9,6 +9,7 @@
 ### Changed
 
 - Renamed `APP_NAME` from `omp` to `jeopi`. `CONFIG_DIR_NAME` remains `.omp`, so config-root paths are unchanged; XDG app directories and log-file prefixes now use `jeopi`.
+- The rotating log transport and crash-log path now derive their filename from `APP_NAME` (`jeopi.<DATE>.log`, `jeopi-crash.log`) instead of hardcoding `omp.*`, matching `getLogPath()`/`getDebugLogPath()` so path helpers and the writer agree.
 
 ## [16.2.9] - 2026-06-30
 

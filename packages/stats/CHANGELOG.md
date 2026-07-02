@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Rebranded the dashboard for jeopi: page title is now `jeopi · stats`, the nav-rail/mobile-drawer logo reads "JEOPI" with the persona tagline "Encode intention. Decode software." and a synthwave gradient, and the CLI summary/help headers carry the jeopi name.
+
 ## [16.2.7] - 2026-06-30
 
 ### Fixed
