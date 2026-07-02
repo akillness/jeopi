@@ -157,7 +157,7 @@ describe("AgentSession retry delay cap", () => {
 		);
 
 		const quotaError =
-			"Cloud Code Assist API error (429): Cloud Code Assist quota exhausted for gemini-3-flash-agent on user@example.com. Individual quota reached. Your quota will reset after 28h48m25.991228095s (2026-07-03T18:44:59Z). Add another Google account with /login, switch models/providers, or wait for the reset.";
+			"Cloud Code Assist API error (429): Cloud Code Assist quota exhausted for gemini-3-flash-agent on user@example.com. Your quota will reset after 28h48m25.991228095s (2026-07-03T18:44:59Z). Add another Google account with /login, switch models/providers, or wait for the reset.";
 		const mock = createMockModel({ handler: () => ({ throw: quotaError }) });
 		const agent = new Agent({
 			getApiKey: requestedModel => `${requestedModel.provider}-test-key`,
@@ -207,7 +207,7 @@ describe("AgentSession retry delay cap", () => {
 		}
 		const last = lastAssistant(session);
 		expect(last.stopReason).toBe("error");
-		expect(last.errorMessage).toContain("Individual quota reached");
+		expect(last.errorMessage).toContain("quota exhausted");
 		expect(session.isRetrying).toBe(false);
 	});
 
