@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "jeopi-stats",
-	"version": "16.2.16",
+	"version": "16.2.17",
 	"description": "Local observability dashboard for pi AI usage statistics",
 	"homepage": "https://github.com/akillness/jeopi",
 	"author": "Can Boluk",

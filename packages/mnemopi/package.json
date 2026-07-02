@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "jeopi-mnemopi",
-	"version": "16.2.16",
+	"version": "16.2.17",
 	"description": "Local SQLite memory engine for Oh My Pi agents",
 	"homepage": "https://github.com/akillness/jeopi",
 	"author": "Can Boluk",
