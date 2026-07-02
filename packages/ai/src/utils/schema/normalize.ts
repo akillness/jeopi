@@ -13,6 +13,7 @@ import { upgradeJsonSchemaTo202012 } from "./draft";
 import { areJsonValuesEqual, mergeCompatibleEnumSchemas, mergePropertySchemas } from "./equality";
 import {
 	ALL_CCA_TYPE_SPECIFIC_KEYS,
+	CCA_PROTO_UNKNOWN_SCHEMA_FIELDS,
 	CLOUD_CODE_ASSIST_SHARED_SCHEMA_KEYS,
 	CLOUD_CODE_ASSIST_TYPE_SPECIFIC_KEYS,
 	COMBINATOR_KEYS,
@@ -51,6 +52,14 @@ export interface NormalizeSchemaOptions {
 	foldOneOfIntoAnyOf: boolean;
 	dropNonScalarEnum: boolean;
 	rejectResidualIncompatibilities?: ReadonlyArray<ResidualSchemaIncompatibility>;
+	/**
+	 * Coerce 2020-12 boolean subschemas (`items: true`, `properties: {x: false}`)
+	 * to `{}` in schema positions. Boolean schemas are valid JSON Schema (so AJV
+	 * validation passes them) but the Cloud Code Assist `Schema` proto requires
+	 * a message, and a leaked boolean fails the whole request with
+	 * `Invalid value at '...parameters.properties[N].value.items'` (400).
+	 */
+	coerceBooleanSubschemas?: boolean;
 	validateAndFallback?: { fallback: unknown };
 }
 
@@ -82,6 +91,23 @@ const CLOUD_CODE_ASSIST_CLAUDE_FALLBACK_SCHEMA = {
 
 function isGoogleUnsupportedSchemaField(key: string): boolean {
 	return Object.hasOwn(UNSUPPORTED_SCHEMA_FIELDS, key);
+}
+
+function isCcaUnsupportedSchemaField(key: string): boolean {
+	return Object.hasOwn(UNSUPPORTED_SCHEMA_FIELDS, key) || Object.hasOwn(CCA_PROTO_UNKNOWN_SCHEMA_FIELDS, key);
+}
+
+/**
+ * Replace a boolean subschema with `{}` when it sits in a schema position:
+ * a value inside a `properties` map, or the value of `items`. Only these
+ * positions are proto-mapped schema fields on the CCA wire; booleans in
+ * value positions (`enum` entries, `default`) are never touched because they
+ * arrive as array/scalar entries, not via this per-key assignment.
+ */
+function coerceBooleanSubschema(value: unknown, key: string, options: NormalizeSchemaWalkOptions): unknown {
+	if (options.coerceBooleanSubschemas !== true || typeof value !== "boolean") return value;
+	if (options.insideProperties || key === "items") return {};
+	return value;
 }
 
 function isMcpUnsupportedSchemaField(key: string): boolean {
@@ -303,10 +329,14 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaWa
 				continue;
 			}
 			if (options.stripNullableKeyword && key === "nullable") continue;
-			result[key] = normalizeSchemaNode(entry, {
-				...options,
-				insideProperties: !options.insideProperties && key === "properties",
-			});
+			result[key] = coerceBooleanSubschema(
+				normalizeSchemaNode(entry, {
+					...options,
+					insideProperties: !options.insideProperties && key === "properties",
+				}),
+				key,
+				options,
+			);
 		}
 		applyDescriptionSpill(result, spill, options);
 		return applyNodePostProcessing(result, options);
@@ -325,10 +355,14 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaWa
 			constValue = entry;
 			continue;
 		}
-		result[key] = normalizeSchemaNode(entry, {
-			...options,
-			insideProperties: !options.insideProperties && key === "properties",
-		});
+		result[key] = coerceBooleanSubschema(
+			normalizeSchemaNode(entry, {
+				...options,
+				insideProperties: !options.insideProperties && key === "properties",
+			}),
+			key,
+			options,
+		);
 	}
 
 	if (options.normalizeTypeArrayToNullable && Array.isArray(result.type)) {
@@ -924,7 +958,7 @@ export function normalizeSchemaForGoogle(value: unknown): unknown {
 
 export function normalizeSchemaForCCA(value: unknown): unknown {
 	return normalizeSchema(value, {
-		unsupportedFields: isGoogleUnsupportedSchemaField,
+		unsupportedFields: isCcaUnsupportedSchemaField,
 		normalizeFieldNames: true,
 		collapseNullFields: false,
 		normalizeTypeArrayToNullable: true,
@@ -940,6 +974,7 @@ export function normalizeSchemaForCCA(value: unknown): unknown {
 		inferTypeForBareEnum: true,
 		dropNonScalarEnum: false,
 		foldOneOfIntoAnyOf: false,
+		coerceBooleanSubschemas: true,
 		rejectResidualIncompatibilities: ["type-array", "type-null", "nullable", "combiners"],
 		validateAndFallback: { fallback: CLOUD_CODE_ASSIST_CLAUDE_FALLBACK_SCHEMA },
 	});

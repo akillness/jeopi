@@ -205,3 +205,34 @@ export const CCA_UNSUPPORTED_SCHEMA_FIELDS: Record<string, true> = {
 	$dynamicAnchor: true,
 	propertyNames: true,
 };
+
+/**
+ * JSON Schema keywords with no counterpart field in the Cloud Code Assist
+ * `Schema` proto (the legacy `parameters` wire shape used for Claude models
+ * and every Antigravity model). Any of these reaching the wire produces a
+ * 400 INVALID_ARGUMENT ("Unknown name ..."). Stripped only on the CCA
+ * `parameters` path — the Google `parametersJsonSchema` path accepts full
+ * JSON Schema and keeps them.
+ */
+export const CCA_PROTO_UNKNOWN_SCHEMA_FIELDS: Record<string, true> = {
+	$id: true,
+	$anchor: true,
+	$comment: true,
+	uniqueItems: true,
+	not: true,
+	if: true,
+	// biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword
+	then: true,
+	else: true,
+	contains: true,
+	minContains: true,
+	maxContains: true,
+	dependentRequired: true,
+	dependentSchemas: true,
+	contentEncoding: true,
+	contentMediaType: true,
+	contentSchema: true,
+	deprecated: true,
+	readOnly: true,
+	writeOnly: true,
+};

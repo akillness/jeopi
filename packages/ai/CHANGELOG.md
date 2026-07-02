@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Fixed `Cloud Code Assist API error (400): Invalid value at 'request.tools[N].function_declarations[i].parameters.properties[j].value.items'` on the Gemini CLI / Antigravity `parameters` wire path. `normalizeSchemaForCCA` now coerces 2020-12 boolean subschemas (`items: true`, `properties: {x: false}` — valid JSON Schema, so AJV validation passed them through) to `{}` in schema positions while preserving booleans in `enum`/`default` values, and strips JSON Schema keywords the CCA `Schema` proto has no field for (`$id`, `$anchor`, `$comment`, `uniqueItems`, `not`, `if`/`then`/`else`, `contains`/`minContains`/`maxContains`, `dependentRequired`/`dependentSchemas`, `contentEncoding`/`contentMediaType`/`contentSchema`, `deprecated`, `readOnly`, `writeOnly`), spilling human-meaningful ones into the description. These shapes commonly arrive from MCP-server tool schemas; one bad tool no longer 400s the whole request.
 - Fixed an issue where broker usage fetch failures were not cached, causing redundant network requests during sequential ranking passes when the broker is offline.
 - Fixed Xiaomi MiMo API key validation to use the supported `mimo-v2.5` model.
 - Fixed certificate verification errors for custom gateways behind private CA bundles by ensuring `NODE_EXTRA_CA_CERTS` is respected across all provider fetches (including OpenAI-compatible, Codex, Ollama, Azure, and Google).
