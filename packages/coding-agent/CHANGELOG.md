@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Clarified the root README changelog digest as the latest five released entries while keeping the full package history linked from `packages/coding-agent/CHANGELOG.md`.
+
 ## [16.2.16] - 2026-07-02
 
 ### Changed

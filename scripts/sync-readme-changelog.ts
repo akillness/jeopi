@@ -72,13 +72,14 @@ export function parseChangelogDigestEntries(content: string): ChangelogDigestEnt
 /** Render the compact digest block (markers included) for the latest `count` entries. */
 export function renderChangelogDigestBlock(entries: ChangelogDigestEntry[], count: number = CHANGELOG_COUNT): string {
 	const top = entries.slice(0, count);
+	const intro = `Latest ${count} released entries:`;
 	const items = top.map(e => {
 		const when = e.date ? ` (${e.date})` : "";
 		const sum = e.summary ? ` — ${e.summary}` : "";
 		return `- **[${e.version}]**${when}${sum}`;
 	});
 	const tail = `\nSee [${SOURCE_CHANGELOG}](${SOURCE_CHANGELOG}) for the full history.`;
-	return [CHANGELOG_START, ...items, tail, CHANGELOG_END].join("\n");
+	return [CHANGELOG_START, intro, ...items, tail, CHANGELOG_END].join("\n");
 }
 
 /** Replace the marked region in the README body. Throws if the markers are missing. */
