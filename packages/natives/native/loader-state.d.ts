@@ -86,4 +86,10 @@ export interface SelectCpuVariantResult {
 
 export function selectCpuVariant(input: SelectCpuVariantInput): SelectCpuVariantResult;
 
+/**
+ * npm package names that may carry the platform's addon, preferred first.
+ * `win32-x64` maps to the published `jeopi-natives-windows-x64` alias before
+ * the tag-derived `jeopi-natives-<tag>` fallback.
+ */
+export function leafPackageNamesForTag(platformTag: string): string[];
 export function loadNative(): Record<string, unknown>;
