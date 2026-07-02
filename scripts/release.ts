@@ -10,6 +10,12 @@
  */
 import { $, Glob } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
+import {
+	injectChangelogDigestBlock,
+	parseChangelogDigestEntries,
+	renderChangelogDigestBlock,
+	SOURCE_CHANGELOG,
+} from "./sync-readme-changelog";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const packageJsonGlob = new Glob("packages/*/package.json");
@@ -156,6 +162,22 @@ async function updateChangelogsForRelease(version: string): Promise<void> {
 		await Bun.write(changelog, content);
 		console.log(`  Updated ${changelog}`);
 	}
+}
+
+async function updateReadmeChangelogDigest(): Promise<void> {
+	const changelog = await Bun.file(SOURCE_CHANGELOG).text();
+	const readmePath = "README.md";
+	const readme = await Bun.file(readmePath).text();
+	const block = renderChangelogDigestBlock(parseChangelogDigestEntries(changelog));
+	const next = injectChangelogDigestBlock(readme, block);
+
+	if (next === readme) {
+		console.log("  README changelog digest already up to date");
+		return;
+	}
+
+	await Bun.write(readmePath, next);
+	console.log("  Synced README changelog digest");
 }
 
 // =============================================================================
@@ -347,6 +369,8 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		);
 	}
 	await updateChangelogsForRelease(version);
+	console.log("Updating README changelog digest...");
+	await updateReadmeChangelogDigest();
 	console.log();
 
 	// 6. Run checks

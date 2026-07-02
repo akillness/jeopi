@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the release workflow to refresh the root README changelog digest from `packages/coding-agent/CHANGELOG.md` during version bumps, so each release tag carries the same latest-five digest published on the branch.
+
 ## [16.2.14] - 2026-07-02
 
 ### Added
