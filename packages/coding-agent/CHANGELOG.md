@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Made `jeopi update` failures diagnosable: a registry 404 on the update check now names the phantom package and prints the manual `bun install -g jeopi-cli` recovery (globals built before the `jeopi` → `jeopi-cli` rename died with a bare `Failed to fetch release info: Not Found` and could never self-update out of it), and other registry errors now include the package, registry, and HTTP status.
+
 ## [16.2.19] - 2026-07-02
 
 ### Fixed

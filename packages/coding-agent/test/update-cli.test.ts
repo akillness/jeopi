@@ -9,6 +9,7 @@ import {
 	buildMiseForceInstallArgs,
 	buildMiseUpgradeArgs,
 	fetchNewerPublishedVersion,
+	getLatestRelease,
 	pruneBunInstallCache,
 	replaceBinaryForUpdate,
 	resolveBunGlobalNodeModulesDirFromLocations,
@@ -172,6 +173,39 @@ describe("update-cli bun install command", () => {
 			Promise.resolve(new Response("not found", { status: 404 }))) as unknown as typeof fetch);
 		try {
 			await expect(fetchNewerPublishedVersion("1.0.0")).resolves.toBeUndefined();
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("names the phantom package and the manual reinstall escape hatch when the registry 404s the update check", async () => {
+		// Regression: globals built before the `jeopi` → `jeopi-cli` rename query
+		// the nonexistent `jeopi` package and died with a bare
+		// `Failed to fetch release info: Not Found` — zero hint which package the
+		// check targeted or how to recover. Self-update can never fix itself once
+		// the tracked package name is wrong, so the 404 path must name the
+		// package and the manual `bun install -g` recovery.
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((() =>
+			Promise.resolve(new Response("not found", { status: 404 }))) as unknown as typeof fetch);
+		try {
+			await expect(getLatestRelease()).rejects.toThrow(
+				'Package "jeopi-cli" was not found on https://registry.npmjs.org/',
+			);
+			await expect(getLatestRelease()).rejects.toThrow("bun install -g jeopi-cli");
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("reports the failing package and HTTP status on non-404 registry errors", async () => {
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((() =>
+			Promise.resolve(
+				new Response("boom", { status: 503, statusText: "Service Unavailable" }),
+			)) as unknown as typeof fetch);
+		try {
+			await expect(getLatestRelease()).rejects.toThrow(
+				"Failed to fetch release info for jeopi-cli from https://registry.npmjs.org/: HTTP 503",
+			);
 		} finally {
 			fetchSpy.mockRestore();
 		}

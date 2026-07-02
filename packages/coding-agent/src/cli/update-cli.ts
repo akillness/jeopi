@@ -244,11 +244,29 @@ async function resolveUpdateTarget(): Promise<UpdateTarget> {
 /**
  * Get the latest release info from the npm registry.
  * Uses npm instead of GitHub API to avoid unauthenticated rate limiting.
+ *
+ * Exported for tests: the error contract below is what a user sees when the
+ * update check dies, and it must stay diagnosable.
  */
-async function getLatestRelease(): Promise<ReleaseInfo> {
-	const response = await fetch(`${NPM_REGISTRY}${NPM_PACKAGE}/latest`);
+export async function getLatestRelease(): Promise<ReleaseInfo> {
+	const url = `${NPM_REGISTRY}${NPM_PACKAGE}/latest`;
+	const response = await fetch(url);
+	if (response.status === 404) {
+		// A 404 here means the package this build was compiled to track does not
+		// exist on the registry (e.g. the CLI was renamed after this build
+		// shipped — `jeopi` → `jeopi-cli`). Self-update can never recover from
+		// this, so name the phantom package and the manual escape hatch instead
+		// of surfacing a bare "Not Found".
+		throw new Error(
+			`Package "${NPM_PACKAGE}" was not found on ${NPM_REGISTRY} (HTTP 404). ` +
+				`This build's update check targets a package that is not published; ` +
+				`reinstall manually: bun install -g ${NPM_PACKAGE}`,
+		);
+	}
 	if (!response.ok) {
-		throw new Error(`Failed to fetch release info: ${response.statusText}`);
+		throw new Error(
+			`Failed to fetch release info for ${NPM_PACKAGE} from ${NPM_REGISTRY}: HTTP ${response.status} ${response.statusText}`,
+		);
 	}
 
 	const data = (await response.json()) as { version: string };
