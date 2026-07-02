@@ -211,6 +211,7 @@ import * as bundledPiCodingAgentCliBenchCli from "jeopi-cli/cli/bench-cli";
 import * as bundledPiCodingAgentCliClassifyInstallTarget from "jeopi-cli/cli/classify-install-target";
 import * as bundledPiCodingAgentCliClaudeTraceCli from "jeopi-cli/cli/claude-trace-cli";
 import * as bundledPiCodingAgentCliCommandsInitXdg from "jeopi-cli/cli/commands/init-xdg";
+import * as bundledPiCodingAgentCliCommandsMigrateLegacy from "jeopi-cli/cli/commands/migrate-legacy";
 import * as bundledPiCodingAgentCliCompletionGen from "jeopi-cli/cli/completion-gen";
 import * as bundledPiCodingAgentCliConfigCli from "jeopi-cli/cli/config-cli";
 import * as bundledPiCodingAgentCliDryBalanceCli from "jeopi-cli/cli/dry-balance-cli";
@@ -542,6 +543,7 @@ import * as bundledPiCodingAgentMcpTransportsSse from "jeopi-cli/mcp/transports/
 import * as bundledPiCodingAgentMcpTransportsStdio from "jeopi-cli/mcp/transports/stdio";
 import * as bundledPiCodingAgentMcpTypes from "jeopi-cli/mcp/types";
 import * as bundledPiCodingAgentMemories from "jeopi-cli/memories";
+import * as bundledPiCodingAgentMemoriesOkf from "jeopi-cli/memories/okf";
 import * as bundledPiCodingAgentMemoriesStorage from "jeopi-cli/memories/storage";
 import * as bundledPiCodingAgentMemoryBackend from "jeopi-cli/memory-backend";
 import * as bundledPiCodingAgentMemoryBackendLocalBackend from "jeopi-cli/memory-backend/local-backend";
@@ -773,6 +775,7 @@ import * as bundledPiCodingAgentSttWav from "jeopi-cli/stt/wav";
 import * as bundledPiCodingAgentTask from "jeopi-cli/task";
 import * as bundledPiCodingAgentTaskAgents from "jeopi-cli/task/agents";
 import * as bundledPiCodingAgentTaskCommands from "jeopi-cli/task/commands";
+import * as bundledPiCodingAgentTaskCriticGate from "jeopi-cli/task/critic-gate";
 import * as bundledPiCodingAgentTaskDiscovery from "jeopi-cli/task/discovery";
 import * as bundledPiCodingAgentTaskExecutor from "jeopi-cli/task/executor";
 import * as bundledPiCodingAgentTaskIsolationRunner from "jeopi-cli/task/isolation-runner";
@@ -1657,6 +1660,8 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 	"@oh-my-pi/pi-coding-agent/cli/commands/init-xdg": bundledPiCodingAgentCliCommandsInitXdg as unknown as Readonly<
 		Record<string, unknown>
 	>,
+	"@oh-my-pi/pi-coding-agent/cli/commands/migrate-legacy":
+		bundledPiCodingAgentCliCommandsMigrateLegacy as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-coding-agent/commands/acp": bundledPiCodingAgentCommandsAcp as unknown as Readonly<
 		Record<string, unknown>
 	>,
@@ -2304,6 +2309,9 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 	"@oh-my-pi/pi-coding-agent/mcp/transports/stdio": bundledPiCodingAgentMcpTransportsStdio as unknown as Readonly<
 		Record<string, unknown>
 	>,
+	"@oh-my-pi/pi-coding-agent/memories/okf": bundledPiCodingAgentMemoriesOkf as unknown as Readonly<
+		Record<string, unknown>
+	>,
 	"@oh-my-pi/pi-coding-agent/memories/storage": bundledPiCodingAgentMemoriesStorage as unknown as Readonly<
 		Record<string, unknown>
 	>,
@@ -2832,6 +2840,9 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 		Record<string, unknown>
 	>,
 	"@oh-my-pi/pi-coding-agent/task/commands": bundledPiCodingAgentTaskCommands as unknown as Readonly<
+		Record<string, unknown>
+	>,
+	"@oh-my-pi/pi-coding-agent/task/critic-gate": bundledPiCodingAgentTaskCriticGate as unknown as Readonly<
 		Record<string, unknown>
 	>,
 	"@oh-my-pi/pi-coding-agent/task/discovery": bundledPiCodingAgentTaskDiscovery as unknown as Readonly<

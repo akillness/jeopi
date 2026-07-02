@@ -32,8 +32,8 @@ interface GenerateCandidateOptions {
 type SaveCandidateResult = { kind: "saved" | "aborted" | "rejected" } | { kind: "amend"; feedback: string };
 
 const MAX_ATTEMPTS = 3;
-const PROJECT_OPTION = "This project (.omp/rules)";
-const GLOBAL_OPTION = "Global — all projects (~/.omp/agent/rules)";
+const PROJECT_OPTION = "This project (.jeopi/rules)";
+const GLOBAL_OPTION = "Global — all projects (~/.jeopi/agent/rules)";
 const AMEND_OPTION = "Amend with feedback…";
 
 export class OmfgController {

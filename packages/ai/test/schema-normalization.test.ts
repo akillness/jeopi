@@ -1035,6 +1035,88 @@ describe("normalizeSchemaForCCA", () => {
 			description: "pr number, url, or branch",
 		});
 	});
+
+	it("coerces boolean subschemas in items and properties positions to {} (CCA proto rejects booleans)", () => {
+		// Regression for `Cloud Code Assist API error (400): Invalid value at
+		// 'request.tools[N].function_declarations[i].parameters.properties[j].value.items'`
+		// — 2020-12 boolean schemas are valid JSON Schema (AJV passes them) but
+		// the CCA `Schema` proto requires a message.
+		expect(
+			normalizeSchemaForCCA({
+				type: "object",
+				properties: {
+					anything: { type: "array", items: true },
+					nothing: { type: "array", items: false },
+					flag: true,
+					nested: {
+						type: "object",
+						properties: { inner: { type: "array", items: { type: "array", items: true } } },
+					},
+				},
+			}),
+		).toEqual({
+			type: "object",
+			properties: {
+				anything: { type: "array", items: {} },
+				nothing: { type: "array", items: {} },
+				flag: {},
+				nested: {
+					type: "object",
+					properties: { inner: { type: "array", items: { type: "array", items: {} } } },
+				},
+			},
+		});
+	});
+
+	it("keeps boolean values in non-schema positions (enum entries, default)", () => {
+		expect(
+			normalizeSchemaForCCA({
+				type: "object",
+				properties: { on: { type: "boolean", default: true, enum: [true, false] } },
+			}),
+		).toEqual({
+			type: "object",
+			properties: { on: { type: "boolean", default: true, enum: [true, false] } },
+		});
+	});
+
+	it("strips JSON Schema keywords unknown to the CCA proto (uniqueItems, not, if/then/else, $id)", () => {
+		const normalized = normalizeSchemaForCCA({
+			type: "object",
+			$id: "https://example.com/tool.json",
+			properties: {
+				tags: { type: "array", items: { type: "string" }, uniqueItems: true },
+				// biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword
+				cond: { type: "string", if: { const: "a" }, then: { const: "b" }, not: { const: "c" } },
+			},
+		}) as {
+			$id?: unknown;
+			properties: {
+				tags: Record<string, unknown>;
+				cond: Record<string, unknown>;
+			};
+		};
+
+		expect(normalized.$id).toBeUndefined();
+		expect(normalized.properties.tags).not.toHaveProperty("uniqueItems");
+		// uniqueItems is human-meaningful — spilled into the description.
+		expect(normalized.properties.tags.description).toContain("uniqueItems");
+		for (const key of ["if", "then", "not"]) {
+			expect(normalized.properties.cond).not.toHaveProperty(key);
+		}
+	});
+
+	it("google JSON-schema path keeps boolean items (parametersJsonSchema accepts full JSON Schema)", () => {
+		expect(
+			normalizeSchemaForGoogle({
+				type: "object",
+				properties: { list: { type: "array", items: true } },
+			}),
+		).toEqual({
+			type: "object",
+			properties: { list: { type: "array", items: true } },
+		});
+	});
 });
 
 // ---------------------------------------------------------------------------

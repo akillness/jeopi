@@ -271,6 +271,7 @@ import {
 	type SecretObfuscator,
 } from "../secrets/obfuscator";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
+import type { CriticGateState } from "../task/critic-gate";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -507,6 +508,33 @@ const UNEXPECTED_STOP_MAX_RETRIES = 3;
 const UNEXPECTED_STOP_TIMEOUT_MS = 4000;
 const EMPTY_STOP_MAX_RETRIES = 3;
 const RETRY_BACKOFF_MAX_DELAY_MS = 8_000;
+/**
+ * Post-ladder classifier-refusal resend backoff. When a refusal exhausts the
+ * pinned fallback ladder (or no chain is configured / model fallback is
+ * disabled), the session keeps resending the turn with capped exponential
+ * backoff instead of surfacing a terminal refusal — transient classifier
+ * flags routinely clear on resend. Esc (`abortRetry`) breaks the wait, and
+ * a wall-clock budget bounds the streak.
+ */
+const REFUSAL_BACKOFF_BASE_MS = 2_000;
+const REFUSAL_BACKOFF_MAX_MS = 30_000;
+const REFUSAL_BACKOFF_BUDGET_MS = 30 * 60_000;
+
+function positiveEnvMs(name: string): number | undefined {
+	const raw = process.env[name];
+	if (!raw) return undefined;
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function refusalBackoffDelayMs(attempt: number): number {
+	const baseMs = positiveEnvMs("PI_REFUSAL_BACKOFF_BASE_MS") ?? REFUSAL_BACKOFF_BASE_MS;
+	return Math.min(baseMs * 2 ** Math.max(0, attempt - 1), REFUSAL_BACKOFF_MAX_MS);
+}
+
+function refusalBackoffBudgetMs(): number {
+	return positiveEnvMs("PI_REFUSAL_BACKOFF_BUDGET_MS") ?? REFUSAL_BACKOFF_BUDGET_MS;
+}
 /**
  * Budget for callers on the user-visible `/quit` / `/exit` shutdown path that
  * want to cap how long they wait for `MnemopiSessionState.dispose()` to finish
@@ -1513,6 +1541,10 @@ export class AgentSession {
 	#advisorPrimaryTurnsCompleted = 0;
 	#advisorInterruptImmuneTurnStart: number | undefined;
 	#planModeState: PlanModeState | undefined;
+	/** Hard execution gate driven by `critic` subagent verdicts (see task/critic-gate.ts).
+	 *  Engaged while the latest verdict is non-okay; cleared by an okay verdict,
+	 *  the next user-authored prompt, or a new session. */
+	#criticGateState: CriticGateState | undefined;
 	#goalModeState: GoalModeState | undefined;
 	#goalRuntime: GoalRuntime;
 	#advisorEnabled = false;
@@ -1552,6 +1584,8 @@ export class AgentSession {
 	// Retry state
 	#retryAbortController: AbortController | undefined = undefined;
 	#retryAttempt = 0;
+	/** Rung-4 classifier-refusal resend streak (post fallback-ladder). */
+	#refusalBackoff: { startedAt: number; attempt: number } | undefined = undefined;
 	#retryPromise: Promise<void> | undefined = undefined;
 	#retryResolve: (() => void) | undefined = undefined;
 	#activeRetryFallback: ActiveRetryFallbackState | undefined = undefined;
@@ -3547,6 +3581,7 @@ export class AgentSession {
 						attempt: this.#retryAttempt,
 					});
 					this.#retryAttempt = 0;
+					this.#refusalBackoff = undefined;
 				}
 				if (assistantMsg.provider === "opencode-go") {
 					this.#modelRegistry.authStorage.recordUsageCost(assistantMsg.provider, assistantMsg.usage.cost.total, {
@@ -5484,7 +5519,7 @@ export class AgentSession {
 		//
 		// BOUNDED: an owned manager may hold an HTTP/SSE server whose session-
 		// termination DELETE blocks up to the MCP request timeout (30s default,
-		// unbounded when OMP_MCP_TIMEOUT_MS=0), so awaiting `disconnectAll()`
+		// unbounded when JEOPI_MCP_TIMEOUT_MS=0), so awaiting `disconnectAll()`
 		// unbounded would stall /exit and print-mode shutdown on a broken remote
 		// endpoint. Race it against a short deadline — stdio close (the subprocess
 		// reap this targets) completes well within the bound; a slow transport
@@ -6677,6 +6712,14 @@ export class AgentSession {
 		}
 	}
 
+	getCriticGateState(): CriticGateState | undefined {
+		return this.#criticGateState;
+	}
+
+	setCriticGateState(state: CriticGateState | undefined): void {
+		this.#criticGateState = state;
+	}
+
 	getGoalModeState(): GoalModeState | undefined {
 		return this.#goalModeState;
 	}
@@ -7112,6 +7155,9 @@ export class AgentSession {
 		// Agent-initiated synthetic prompts (auto-continue, plan, reminders) do not.
 		if (options?.userInitiated ?? !options?.synthetic) {
 			this.#advisorAutoResumeSuppressed = false;
+			// The user regaining control is the only override for the critic gate:
+			// a fresh user message clears any engaged non-okay verdict.
+			this.#criticGateState = undefined;
 		}
 
 		// If streaming, queue via steer() or followUp() based on option
@@ -8334,6 +8380,7 @@ export class AgentSession {
 		this.#midRunNudgeCount = 0;
 		this.#planReferenceSent = false;
 		this.#planReferencePath = "local://PLAN.md";
+		this.#criticGateState = undefined;
 		this.#resetAdvisorSessionState();
 		this.#reconnectToAgent();
 
@@ -10177,6 +10224,7 @@ export class AgentSession {
 					finalError: "Assistant returned empty stop after retry cap",
 				});
 				this.#retryAttempt = 0;
+				this.#refusalBackoff = undefined;
 			}
 			this.#resolveRetry();
 			// Tool-use orphans corrupt Anthropic message history (tool_result without
@@ -12977,7 +13025,11 @@ export class AgentSession {
 			this.#retryResolve = resolve;
 		}
 
-		if (this.#retryAttempt > retrySettings.maxRetries) {
+		// Classifier refusals are exempt from the attempt budget: the pinned
+		// fallback ladder self-terminates when the chain is exhausted, and the
+		// post-ladder resend streak below is bounded by its own wall-clock
+		// budget plus abortRetry() (Esc).
+		if (this.#retryAttempt > retrySettings.maxRetries && !classifierRefusal) {
 			// Max retries exceeded, emit final failure and reset
 			await this.#emitSessionEvent({
 				type: "auto_retry_end",
@@ -12986,6 +13038,7 @@ export class AgentSession {
 				finalError: message.errorMessage,
 			});
 			this.#retryAttempt = 0;
+			this.#refusalBackoff = undefined;
 			this.#resolveRetry(); // Resolve so waitForRetry() completes
 			return false;
 		}
@@ -13073,9 +13126,33 @@ export class AgentSession {
 			}
 		}
 		if (classifierRefusal && !switchedModel) {
-			this.#retryAttempt = 0;
-			this.#resolveRetry();
-			return false;
+			// Rung 4: the refusal ladder is exhausted (no fallback chain, model
+			// fallback disabled, or every pinned fallback also refused). Keep
+			// resending with capped exponential backoff instead of ending the
+			// turn on a terminal refusal — transient classifier flags routinely
+			// clear on resend. abortRetry() (Esc) breaks the wait below, and the
+			// wall-clock budget bounds the streak.
+			const now = Date.now();
+			const backoff = this.#refusalBackoff ?? { startedAt: now, attempt: 0 };
+			backoff.attempt += 1;
+			this.#refusalBackoff = backoff;
+			if (now - backoff.startedAt >= refusalBackoffBudgetMs()) {
+				const attempt = this.#retryAttempt;
+				this.#retryAttempt = 0;
+				this.#refusalBackoff = undefined;
+				await this.#emitSessionEvent({
+					type: "auto_retry_end",
+					success: false,
+					attempt,
+					finalError: errorMessage,
+				});
+				this.#resolveRetry();
+				return false;
+			}
+			// A refusal streak must not consume the transient-error retry budget:
+			// a later 5xx in the same turn still deserves its full maxRetries.
+			this.#retryAttempt = Math.min(this.#retryAttempt, 1);
+			delayMs = refusalBackoffDelayMs(backoff.attempt);
 		}
 		// Fast→base was requested but the base switch could not happen (e.g. the
 		// base model has no credential). Don't fall through to backing-off and
@@ -13095,9 +13172,10 @@ export class AgentSession {
 		// assistant error message is preserved in agent state so the caller
 		// can act on it.
 		const maxDelayMs = retrySettings.maxDelayMs;
-		if (maxDelayMs > 0 && delayMs > maxDelayMs && !switchedCredential && !switchedModel) {
+		if (maxDelayMs > 0 && delayMs > maxDelayMs && !switchedCredential && !switchedModel && !classifierRefusal) {
 			const attempt = this.#retryAttempt;
 			this.#retryAttempt = 0;
+			this.#refusalBackoff = undefined;
 			await this.#emitSessionEvent({
 				type: "auto_retry_end",
 				success: false,
@@ -13138,6 +13216,7 @@ export class AgentSession {
 			// Aborted during sleep - emit end event so UI can clean up
 			const attempt = this.#retryAttempt;
 			this.#retryAttempt = 0;
+			this.#refusalBackoff = undefined;
 			this.#retryAbortController = undefined;
 			await this.#emitSessionEvent({
 				type: "auto_retry_end",
@@ -13250,6 +13329,7 @@ export class AgentSession {
 
 		// Reset retry budget for a fresh attempt
 		this.#retryAttempt = 0;
+		this.#refusalBackoff = undefined;
 
 		// Re-attempt the turn
 		this.#scheduleAgentContinue({ delayMs: 1 });

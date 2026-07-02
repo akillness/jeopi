@@ -6,8 +6,8 @@
  *
  * Instead these tests validate the structural contract that listClaudePluginRoots
  * depends on:
- *   1. OMP registry lives at path.join(home, ".omp", "plugins", "installed_plugins.json")
- *      (matches getConfigDirName() == ".omp")
+ *   1. OMP registry lives at path.join(home, ".jeopi", "plugins", "installed_plugins.json")
+ *      (matches getConfigDirName() == ".jeopi")
  *   2. The registry format passes the same validator that parseClaudePluginsRegistry uses
  *   3. readInstalledPluginsRegistry / writeInstalledPluginsRegistry produce files that
  *      satisfy that validator
@@ -53,9 +53,9 @@ function validateClaudeRegistryFormat(content: string): Record<string, unknown> 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 // Matches getConfigDirName() — single source of truth is in jeopi-utils,
-// but we know the value is ".omp" and hardcoding it here keeps tests free of
+// but we know the value is ".jeopi" and hardcoding it here keeps tests free of
 // native-addon transitive imports.
-const OMP_CONFIG_DIR = ".omp";
+const JEOPI_CONFIG_DIR = ".jeopi";
 
 function makeEntry(installPath: string, version = "1.0.0"): InstalledPluginEntry {
 	return {
@@ -70,13 +70,13 @@ function makeEntry(installPath: string, version = "1.0.0"): InstalledPluginEntry
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 let tmpHome: string;
-/** ~/.omp/plugins/installed_plugins.json inside tmpHome */
-let ompRegistryPath: string;
+/** ~/.jeopi/plugins/installed_plugins.json inside tmpHome */
+let jeopiRegistryPath: string;
 
 beforeEach(() => {
-	tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omp-discovery-test-"));
-	ompRegistryPath = path.join(tmpHome, OMP_CONFIG_DIR, "plugins", "installed_plugins.json");
-	fs.mkdirSync(path.dirname(ompRegistryPath), { recursive: true });
+	tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "jeopi-discovery-test-"));
+	jeopiRegistryPath = path.join(tmpHome, JEOPI_CONFIG_DIR, "plugins", "installed_plugins.json");
+	fs.mkdirSync(path.dirname(jeopiRegistryPath), { recursive: true });
 });
 
 afterEach(() => {
@@ -86,11 +86,11 @@ afterEach(() => {
 // ── Path contract ─────────────────────────────────────────────────────────────
 
 describe("OMP registry path contract", () => {
-	it("OMP registry lives at home/.omp/plugins/installed_plugins.json", () => {
+	it("OMP registry lives at home/.jeopi/plugins/installed_plugins.json", () => {
 		// This is the path that listClaudePluginRoots reads.
 		// Any change to this path must be reflected in helpers.ts.
-		const expected = path.join(tmpHome, ".omp", "plugins", "installed_plugins.json");
-		expect(ompRegistryPath).toBe(expected);
+		const expected = path.join(tmpHome, ".jeopi", "plugins", "installed_plugins.json");
+		expect(jeopiRegistryPath).toBe(expected);
 	});
 });
 
@@ -98,9 +98,9 @@ describe("OMP registry path contract", () => {
 
 describe("OMP registry format compatibility with Claude parser", () => {
 	it("empty registry written by writeInstalledPluginsRegistry passes validator", async () => {
-		await writeInstalledPluginsRegistry(ompRegistryPath, { version: 2, plugins: {} });
+		await writeInstalledPluginsRegistry(jeopiRegistryPath, { version: 2, plugins: {} });
 
-		const content = fs.readFileSync(ompRegistryPath, "utf8");
+		const content = fs.readFileSync(jeopiRegistryPath, "utf8");
 		const parsed = validateClaudeRegistryFormat(content);
 		expect(parsed).not.toBeNull();
 		expect((parsed as Record<string, unknown>).version).toBe(2);
@@ -110,11 +110,11 @@ describe("OMP registry format compatibility with Claude parser", () => {
 		const pluginId = buildPluginId("quality-review", "example-marketplace");
 		const entry = makeEntry(path.join(tmpHome, "plugins", "cache", "example-marketplace--quality-review--1.0.0"));
 
-		let reg = await readInstalledPluginsRegistry(ompRegistryPath);
+		let reg = await readInstalledPluginsRegistry(jeopiRegistryPath);
 		reg = addInstalledPlugin(reg, pluginId, entry);
-		await writeInstalledPluginsRegistry(ompRegistryPath, reg);
+		await writeInstalledPluginsRegistry(jeopiRegistryPath, reg);
 
-		const content = fs.readFileSync(ompRegistryPath, "utf8");
+		const content = fs.readFileSync(jeopiRegistryPath, "utf8");
 		const parsed = validateClaudeRegistryFormat(content);
 		expect(parsed).not.toBeNull();
 
@@ -147,11 +147,11 @@ describe("OMP registry round-trip", () => {
 		const id = buildPluginId("hello-plugin", "test-marketplace");
 		const entry = makeEntry("/tmp/fake-plugin-path");
 
-		let reg = await readInstalledPluginsRegistry(ompRegistryPath);
+		let reg = await readInstalledPluginsRegistry(jeopiRegistryPath);
 		reg = addInstalledPlugin(reg, id, entry);
-		await writeInstalledPluginsRegistry(ompRegistryPath, reg);
+		await writeInstalledPluginsRegistry(jeopiRegistryPath, reg);
 
-		const readBack = await readInstalledPluginsRegistry(ompRegistryPath);
+		const readBack = await readInstalledPluginsRegistry(jeopiRegistryPath);
 		expect(readBack.plugins[id]).toBeDefined();
 		expect(readBack.plugins[id]?.[0]?.installPath).toBe(entry.installPath);
 		expect(readBack.plugins[id]?.[0]?.version).toBe("1.0.0");
@@ -164,12 +164,12 @@ describe("OMP registry round-trip", () => {
 		const entry1 = makeEntry("/tmp/fake-a", "1.0.0");
 		const entry2 = makeEntry("/tmp/fake-b", "2.0.0");
 
-		let reg = await readInstalledPluginsRegistry(ompRegistryPath);
+		let reg = await readInstalledPluginsRegistry(jeopiRegistryPath);
 		reg = addInstalledPlugin(reg, id1, entry1);
 		reg = addInstalledPlugin(reg, id2, entry2);
-		await writeInstalledPluginsRegistry(ompRegistryPath, reg);
+		await writeInstalledPluginsRegistry(jeopiRegistryPath, reg);
 
-		const readBack = await readInstalledPluginsRegistry(ompRegistryPath);
+		const readBack = await readInstalledPluginsRegistry(jeopiRegistryPath);
 		expect(Object.keys(readBack.plugins)).toHaveLength(2);
 		expect(readBack.plugins[id1]?.[0]?.version).toBe("1.0.0");
 		expect(readBack.plugins[id2]?.[0]?.version).toBe("2.0.0");
@@ -185,11 +185,11 @@ describe("OMP registry round-trip", () => {
 			lastUpdated: "2025-01-15T10:30:00.000Z",
 		};
 
-		let reg = await readInstalledPluginsRegistry(ompRegistryPath);
+		let reg = await readInstalledPluginsRegistry(jeopiRegistryPath);
 		reg = addInstalledPlugin(reg, id, entry);
-		await writeInstalledPluginsRegistry(ompRegistryPath, reg);
+		await writeInstalledPluginsRegistry(jeopiRegistryPath, reg);
 
-		const readBack = await readInstalledPluginsRegistry(ompRegistryPath);
+		const readBack = await readInstalledPluginsRegistry(jeopiRegistryPath);
 		expect(readBack.plugins[id]?.[0]?.scope).toBe("project");
 	});
 

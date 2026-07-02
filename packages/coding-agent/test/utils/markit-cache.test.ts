@@ -26,13 +26,13 @@ function restoreEnv(key: string, value: string | undefined): void {
 describe("document conversion cache", () => {
 	let testDir: string;
 	let originalPiCodingAgentDir: string | undefined;
-	let originalOmpProfile: string | undefined;
+	let originalJeopiProfile: string | undefined;
 	let originalPiProfile: string | undefined;
 	let originalXdgCacheHome: string | undefined;
 
 	beforeEach(async () => {
 		originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
-		originalOmpProfile = process.env.OMP_PROFILE;
+		originalJeopiProfile = process.env.JEOPI_PROFILE;
 		originalPiProfile = process.env.PI_PROFILE;
 		originalXdgCacheHome = process.env.XDG_CACHE_HOME;
 		testDir = path.join(os.tmpdir(), `markit-cache-${Snowflake.next()}`);
@@ -43,7 +43,7 @@ describe("document conversion cache", () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		restoreEnv("PI_CODING_AGENT_DIR", originalPiCodingAgentDir);
-		restoreEnv("OMP_PROFILE", originalOmpProfile);
+		restoreEnv("JEOPI_PROFILE", originalJeopiProfile);
 		restoreEnv("PI_PROFILE", originalPiProfile);
 		restoreEnv("XDG_CACHE_HOME", originalXdgCacheHome);
 		__resetDirsFromEnvForTests();

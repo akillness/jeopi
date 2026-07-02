@@ -17,7 +17,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDir, isEnoent, logger, tryParseJson } from "jeopi-utils";
+import { CONFIG_DIR_NAME, getAgentDir, isEnoent, logger, tryParseJson } from "jeopi-utils";
 import { readDirEntries, readFile } from "../capability/fs";
 import type { LoadContext } from "../capability/types";
 import { getEnabledPlugins } from "../extensibility/plugins/loader";
@@ -82,7 +82,7 @@ interface ScopeDirs {
 
 function scopeDirs(ctx: LoadContext): ScopeDirs {
 	return {
-		project: path.join(ctx.cwd, ".omp"),
+		project: path.join(ctx.cwd, CONFIG_DIR_NAME),
 		user: getAgentDir(),
 	};
 }
@@ -122,8 +122,8 @@ async function isDirectory(p: string): Promise<boolean> {
  * are dropped):
  *
  * 1. CLI roots injected via {@link injectOmpExtensionCliRoots}
- * 2. Project `<cwd>/.omp/settings.json#extensions`
- * 3. User `~/.omp/agent/settings.json#extensions`
+ * 2. Project `<cwd>/.jeopi/settings.json#extensions`
+ * 3. User `~/.jeopi/agent/settings.json#extensions`
  * 4. Enabled npm/link plugins installed under `<plugins>/node_modules/` (for
  *    `jeopi install <pkg>` / `jeopi plugin install` / `jeopi plugin link`). Marketplace
  *    installs are loaded by the `claude-plugins` provider and are excluded here.

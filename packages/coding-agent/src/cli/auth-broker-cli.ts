@@ -122,7 +122,7 @@ async function ensureToken(): Promise<string> {
 async function runServe(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 	// The broker is a long-running headless service: route structured logs to
 	// stdout so a process supervisor (pm2, journald, k8s) captures them, and
-	// skip the rotating ~/.omp/logs/ file the TUI default would have used.
+	// skip the rotating ~/.jeopi/logs/ file the TUI default would have used.
 	setLoggerTransports({ console: true, file: false });
 
 	const bind = flags.bind ?? DEFAULT_AUTH_BROKER_BIND;
@@ -412,7 +412,7 @@ async function runList(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 // ─── CLIProxyAPI import ─────────────────────────────────────────────────
 
 /**
- * Maps the `type` field of a CLIProxyAPI credential JSON to the omp provider id.
+ * Maps the `type` field of a CLIProxyAPI credential JSON to the jeopi provider id.
  * The filename also encodes the type (e.g. `claude-foo@bar.json`), but the
  * in-file `type` is authoritative — we only fall back to filename if absent.
  */
@@ -508,7 +508,7 @@ async function loadImportPlan(
 		if (!provider) {
 			skipped.push({
 				file,
-				reason: `cannot determine omp provider from type=${json.type ?? "?"} (pass --provider to override)`,
+				reason: `cannot determine jeopi provider from type=${json.type ?? "?"} (pass --provider to override)`,
 			});
 			continue;
 		}
@@ -693,7 +693,7 @@ async function runMigrate(flags: AuthBrokerCommandArgs["flags"]): Promise<void> 
 	const brokerConfig = await resolveAuthBrokerConfig();
 	if (!brokerConfig) {
 		throw new Error(
-			"OMP_AUTH_BROKER_URL must be set (or `auth.broker.url` in config.yml). `migrate` uploads local credentials to a configured broker.",
+			"JEOPI_AUTH_BROKER_URL must be set (or `auth.broker.url` in config.yml). `migrate` uploads local credentials to a configured broker.",
 		);
 	}
 	if (flags.fromLocal !== true) {
@@ -846,7 +846,7 @@ async function runMigrate(flags: AuthBrokerCommandArgs["flags"]): Promise<void> 
 async function runStatus(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 	const cfg = await resolveAuthBrokerConfig();
 	if (!cfg) {
-		const message = "No auth-broker configured (set OMP_AUTH_BROKER_URL to enable).";
+		const message = "No auth-broker configured (set JEOPI_AUTH_BROKER_URL to enable).";
 		if (flags.json) process.stdout.write(`${JSON.stringify({ ok: false, reason: "not_configured" })}\n`);
 		else process.stdout.write(`${chalk.yellow(message)}\n`);
 		return;

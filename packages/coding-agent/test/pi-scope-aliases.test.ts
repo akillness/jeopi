@@ -23,7 +23,7 @@ import { loadExtensions } from "jeopi-cli/extensibility/extensions/loader";
 import { TempDir } from "jeopi-utils";
 
 const canonicalCodingAgent = Bun.resolveSync("jeopi-cli", import.meta.dir);
-const canonicalCodingAgentExtensions = Bun.resolveSync("jeopi/extensibility/extensions", import.meta.dir);
+const canonicalCodingAgentExtensions = Bun.resolveSync("jeopi-cli/extensibility/extensions", import.meta.dir);
 const canonicalUtils = Bun.resolveSync("jeopi-utils", import.meta.dir);
 const canonicalTui = Bun.resolveSync("jeopi-tui", import.meta.dir);
 // Subpath: upstream `pi-ai/oauth` re-exported `utils/oauth/index`; our pi-ai now

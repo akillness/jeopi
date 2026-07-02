@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import "jeopi/tools/yield";
+import "jeopi-cli/tools/yield";
 import { subprocessToolRegistry } from "jeopi-cli/task/subprocess-tool-registry";
 
 describe("yield subprocess extraction", () => {

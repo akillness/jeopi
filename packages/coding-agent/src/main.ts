@@ -747,7 +747,7 @@ export async function createSessionManager(
 
 /** Discover SYSTEM.md file if no CLI system prompt was provided */
 function discoverSystemPromptFile(): string | undefined {
-	// Check project-local first (.omp/SYSTEM.md, .pi/SYSTEM.md legacy)
+	// Check project-local first (.jeopi/SYSTEM.md, .pi/SYSTEM.md legacy)
 	const projectPath = findConfigFile("SYSTEM.md", { user: false });
 	if (projectPath) {
 		return projectPath;

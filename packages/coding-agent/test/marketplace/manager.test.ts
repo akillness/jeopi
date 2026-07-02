@@ -249,9 +249,9 @@ describe("MarketplaceManager", () => {
 	it("installPlugin exposes marketplace package to the runtime loader", async () => {
 		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-home-"));
 		try {
-			const pluginsDir = path.join(tmpHome, ".omp", "plugins");
+			const pluginsDir = path.join(tmpHome, ".jeopi", "plugins");
 			const manager = new MarketplaceManager({
-				marketplacesRegistryPath: path.join(tmpHome, ".omp", "marketplaces.json"),
+				marketplacesRegistryPath: path.join(tmpHome, ".jeopi", "marketplaces.json"),
 				installedRegistryPath: path.join(pluginsDir, "installed_plugins.json"),
 				marketplacesCacheDir: path.join(pluginsDir, "cache", "marketplaces"),
 				pluginsCacheDir: path.join(pluginsDir, "cache", "plugins"),
@@ -348,9 +348,9 @@ describe("MarketplaceManager", () => {
 	it("installPlugin keeps marketplace packages out of OMP extension roots", async () => {
 		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-home-"));
 		try {
-			const pluginsDir = path.join(tmpHome, ".omp", "plugins");
+			const pluginsDir = path.join(tmpHome, ".jeopi", "plugins");
 			const manager = new MarketplaceManager({
-				marketplacesRegistryPath: path.join(tmpHome, ".omp", "marketplaces.json"),
+				marketplacesRegistryPath: path.join(tmpHome, ".jeopi", "marketplaces.json"),
 				installedRegistryPath: path.join(pluginsDir, "installed_plugins.json"),
 				marketplacesCacheDir: path.join(pluginsDir, "cache", "marketplaces"),
 				pluginsCacheDir: path.join(pluginsDir, "cache", "plugins"),
@@ -370,11 +370,11 @@ describe("MarketplaceManager", () => {
 		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-home-"));
 		const projectAnchor = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-project-"));
 		try {
-			const userPluginsDir = path.join(tmpHome, ".omp", "plugins");
-			const projectPluginsDir = path.join(projectAnchor, ".omp", "plugins");
+			const userPluginsDir = path.join(tmpHome, ".jeopi", "plugins");
+			const projectPluginsDir = path.join(projectAnchor, ".jeopi", "plugins");
 			fs.mkdirSync(projectPluginsDir, { recursive: true });
 			const manager = new MarketplaceManager({
-				marketplacesRegistryPath: path.join(tmpHome, ".omp", "marketplaces.json"),
+				marketplacesRegistryPath: path.join(tmpHome, ".jeopi", "marketplaces.json"),
 				installedRegistryPath: path.join(userPluginsDir, "installed_plugins.json"),
 				projectInstalledRegistryPath: path.join(projectPluginsDir, "installed_plugins.json"),
 				marketplacesCacheDir: path.join(userPluginsDir, "cache", "marketplaces"),

@@ -380,7 +380,7 @@ describe("setup wizard web search tab", () => {
 	});
 });
 
-describe("omp setup onboarding trigger", () => {
+describe("jeopi setup onboarding trigger", () => {
 	it("starts the normal interactive command with forced setup wizard", async () => {
 		let forceSetupWizard: boolean | undefined;
 		await runOnboardingSetup({

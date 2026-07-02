@@ -22,22 +22,22 @@ describe("disabledExtensions runtime filtering", () => {
 	let tempHomeDir = "";
 	let originalHome: string | undefined;
 	let originalAgentDirEnv: string | undefined;
-	let originalOmpProfileEnv: string | undefined;
+	let originalJeopiProfileEnv: string | undefined;
 	let originalPiProfileEnv: string | undefined;
 
 	beforeEach(async () => {
 		resetSettingsForTest();
 		originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
-		originalOmpProfileEnv = process.env.OMP_PROFILE;
+		originalJeopiProfileEnv = process.env.JEOPI_PROFILE;
 		originalPiProfileEnv = process.env.PI_PROFILE;
 		originalHome = process.env.HOME;
-		tempHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-disabled-ext-home-"));
+		tempHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), "jeopi-disabled-ext-home-"));
 		process.env.HOME = tempHomeDir;
 		vi.spyOn(os, "homedir").mockReturnValue(tempHomeDir);
-		setAgentDir(path.join(tempHomeDir, ".omp", "agent"));
-		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-disabled-ext-"));
-		await fs.mkdir(path.join(tempDir, ".omp"), { recursive: true });
-		await fs.writeFile(path.join(tempDir, ".omp", "AGENTS.md"), "# project instructions\n");
+		setAgentDir(path.join(tempHomeDir, ".jeopi", "agent"));
+		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "jeopi-disabled-ext-"));
+		await fs.mkdir(path.join(tempDir, ".jeopi"), { recursive: true });
+		await fs.writeFile(path.join(tempDir, ".jeopi", "AGENTS.md"), "# project instructions\n");
 
 		const settings = await Settings.init({
 			inMemory: true,
@@ -53,7 +53,7 @@ describe("disabledExtensions runtime filtering", () => {
 		resetSettingsForTest();
 		vi.restoreAllMocks();
 		restoreEnvValue("HOME", originalHome);
-		restoreEnvValue("OMP_PROFILE", originalOmpProfileEnv);
+		restoreEnvValue("JEOPI_PROFILE", originalJeopiProfileEnv);
 		restoreEnvValue("PI_PROFILE", originalPiProfileEnv);
 		restoreEnvValue("PI_CODING_AGENT_DIR", originalAgentDirEnv);
 		__resetDirsFromEnvForTests();

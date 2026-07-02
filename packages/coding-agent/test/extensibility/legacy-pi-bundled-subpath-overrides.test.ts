@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { BUNDLED_PI_REGISTRY_KEYS } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-bundled-keys";
-import { __buildLegacyPiPackageRootOverrides } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
+import { BUNDLED_PI_REGISTRY_KEYS } from "jeopi-cli/extensibility/plugins/legacy-pi-bundled-keys";
+import { __buildLegacyPiPackageRootOverrides } from "jeopi-cli/extensibility/plugins/legacy-pi-compat";
 
 // Regression for issue #3442: extension validation in compiled-binary mode
 // failed to resolve `@earendil-works/pi-ai/oauth` because the override map

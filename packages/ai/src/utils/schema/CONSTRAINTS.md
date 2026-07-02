@@ -93,10 +93,11 @@ For Cloud Code Assist Claude tool declarations, schema MUST satisfy stricter con
 
 ### 3.2 Sanitization contract
 
-1. Start with Google unsupported-key stripping behavior.
+1. Start with Google unsupported-key stripping behavior, **plus** the CCA-proto-unknown keyword set (`CCA_PROTO_UNKNOWN_SCHEMA_FIELDS`): `$id`, `$anchor`, `$comment`, `uniqueItems`, `not`, `if`, `then`, `else`, `contains`, `minContains`, `maxContains`, `dependentRequired`, `dependentSchemas`, `contentEncoding`, `contentMediaType`, `contentSchema`, `deprecated`, `readOnly`, `writeOnly`. These keywords have no field in the CCA `Schema` proto; a leaked one 400s the whole request with "Unknown name".
 2. **`nullable` keyword MUST be stripped** in CCA Claude path.
 3. `type: ["T", "null"]` becomes `type: "T"` with no `nullable` marker.
 4. Human-meaningful stripped keys are appended to `description` with the same spill format used by the Google dispatcher.
+5. **Boolean subschemas MUST be coerced to `{}`** in schema positions (`items` values and `properties` map entries). `items: true` / `properties: {x: false}` are valid 2020-12 JSON Schema — AJV validation passes them — but the CCA proto requires a Schema message and rejects the request with `Invalid value at '...parameters.properties[N].value.items'`. Booleans in value positions (`enum` entries, `default`) MUST be preserved.
 
 ### 3.3 Combiner/union normalization contract
 

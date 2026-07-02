@@ -225,8 +225,8 @@ omp plugin install name@marketplace-name
 
 Scope behavior:
 
-- **user** (default) — installed in `~/.omp/plugins/installed_plugins.json`, available in all projects
-- **project** — installed in `<project>/.omp/plugins/installed_plugins.json`, available only in that project
+- **user** (default) — installed in `~/.jeopi/plugins/installed_plugins.json`, available in all projects
+- **project** — installed in `<project>/.jeopi/plugins/installed_plugins.json`, available only in that project
 
 Project-scoped installs shadow user-scoped installs of the same plugin name.
 

@@ -1,5 +1,5 @@
 /**
- * `jeopi auth-broker` — manage the omp credential vault.
+ * `jeopi auth-broker` — manage the jeopi credential vault.
  */
 import { APP_NAME } from "jeopi-utils";
 import { Args, Command, Flags, renderCommandHelp } from "jeopi-utils/cli";

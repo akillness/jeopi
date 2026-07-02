@@ -129,7 +129,7 @@ async function initializeConnection(
 /**
  * Connect to an MCP server.
  * Has a 30 second timeout by default to prevent blocking startup.
- * Set OMP_MCP_TIMEOUT_MS=0 to disable MCP client-side timeouts.
+ * Set JEOPI_MCP_TIMEOUT_MS=0 to disable MCP client-side timeouts.
  */
 export async function connectToServer(
 	name: string,

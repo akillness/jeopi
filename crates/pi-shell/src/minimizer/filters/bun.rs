@@ -530,12 +530,11 @@ mod tests {
 		let out = filter(
 			&ctx,
 			"$ bun run check:tools && bun run --workspaces --if-present check\n$ biome check . \
-			 --no-errors-on-unmatched\nChecked 1690 files in 371ms. No fixes \
-			 applied.\njeopi-utils check: Checked 40 files in 11ms. No fixes \
-			 applied.\njeopi-utils check: $ tsgo -p tsconfig.json \
-			 --noEmit\njeopi-utils check: Exited with code 0\njeopi \
-			 check: Checked 1178 files in 287ms. No fixes applied.\njeopi check: \
-			 $ tsgo -p tsconfig.json --noEmit\njeopi check: Exited with code 0\n",
+			 --no-errors-on-unmatched\nChecked 1690 files in 371ms. No fixes applied.\njeopi-utils \
+			 check: Checked 40 files in 11ms. No fixes applied.\njeopi-utils check: $ tsgo -p \
+			 tsconfig.json --noEmit\njeopi-utils check: Exited with code 0\njeopi check: Checked \
+			 1178 files in 287ms. No fixes applied.\njeopi check: $ tsgo -p tsconfig.json \
+			 --noEmit\njeopi check: Exited with code 0\n",
 			0,
 		);
 
@@ -554,9 +553,8 @@ mod tests {
 		let ctx = ctx("bun", Some("run"), "bun run check:ts", &cfg);
 		let out = filter(
 			&ctx,
-			"jeopi-utils check: Checked 40 files in 11ms. No fixes \
-			 applied.\njeopi-utils check: Exited with code 0\n[Command timed out after 300 \
-			 seconds]\n",
+			"jeopi-utils check: Checked 40 files in 11ms. No fixes applied.\njeopi-utils check: \
+			 Exited with code 0\n[Command timed out after 300 seconds]\n",
 			1,
 		);
 

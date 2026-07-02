@@ -1,5 +1,5 @@
 // =============================================================================
-// Plugin Manifest Types (from package.json omp/pi field)
+// Plugin Manifest Types (from package.json jeopi/pi field)
 // =============================================================================
 
 /**
@@ -22,7 +22,7 @@ export interface PluginFeature {
 }
 
 /**
- * Plugin manifest from package.json omp or pi field.
+ * Plugin manifest from package.json jeopi or pi field.
  */
 export interface PluginManifest {
 	/** Plugin display name (defaults to package name) */
@@ -46,6 +46,19 @@ export interface PluginManifest {
 
 	/** Settings schema for plugin configuration */
 	settings?: Record<string, PluginSettingSchema>;
+}
+
+/**
+ * Minimal package.json shape needed when discovering plugin manifests.
+ */
+export interface PluginPackageJson {
+	name?: string;
+	version: string;
+	description?: string;
+	jeopi?: PluginManifest;
+	/** Pre-rebrand manifest key, still honored for installed legacy plugins. */
+	omp?: PluginManifest;
+	pi?: PluginManifest;
 }
 
 // =============================================================================
@@ -106,7 +119,7 @@ export interface InstalledPlugin {
 	version: string;
 	/** Absolute path to package directory */
 	path: string;
-	/** Parsed omp/pi manifest */
+	/** Parsed jeopi/pi manifest */
 	manifest: PluginManifest;
 	/**
 	 * Enabled features:
@@ -150,7 +163,7 @@ export interface PluginRuntimeConfig {
 // =============================================================================
 
 /**
- * Project-local plugin overrides (stored in .omp/plugin-overrides.json).
+ * Project-local plugin overrides (stored in .jeopi/plugin-overrides.json).
  * Allows per-project plugin configuration without modifying global state.
  */
 export interface ProjectPluginOverrides {

@@ -16,7 +16,7 @@
 #
 # Usage:
 #   scripts/ci-macos-upload-secrets.sh [dir] [--dry-run]
-#   OMP_REPO=owner/repo scripts/ci-macos-upload-secrets.sh ~/omp-signing
+#   JEOPI_REPO=owner/repo scripts/ci-macos-upload-secrets.sh ~/omp-signing
 
 set -euo pipefail
 
@@ -28,8 +28,8 @@ for arg in "$@"; do
 	*) DIR="$arg" ;;
 	esac
 done
-DIR="${DIR:-${OMP_SIGNING_DIR:-$HOME/omp-signing}}"
-REPO="${OMP_REPO:-can1357/oh-my-pi}"
+DIR="${DIR:-${JEOPI_SIGNING_DIR:-$HOME/omp-signing}}"
+REPO="${JEOPI_REPO:-can1357/oh-my-pi}"
 
 die() {
 	echo "ci-macos-upload-secrets: $1" >&2

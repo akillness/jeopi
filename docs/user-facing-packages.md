@@ -43,7 +43,7 @@ Sources: [`packages/stats/README.md`](../packages/stats/README.md), [`packages/s
 - Feature: local observability dashboard for AI usage statistics from session JSONL logs.
 - CLI modes: `omp stats` starts the dashboard server, opens `http://localhost:3847`, and keeps running; `omp stats --port <port>` changes the port; `omp stats --summary` prints a console summary; `omp stats --json` prints JSON and exits.
 - Programmatic API: exports helpers such as `syncAllSessions()` and `getDashboardStats()` for embedding.
-- Inputs/storage: reads `~/.omp/agent/sessions/`; stores aggregates in `~/.omp/stats.db`.
+- Inputs/storage: reads `~/.jeopi/agent/sessions/`; stores aggregates in `~/.jeopi/stats.db`.
 - Outputs: dashboard metrics and API endpoints including `/api/stats`, `/api/stats/models`, `/api/stats/folders`, `/api/stats/timeseries`, and `/api/sync`.
 - Side effects/limits: syncs session files before output; long-running dashboard stops on `Ctrl+C` and closes the stats database.
 

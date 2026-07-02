@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.14] - 2026-07-02
+
 ### Changed
 
 - Optimized stale-anchor remap validation from quadratic to linear complexity, significantly improving performance on large files.

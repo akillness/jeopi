@@ -341,7 +341,7 @@ export const SETTINGS_SCHEMA = {
 
 	// Auth broker — credentials proxied through a remote `jeopi auth-broker serve`
 	// host. Hidden from the UI; populate via env vars or hand-edited config.yml.
-	// Env (`OMP_AUTH_BROKER_URL` / `OMP_AUTH_BROKER_TOKEN`) takes precedence so
+	// Env (`JEOPI_AUTH_BROKER_URL` / `JEOPI_AUTH_BROKER_TOKEN`) takes precedence so
 	// per-machine overrides remain trivial.
 	"auth.broker.url": { type: "string", default: undefined },
 	"auth.broker.token": { type: "string", default: undefined },
@@ -473,7 +473,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Services",
 			label: "Max In-Flight Requests",
 			description:
-				'Maximum concurrent LLM requests per provider id (for example "openai" or "anthropic"), shared across local OMP processes with this config root. Omitted providers are unlimited.',
+				'Maximum concurrent LLM requests per provider id (for example "openai" or "anthropic"), shared across local jeopi processes with this config root. Omitted providers are unlimited.',
 		},
 	},
 
@@ -950,6 +950,17 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	"ui.agentLabel": {
+		type: "string",
+		default: "jeo",
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Agent Label",
+			description:
+				"Identity name led on its own line before assistant replies and thinking blocks (jeo-code style). Empty disables the label",
+		},
+	},
 	hideThinkingBlock: {
 		type: "boolean",
 		default: false,
@@ -2366,7 +2377,7 @@ export const SETTINGS_SCHEMA = {
 	},
 
 	// Auto-Learn (experimental): post-stop nudge to capture lessons to memory
-	// and mint/enhance isolated managed skills under ~/.omp/agent/managed-skills.
+	// and mint/enhance isolated managed skills under ~/.jeopi/agent/managed-skills.
 	// Master flag is default-off → zero footprint; sub-flags gate behaviour.
 	"autolearn.enabled": {
 		type: "boolean",
@@ -2742,7 +2753,7 @@ export const SETTINGS_SCHEMA = {
 	},
 	"hindsight.retainEveryNTurns": { type: "number", default: 3 },
 	"hindsight.retainOverlapTurns": { type: "number", default: 2 },
-	"hindsight.retainContext": { type: "string", default: "omp" },
+	"hindsight.retainContext": { type: "string", default: "jeopi" },
 
 	"hindsight.recallBudget": {
 		type: "enum",
@@ -3591,7 +3602,8 @@ export const SETTINGS_SCHEMA = {
 			tab: "tools",
 			group: "GitHub",
 			label: "GitHub View Cache",
-			description: "Cache rendered issue/PR view output in ~/.omp/cache/github-cache.db so repeated reads are free",
+			description:
+				"Cache rendered issue/PR view output in ~/.jeopi/cache/github-cache.db so repeated reads are free",
 		},
 	},
 
@@ -4022,7 +4034,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Isolation",
 			label: "Worktree Base Directory",
 			description:
-				"Base directory for agent-managed worktrees — task-isolation copies, `github` PR checkouts, and `jeopi worktree` cleanup all live here. Unset uses ~/.omp/wt. Must be an absolute or ~-relative path; relative paths are ignored. The OMP_WORKTREE_DIR env var overrides this.",
+				"Base directory for agent-managed worktrees — task-isolation copies, `github` PR checkouts, and `jeopi worktree` cleanup all live here. Unset uses ~/.jeopi/wt. Must be an absolute or ~-relative path; relative paths are ignored. The JEOPI_WORKTREE_DIR env var overrides this.",
 		},
 	},
 
@@ -4888,12 +4900,12 @@ export const SETTINGS_SCHEMA = {
 
 	"dev.autoqaPush.endpoint": {
 		type: "string",
-		default: "https://qa.omp.sh/v1/grievances" as const,
+		default: "https://qa.jeopi.sh/v1/grievances" as const,
 		ui: {
 			tab: "tools",
 			group: "Developer",
 			label: "Auto QA Push Endpoint",
-			description: "Full URL receiving Auto QA JSON reports (default https://qa.omp.sh/v1/grievances)",
+			description: "Full URL receiving Auto QA JSON reports (default https://qa.jeopi.sh/v1/grievances)",
 		},
 	},
 

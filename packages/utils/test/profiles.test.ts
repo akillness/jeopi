@@ -43,7 +43,7 @@ describe("profile directories", () => {
 	let originalAgentDir = "";
 	let originalProfile: string | undefined;
 	let originalAgentDirEnv: string | undefined;
-	let originalOmpProfileEnv: string | undefined;
+	let originalJeopiProfileEnv: string | undefined;
 	let originalPiProfileEnv: string | undefined;
 	let originalConfigDir: string | undefined;
 	let originalXdgDataHome: string | undefined;
@@ -54,14 +54,14 @@ describe("profile directories", () => {
 		originalAgentDir = getAgentDir();
 		originalProfile = getActiveProfile();
 		originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
-		originalOmpProfileEnv = process.env.OMP_PROFILE;
+		originalJeopiProfileEnv = process.env.JEOPI_PROFILE;
 		originalPiProfileEnv = process.env.PI_PROFILE;
 		originalConfigDir = process.env.PI_CONFIG_DIR;
 		originalXdgDataHome = process.env.XDG_DATA_HOME;
 		originalXdgStateHome = process.env.XDG_STATE_HOME;
 		originalXdgCacheHome = process.env.XDG_CACHE_HOME;
 		tempRoot = path.join(os.tmpdir(), "pi-utils-profiles", Snowflake.next());
-		configDir = `.omp-profile-test-${Snowflake.next()}`;
+		configDir = `.jeopi-profile-test-${Snowflake.next()}`;
 		await fs.mkdir(tempRoot, { recursive: true });
 		process.env.PI_CONFIG_DIR = configDir;
 		// Other suites that run before this one (e.g. dirs-python-gateway) may have
@@ -104,10 +104,10 @@ describe("profile directories", () => {
 		} else {
 			setProfile(undefined);
 		}
-		if (originalOmpProfileEnv === undefined) {
-			delete process.env.OMP_PROFILE;
+		if (originalJeopiProfileEnv === undefined) {
+			delete process.env.JEOPI_PROFILE;
 		} else {
-			process.env.OMP_PROFILE = originalOmpProfileEnv;
+			process.env.JEOPI_PROFILE = originalJeopiProfileEnv;
 		}
 		if (originalPiProfileEnv === undefined) {
 			delete process.env.PI_PROFILE;
@@ -176,7 +176,7 @@ describe("profile directories", () => {
 		const firstAgentDir = getAgentDir();
 		expect(firstAgentDir).toBe(path.join(os.homedir(), configDir, "profiles", "work", "agent"));
 
-		// Later, the base XDG app dir materializes (e.g. via `omp config init-xdg`
+		// Later, the base XDG app dir materializes (e.g. via `jeopi config init-xdg`
 		// migrating only the default-profile data). The named profile must stay
 		// in its original location until the user explicitly migrates it.
 		await fs.mkdir(path.join(process.env.XDG_DATA_HOME, APP_NAME), { recursive: true });
@@ -189,8 +189,8 @@ describe("profile directories", () => {
 	});
 
 	it("rejects path-like profile names", () => {
-		expect(() => setProfile("../work")).toThrow("Invalid OMP profile");
-		expect(() => setProfile("work/team")).toThrow("Invalid OMP profile");
+		expect(() => setProfile("../work")).toThrow("Invalid jeopi profile");
+		expect(() => setProfile("work/team")).toThrow("Invalid jeopi profile");
 	});
 
 	it("rejects trailing-dot profile names to avoid Windows path collisions", () => {
@@ -232,7 +232,7 @@ describe("profile directories", () => {
 	});
 
 	it("does not restore a profile-derived agent dir as the default baseline", () => {
-		// Reproduces a child process that inherited OMP_PROFILE=work plus the
+		// Reproduces a child process that inherited JEOPI_PROFILE=work plus the
 		// profile-derived PI_CODING_AGENT_DIR that setProfile propagates to
 		// children. The module-load snapshot must not capture that profile dir as
 		// the default baseline, or setProfile(undefined) would resolve default
@@ -242,7 +242,7 @@ describe("profile directories", () => {
 		expect(getAgentDir()).toBe(workAgentDir);
 		expect(process.env.PI_CODING_AGENT_DIR).toBe(workAgentDir);
 
-		// Re-snapshot exactly as module load would, now that OMP_PROFILE and the
+		// Re-snapshot exactly as module load would, now that JEOPI_PROFILE and the
 		// profile-derived PI_CODING_AGENT_DIR are present in the environment.
 		__resetProfileSnapshotForTests();
 
@@ -254,12 +254,12 @@ describe("profile directories", () => {
 });
 
 describe("profile env + name validation", () => {
-	it("honors OMP_PROFILE precedence and treats empty/default as the default profile", () => {
-		// OMP_PROFILE is canonical and wins over the legacy PI_PROFILE fallback.
+	it("honors JEOPI_PROFILE precedence and treats empty/default as the default profile", () => {
+		// JEOPI_PROFILE is canonical and wins over the legacy PI_PROFILE fallback.
 		expect(resolveProfileEnv("work", "other")).toBe("work");
-		// PI_PROFILE is consulted only when OMP_PROFILE is undefined.
+		// PI_PROFILE is consulted only when JEOPI_PROFILE is undefined.
 		expect(resolveProfileEnv(undefined, "work")).toBe("work");
-		// An explicitly-empty OMP_PROFILE selects the default profile; it must NOT
+		// An explicitly-empty JEOPI_PROFILE selects the default profile; it must NOT
 		// fall through to the lower-precedence PI_PROFILE.
 		expect(resolveProfileEnv("", "work")).toBeUndefined();
 		expect(resolveProfileEnv("   ", "work")).toBeUndefined();
@@ -270,8 +270,8 @@ describe("profile env + name validation", () => {
 	it("rejects uppercase profile names so isolation is filesystem-independent", () => {
 		// `work` and `WORK` would collide on case-insensitive macOS/Windows but
 		// differ on Linux; reject uppercase to keep profile identity stable.
-		expect(() => normalizeProfileName("WORK")).toThrow("Invalid OMP profile");
-		expect(() => normalizeProfileName("Work")).toThrow("Invalid OMP profile");
+		expect(() => normalizeProfileName("WORK")).toThrow("Invalid jeopi profile");
+		expect(() => normalizeProfileName("Work")).toThrow("Invalid jeopi profile");
 		expect(normalizeProfileName("work")).toBe("work");
 		expect(normalizeProfileName("work-2.0_a")).toBe("work-2.0_a");
 	});
@@ -365,16 +365,16 @@ describe("dirs module import behavior", () => {
 		}
 	});
 
-	it("ignores inherited profile agent dir when OMP_PROFILE explicitly selects default", async () => {
+	it("ignores inherited profile agent dir when JEOPI_PROFILE explicitly selects default", async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-utils-dirs-default-profile-"));
-		const probeConfigDir = `.omp-default-profile-${Snowflake.next()}`;
+		const probeConfigDir = `.jeopi-default-profile-${Snowflake.next()}`;
 		try {
 			const dirsUrl = url.pathToFileURL(path.join(import.meta.dir, "..", "src", "dirs.ts")).href;
 			const workAgentDir = path.join(os.homedir(), probeConfigDir, "profiles", "work", "agent");
 			const defaultAgentDir = path.join(os.homedir(), probeConfigDir, "agent");
 
-			for (const ompProfile of ["", "default"]) {
-				const probePath = path.join(root, `default-profile-${ompProfile || "empty"}.ts`);
+			for (const jeopiProfile of ["", "default"]) {
+				const probePath = path.join(root, `default-profile-${jeopiProfile || "empty"}.ts`);
 				await Bun.write(
 					probePath,
 					[
@@ -389,7 +389,7 @@ describe("dirs module import behavior", () => {
 				const childEnv: Record<string, string | undefined> = {
 					...process.env,
 					PI_CONFIG_DIR: probeConfigDir,
-					OMP_PROFILE: ompProfile,
+					JEOPI_PROFILE: jeopiProfile,
 					PI_PROFILE: "work",
 					PI_CODING_AGENT_DIR: workAgentDir,
 				};
@@ -421,7 +421,7 @@ describe("dirs module import behavior", () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-utils-profile-env-xdg-"));
 		const homeDir = path.join(root, "home");
 		const xdgStateRoot = path.join(root, "xdg-state");
-		const profileConfigDir = `.omp-env-xdg-${Snowflake.next()}`;
+		const profileConfigDir = `.jeopi-env-xdg-${Snowflake.next()}`;
 		try {
 			const envUrl = url.pathToFileURL(path.join(import.meta.dir, "..", "src", "env.ts")).href;
 			const dirsUrl = url.pathToFileURL(path.join(import.meta.dir, "..", "src", "dirs.ts")).href;
@@ -453,7 +453,7 @@ describe("dirs module import behavior", () => {
 				...process.env,
 				HOME: homeDir,
 				PI_CONFIG_DIR: profileConfigDir,
-				OMP_PROFILE: "work",
+				JEOPI_PROFILE: "work",
 				PI_PROFILE: "work",
 			};
 			delete childEnv.PI_CODING_AGENT_DIR;

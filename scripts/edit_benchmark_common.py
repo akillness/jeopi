@@ -624,7 +624,7 @@ def resolve_omp_bin(raw: str | None) -> str:
         return repo_bin
     found = shutil.which("omp")
     if not found:
-        raise SystemExit("Could not find `omp` on PATH and could not resolve the repo CLI. Set --omp-bin or OMP_BIN.")
+        raise SystemExit("Could not find `omp` on PATH and could not resolve the repo CLI. Set --omp-bin or JEOPI_BIN.")
     return found
 
 
@@ -883,7 +883,7 @@ def parse_args(description: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "--omp-bin",
-        default=os.environ.get("OMP_BIN"),
+        default=os.environ.get("JEOPI_BIN"),
         help="Executable to launch. Defaults to the repo checkout CLI, then falls back to `omp` on PATH.",
     )
     parser.add_argument(

@@ -69,11 +69,12 @@ Flow (`#handleRetryableError`):
 2. If `retry.enabled === false`, stop immediately (`false`, no retry started).
 3. Increment `#retryAttempt`.
 4. Create `#retryPromise` once (first attempt in a chain).
-5. If attempt exceeded `retry.maxRetries`, emit final failure event and stop.
+5. If attempt exceeded `retry.maxRetries`, emit final failure event and stop. Classifier refusals are exempt from this attempt budget (see step 8a).
 6. Compute capped jittered local delay: `min(retry.baseDelayMs * 2^(attempt-1), 8000ms) * (75–100% jitter)`. Stale OpenAI Responses replay errors skip the backoff entirely (delay `0`) after resetting the cached provider session.
 7. For usage-limit errors, parse retry hints and call auth storage (`markUsageLimitReached(...)`); if credential switching succeeds — including spending a banked Codex reset via the opt-in auto-redeem — force delay to `0`. Otherwise wait for whichever comes first — the provider's retry-after/backoff hint, or the earliest moment a temporarily blocked sibling credential frees up (`retryAtMs` + 1s buffer) so the next attempt can pick it up.
-8. If no credential switch occurred and `retry.modelFallback` is enabled, suppress the current model selector for cooldown and try configured retry model fallback chains, forcing delay to `0` on model switch. Classifier refusals skip the cooldown and only proceed when a fallback model was actually applied (pinned); with no fallback, the chain ends without an `auto_retry_start`.
-9. If the final delay exceeds `retry.maxDelayMs` and no credential/model switch happened, emit final failure and do not sleep.
+8. If no credential switch occurred and `retry.modelFallback` is enabled, suppress the current model selector for cooldown and try configured retry model fallback chains, forcing delay to `0` on model switch. Classifier refusals skip the cooldown and pin the fallback when one was applied.
+8a. Classifier refusal with no fallback model applied (chain exhausted, model fallback disabled, or no chain configured): instead of ending the chain, keep resending with a dedicated capped exponential backoff — `min(2000ms * 2^(streak-1), 30000ms)` (`PI_REFUSAL_BACKOFF_BASE_MS` overrides the base) — bounded by a 30-minute wall-clock budget per streak (`PI_REFUSAL_BACKOFF_BUDGET_MS`). When the budget is exceeded, emit final failure and stop. Refusal resends clamp `#retryAttempt` to `1` so the streak does not consume the transient-error budget.
+9. If the final delay exceeds `retry.maxDelayMs` and no credential/model switch happened (and the error is not a classifier refusal), emit final failure and do not sleep.
 10. Emit `auto_retry_start`.
 11. Remove the trailing assistant error message from agent runtime state (kept in persisted session history).
 12. Sleep with abort support.
@@ -87,9 +88,11 @@ Flow (`#handleRetryableError`):
 - retry cancellation during backoff sleep
 - max retries exceeded path
 - max delay exceeded path
-- classifier refusal with no fallback model applied (chain ends silently, no retry started)
+- classifier refusal whose resend streak exceeded the refusal wall-clock budget (emits final failure)
 
-`#retryPromise` resolves/clears when retry chain ends (success, cancellation, max-exceeded, max-delay failure, or classifier-refusal stop), via `#resolveRetry()`.
+`#retryPromise` resolves/clears when retry chain ends (success, cancellation, max-exceeded, max-delay failure, or refusal-budget failure), via `#resolveRetry()`.
+
+The refusal resend streak state (`#refusalBackoff`: start timestamp + streak attempt) clears on the same transitions.
 
 ## Backoff and max-attempt semantics
 

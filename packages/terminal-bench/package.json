@@ -3,7 +3,7 @@
   "private": true,
   "name": "jeopi-terminal-bench",
   "version": "0.0.1",
-  "description": "Run harbor-framework/terminal-bench-2 against the local omp build with a live progress/spend/success dashboard",
+  "description": "Run harbor-framework/terminal-bench-2 against the local jeopi build with a live progress/spend/success dashboard",
   "homepage": "https://github.com/akillness/jeopi",
   "author": "Can Boluk",
   "license": "MIT",

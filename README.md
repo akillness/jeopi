@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/hero.png" alt="jeopi — neon bug-wizard mascot and wordmark" width="100%">
+  <img src="assets/hero.gif" alt="jeopi — pixel-art π wizard mascot and wordmark, blinking terminal cursor" width="100%">
 </p>
 
 <h1 align="center">jeopi</h1>
@@ -31,12 +31,12 @@ jeopi keeps everything that makes oh-my-pi the most capable agent surface that s
 | | `omp` (upstream) | `jeopi` |
 | --- | --- | --- |
 | **Vague request** | starts working | crystallizes goal / constraints / **checkable acceptance criteria** first — "make it better" gets sharpened, not accepted |
-| **Planning** | plan agent | plan agent + **blocking `critic` gate**: `okay` / `iterate` / `reject` verdict, schema-enforced; no `okay`, no execution |
+| **Planning** | plan agent | plan agent + **blocking `critic` gate**: `okay` / `iterate` / `reject` verdict, schema-enforced — and **runtime-enforced**: after a non-okay verdict the `task` tool refuses to spawn execution agents and `write`/`edit` lock the working tree until a fresh `okay` (or a new user message) |
 | **Review** | `reviewer` (patch bugs) | `reviewer` + **`architect`**: severity-rated structural verdict that is invalid without an `inspected[]` evidence list |
-| **Failure** | retry | **failure-lesson loop** — capture what the failure proved, change the next attempt, split stuck subgoals; no apology loops |
+| **Failure** | retry | **failure-lesson loop** — capture what the failure proved, change the next attempt, split stuck subgoals; no apology loops. Runtime 3-strike counter closes the critic-iterate loop before it can spin |
 | **"Done"** | tests pass | **artifact gate** — a criterion with no command + observed result is reported `unresolved`, never implied met |
 | **Pipeline** | ad-hoc | **`/jeo`**: interview → frozen seed → plan → critic gate → bounded execution → artifact-gated verification |
-| **Identity** | `omp` | `jeopi` binary; your `~/.omp` auth, sessions, and settings carry over unchanged |
+| **Identity** | `omp` | `jeopi` binary; config directory renamed `~/.omp` → `~/.jeopi` (`jeopi config migrate-legacy` moves existing auth/sessions/settings over) |
 
 Real gates, no theater. The rest of this README is the engine both share.
 
@@ -62,7 +62,7 @@ git clone https://github.com/akillness/jeopi.git && cd jeopi
 bun run setup   # installs deps, builds natives, links the global `jeopi` command
 ```
 
-macOS · Linux · Windows · bun ≥ 1.3.14. Existing `~/.omp` auth, sessions, and settings are picked up as-is — `/login` once, keep it forever. jeopi is published as unscoped npm packages — CLI: `jeopi-cli` (binary command: `jeopi`), libraries: `jeopi-*` — fully independent of the `@oh-my-pi` scope, while legacy `@oh-my-pi/pi-*` plugin imports keep resolving through the built-in compat shim.
+macOS · Linux · Windows · bun ≥ 1.3.14. Upgrading from `omp`? Run `jeopi config migrate-legacy` once to move `~/.jeopi` to `~/.jeopi` — then `/login` once, keep it forever. jeopi is published as unscoped npm packages — CLI: `jeopi-cli` (binary command: `jeopi`), libraries: `jeopi-*` — fully independent of the `@oh-my-pi` scope, while legacy `@oh-my-pi/pi-*` plugin imports keep resolving through the built-in compat shim.
 
 ## The spec-first spine
 
@@ -84,6 +84,8 @@ The jeo-code pipeline, rebuilt on jeopi's native subagents. One command drives i
       ▼
   critic gate      read-only `critic` agent; schema-enforced verdict
       │            okay / iterate / reject. No okay → no execution. Ever.
+      │            Hard gate: the RUNTIME blocks execution spawns and
+      │            working-tree writes until the verdict is okay.
       ▼
   execute          bounded `task` subagents; a failed task feeds the lesson
       │            into the next attempt instead of retrying unchanged.
@@ -92,11 +94,45 @@ The jeo-code pipeline, rebuilt on jeopi's native subagents. One command drives i
                    its command + observed result, or is reported unresolved.
 ```
 
+### The gate is code, not vibes
+
+Upstream jeo-code enforces its critic verdict with a state file and hash check between CLI processes. jeopi runs the whole pipeline inside one agent session — so the gate lives in the session runtime instead:
+
+- A `critic` subagent's schema-validated verdict is recorded by the session the moment the run completes.
+- While the latest verdict is `iterate` or `reject`, the `task` tool **refuses to spawn any non-read-only agent**, and `write`/`edit`/patch **reject every working-tree mutation** (the `local://` sandbox stays writable for seeds, plans, and notes).
+- The gate clears in exactly two ways: a fresh critic returns `okay` for the revised plan, or **you** send a new message — the user regaining control is the only override.
+- A **3-strike counter** bounds the iterate loop: after three consecutive non-okay verdicts even critic re-submission is refused, forcing a stop-and-report instead of an unbounded re-planning spin.
+
+### Loop engineering
+
+The `/jeo` pipeline borrows the deep-research playbook for token efficiency and loop stability:
+
+- **Reference, don't repeat** — the seed and plan live in `local://` files; assignments and critic submissions pass paths, never re-inlined bodies.
+- **Delta-only iteration** — each critic re-submission carries a short "what changed per required fix" note; the critic re-reads the plan file, not a re-narrated history.
+- **Every round must change state** — an iteration that incorporates no new fact (a fix applied, a failure lesson, a user answer) is a prohibited no-op retry.
+- **Hard bounds everywhere** — interview ≤2 ask rounds, critic ≤2 iterations (runtime stop at 3 strikes), per-task retries ≤2, verification suite runs once.
+- **No silent caps** — anything a bound dropped (an unverified criterion, an unsplit subgoal) is named in the report.
+
 The same discipline is welded into the standing agents:
 
 - **`critic`** — read-only actionability gate. *"If you catch yourself softening a real, blocking gap into `iterate` just to avoid blocking, that softening is the signal the gap is real."*
 - **`architect`** — severity-rated structural review whose verdict is invalid without the list of files it actually inspected. A clean verdict is not the absence of inspection.
 - **`task`** — smallest correct change, subgoal-by-subgoal, verification evidence before `done`, debug leftovers removed.
+
+### Skills: jeo-skills works out of the box
+
+[jeo-skills](https://github.com/akillness/jeo-skills) (146 skills — `deep-research`, `god-tibo-imagen`, `perfectpixel`, `ooo`, …) installs into jeopi with zero extra linking: jeopi natively discovers `~/.agents/skills/` plus the `.claude` / `.codex` / `.config/opencode` skill dirs, at both user and project scope.
+
+```sh
+# global install — jeopi picks these up automatically
+npx skills add -g https://github.com/akillness/jeo-skills --skill deep-research --skill god-tibo-imagen
+
+# jeopi-only pin (native roots)
+#   global : ~/.jeopi/agent/skills/<skill>/SKILL.md
+#   project: .jeopi/skills/<skill>/SKILL.md
+```
+
+Invoke any discovered skill with `/skill:<name>` or let the agent route to it by description.
 
 ### Shell completions
 
@@ -340,7 +376,7 @@ Ollama `local` · Ollama Cloud · LM Studio `local` · llama.cpp `local` · vLLM
 
 ### Four knobs that make routing useful
 
-- **Custom providers** — Declare anything that speaks `openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `google-generative-ai`, or `google-vertex` in `~/.omp/agent/models.yml`.
+- **Custom providers** — Declare anything that speaks `openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `google-generative-ai`, or `google-vertex` in `~/.jeopi/agent/models.yml`.
 - **Fallback chains** — Per-role chains under `retry.fallbackChains`. When the primary throws 429s or hits a quota wall, the next entry takes the rest of the turn — restored on cooldown.
 - **Path-scoped models** — Scope `enabledModels` and `disabledProviders` entries to a `path:` prefix to pin a different model set on one repo without touching the global config. Scoped entries cover the path and everything under it.
 - **Round-robin credentials** — Stack API keys per provider and the runtime rotates with session affinity and per-credential backoff. Useful when one key would burn its quota by lunch.
@@ -591,6 +627,19 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[pi-iso](crates/pi-iso)**                        | Task isolation backend resolver: APFS clones, btrfs/zfs reflinks, overlayfs, projfs, rcopy          |
 | **[brush-core](crates/vendor/brush-core)**         | Vendored fork of [brush-shell](https://github.com/reubeno/brush) for embedded bash execution        |
 | **[brush-builtins](crates/vendor/brush-builtins)** | Vendored bash builtins (cd, echo, test, printf, read, export, etc.)                                 |
+
+## Changelog
+
+<!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
+Latest 5 released entries:
+- **[16.2.17]** (2026-07-02) — Clarified the root README changelog digest as the latest five released entries while keeping the full package history linked from `packages/coding-agent/CHANGELOG.md`.
+- **[16.2.16]** (2026-07-02) — Removed remaining `omp`-branded release surfaces from jeopi: CI runner labels and artifact names, Homebrew formula generation, issue templates, profile alias markers, plugin manifest discovery, local…
+- **[16.2.15]** (2026-07-02) — Fixed the release workflow to refresh the root README changelog digest from `packages/coding-agent/CHANGELOG.md` during version bumps, so each release tag carries the same latest-five digest…
+- **[16.2.14]** (2026-07-02) — Added `providers.anthropic.serverSideFallback` configuration option to opt into Anthropic's server-side-fallback beta chain, allowing Claude Fable 5 / Mythos 5 requests to automatically retry on Opus…
+- **[16.2.13]** (2026-07-01) — Fixed `models.yml` remote compaction schema support for V2 streaming endpoint fields. (#4146)
+
+See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
+<!-- CHANGELOG:END -->
 
 ## Contributing
 

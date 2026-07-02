@@ -11,7 +11,13 @@ import { getConfigDirPaths } from "../../config";
 import { resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import { installLegacyPiSpecifierShim } from "./legacy-pi-compat";
 import { normalizePluginRuntimeConfig } from "./runtime-config";
-import type { InstalledPlugin, PluginManifest, PluginRuntimeConfig, ProjectPluginOverrides } from "./types";
+import type {
+	InstalledPlugin,
+	PluginManifest,
+	PluginPackageJson,
+	PluginRuntimeConfig,
+	ProjectPluginOverrides,
+} from "./types";
 
 /** Installed plugin plus the root scope that supplied its runtime metadata. */
 export interface ScopedInstalledPlugin extends InstalledPlugin {
@@ -43,7 +49,7 @@ async function loadRuntimeConfig(home?: string): Promise<PluginRuntimeConfig> {
 }
 
 /**
- * Load project-local plugin overrides (checks .omp and .pi directories).
+ * Load project-local plugin overrides (checks .jeopi and .pi directories).
  */
 async function loadProjectOverrides(cwd: string): Promise<ProjectPluginOverrides> {
 	for (const overridesPath of getConfigDirPaths("plugin-overrides.json", { user: false, cwd })) {
@@ -101,7 +107,7 @@ async function collectPluginsAtRoot(
 	const plugins: ScopedInstalledPlugin[] = [];
 	for (const name of names) {
 		const pluginPkgPath = path.join(nodeModulesPath, name, "package.json");
-		let pluginPkg: { version: string; omp?: PluginManifest; pi?: PluginManifest };
+		let pluginPkg: PluginPackageJson;
 		try {
 			pluginPkg = await Bun.file(pluginPkgPath).json();
 		} catch (err) {
@@ -111,9 +117,9 @@ async function collectPluginsAtRoot(
 			throw err;
 		}
 
-		const manifest: PluginManifest | undefined = pluginPkg.omp || pluginPkg.pi;
+		const manifest: PluginManifest | undefined = pluginPkg.jeopi || pluginPkg.omp || pluginPkg.pi;
 		if (!manifest) {
-			// No omp/pi plugin manifest, skip
+			// No jeopi/omp/pi plugin manifest, skip
 			continue;
 		}
 		manifest.version = pluginPkg.version;
@@ -150,9 +156,9 @@ async function collectPluginsAtRoot(
  * Get list of enabled plugins with their resolved configurations.
  *
  * Enumerates two plugin roots in order: the user root
- * (`getPluginsDir(home)`) and, when a project anchor (`.omp/` or `.git/`)
+ * (`getPluginsDir(home)`) and, when a project anchor (`.jeopi/` or `.git/`)
  * exists at or above `cwd`, the project root
- * (`<projectAnchor>/.omp/plugins`). Each root contributes the union of its
+ * (`<projectAnchor>/.jeopi/plugins`). Each root contributes the union of its
  * `package.json#dependencies` and `omp-plugins.lock.json#plugins`. Project
  * entries shadow user entries with the same package name, matching the
  * shadow semantics of `MarketplaceManager.listInstalledPlugins`.
@@ -235,13 +241,14 @@ function readDeclaredManifestEntries(dir: string): DeclaredManifestEntries {
 	} catch {
 		return { declared: false, files: [] };
 	}
-	let pkg: { omp?: { extensions?: unknown }; pi?: { extensions?: unknown } };
+	type ManifestExtensionEntries = { extensions?: unknown };
+	let pkg: { jeopi?: ManifestExtensionEntries; omp?: ManifestExtensionEntries; pi?: ManifestExtensionEntries };
 	try {
-		pkg = JSON.parse(raw) as { omp?: { extensions?: unknown }; pi?: { extensions?: unknown } };
+		pkg = JSON.parse(raw) as typeof pkg;
 	} catch {
 		return { declared: false, files: [] };
 	}
-	const declared = (pkg.omp ?? pkg.pi)?.extensions;
+	const declared = (pkg.jeopi ?? pkg.omp ?? pkg.pi)?.extensions;
 	if (!Array.isArray(declared) || declared.length === 0) {
 		return { declared: false, files: [] };
 	}

@@ -17,8 +17,8 @@ import { loadCapability } from "jeopi-cli/capability";
 import { clearCache } from "jeopi-cli/capability/fs";
 import type { Skill } from "jeopi-cli/capability/skill";
 import { removeSyncWithRetries } from "jeopi-utils";
-import "jeopi/capability/skill";
-import "jeopi/discovery/github";
+import "jeopi-cli/capability/skill";
+import "jeopi-cli/discovery/github";
 
 function writeSkill(root: string, name: string, description: string | null): void {
 	const skillDir = path.join(root, name);

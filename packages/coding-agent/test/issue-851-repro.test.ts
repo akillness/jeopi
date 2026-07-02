@@ -6,7 +6,7 @@ import { loadCapability } from "jeopi-cli/capability";
 import { clearCache as clearFsCache } from "jeopi-cli/capability/fs";
 import { clearClaudePluginRootsCache } from "jeopi-cli/discovery/helpers";
 import { removeWithRetries } from "jeopi-utils";
-import "jeopi/discovery/claude-plugins";
+import "jeopi-cli/discovery/claude-plugins";
 import type { MCPServer } from "jeopi-cli/capability/mcp";
 
 describe("issue-851: claude-plugins loads flat .mcp.json shape", () => {

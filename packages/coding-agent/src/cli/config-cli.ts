@@ -21,12 +21,13 @@ import {
 import { SETTINGS_SCHEMA } from "../config/settings-schema";
 import { theme } from "../modes/theme/theme";
 import { initXdg } from "./commands/init-xdg";
+import { migrateLegacyConfig } from "./commands/migrate-legacy";
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export type ConfigAction = "list" | "get" | "set" | "reset" | "path" | "init-xdg";
+export type ConfigAction = "list" | "get" | "set" | "reset" | "path" | "init-xdg" | "migrate-legacy";
 
 export interface ConfigCommandArgs {
 	action: ConfigAction;
@@ -74,7 +75,7 @@ function getSettingValues(def: CliSettingDef): readonly string[] | undefined {
 // Argument Parser
 // =============================================================================
 
-const VALID_ACTIONS: ConfigAction[] = ["list", "get", "set", "reset", "path", "init-xdg"];
+const VALID_ACTIONS: ConfigAction[] = ["list", "get", "set", "reset", "path", "init-xdg", "migrate-legacy"];
 
 /**
  * Parse config subcommand arguments.
@@ -237,6 +238,21 @@ function parseAndSetValue(path: SettingPath, rawValue: string): void {
 // =============================================================================
 
 export async function runConfigCommand(cmd: ConfigCommandArgs): Promise<void> {
+	// migrate-legacy and init-xdg are directory-bootstrapping operations that
+	// must run BEFORE Settings.init() touches the config root: Settings.init()
+	// opens AgentStorage (agent.db), which mkdir's the agent dir as a side
+	// effect. Running it first would silently create `~/.jeopi` ahead of the
+	// migration check, making `hasUnmigratedLegacyConfigDir()` always report
+	// "nothing to migrate" even when a real `~/.omp` install exists.
+	if (cmd.action === "migrate-legacy") {
+		await migrateLegacyConfig();
+		return;
+	}
+	if (cmd.action === "init-xdg") {
+		await initXdg();
+		return;
+	}
+
 	await Settings.init();
 
 	switch (cmd.action) {
@@ -254,9 +270,6 @@ export async function runConfigCommand(cmd: ConfigCommandArgs): Promise<void> {
 			break;
 		case "path":
 			handlePath();
-			break;
-		case "init-xdg":
-			await initXdg();
 			break;
 	}
 }
@@ -402,6 +415,7 @@ ${chalk.bold("Commands:")}
   reset <key>        Reset a setting to its default value
   path               Print the config directory path
   init-xdg           Initialize XDG Base Directory structure
+  migrate-legacy     Migrate ~/.omp to ~/.jeopi (pre-rebrand config directory)
 
 ${chalk.bold("Options:")}
   --json             Output as JSON
@@ -415,6 +429,7 @@ ${chalk.bold("Examples:")}
   ${APP_NAME} config reset steeringMode
   ${APP_NAME} config list --json
   ${APP_NAME} config init-xdg
+  ${APP_NAME} config migrate-legacy
 
 ${chalk.bold("Boolean Values:")}
   true, false, yes, no, on, off, 1, 0

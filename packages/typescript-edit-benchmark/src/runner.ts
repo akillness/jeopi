@@ -24,7 +24,7 @@ import { verifyExpectedFileSubset, verifyExpectedFiles } from "./verify";
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 const RUNS_DIR = path.join(REPO_ROOT, "runs");
 const TMP = path.join(RUNS_DIR, `rb-${Math.random().toString(36).slice(2, 10)}`);
-const CLI_PATH = Bun.fileURLToPath(import.meta.resolve("jeopi/cli"));
+const CLI_PATH = Bun.fileURLToPath(import.meta.resolve("jeopi-cli/cli"));
 
 function formatLogPath(logFile: string): string {
 	const relativePath = path.relative(REPO_ROOT, logFile);

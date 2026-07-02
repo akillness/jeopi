@@ -17,6 +17,7 @@ import readPathTemplate from "../prompts/memories/read-path.md" with { type: "te
 import stageOneInputTemplate from "../prompts/memories/stage_one_input.md" with { type: "text" };
 import stageOneSystemTemplate from "../prompts/memories/stage_one_system.md" with { type: "text" };
 import type { AgentSession } from "../session/agent-session";
+import { okfTimestamp, parseOkfDocument, renderOkfDocument, stripOkfFrontmatter } from "./okf";
 import {
 	claimStage1Jobs,
 	clearMemoryData as clearMemoryDataInDb,
@@ -186,7 +187,7 @@ async function readMemoryToolDeveloperInstructionsSnapshot(
 
 	let summary = "";
 	try {
-		summary = (await Bun.file(path.join(memoryRoot, "memory_summary.md")).text()).trim();
+		summary = stripOkfFrontmatter(await Bun.file(path.join(memoryRoot, "memory_summary.md")).text()).trim();
 	} catch {
 		// Missing or unreadable summary — injection is best-effort; fall through
 		// so any captured lessons still surface on their own.
@@ -790,10 +791,18 @@ async function syncPhase2Artifacts(memoryRoot: string, outputs: Stage1OutputRow[
 		const stem = formatRolloutFilename(row.threadId, row.rolloutSlug);
 		const filename = `${stem}.md`;
 		keepFiles.add(filename);
-		const body = [`thread_id: ${row.threadId}`, `updated_at: ${row.sourceUpdatedAt}`, "", row.rolloutSummary].join(
-			"\n",
+		const document = renderOkfDocument(
+			{
+				type: "Session Summary",
+				title: `Rollout ${stem}`,
+				description: "Summary of one jeopi session rollout, feeding memory consolidation.",
+				tags: ["jeopi", "memory", "rollout"],
+				timestamp: okfTimestamp(row.sourceUpdatedAt),
+				extra: { thread_id: row.threadId, updated_at: row.sourceUpdatedAt },
+			},
+			row.rolloutSummary,
 		);
-		await Bun.write(path.join(summariesDir, filename), `${body.trim()}\n`);
+		await Bun.write(path.join(summariesDir, filename), document);
 	}
 
 	const currentFiles = await fs.readdir(summariesDir).catch(() => [] as string[]);
@@ -804,7 +813,17 @@ async function syncPhase2Artifacts(memoryRoot: string, outputs: Stage1OutputRow[
 	}
 
 	const rawBody = buildRawMemoriesMarkdown(outputs);
-	await Bun.write(path.join(memoryRoot, "raw_memories.md"), rawBody);
+	const rawDocument = renderOkfDocument(
+		{
+			type: "Raw Memories",
+			title: "jeopi Raw Memories",
+			description: "Per-thread raw memory extracts feeding the consolidation pass.",
+			tags: ["jeopi", "memory", "raw"],
+			timestamp: okfTimestamp(),
+		},
+		rawBody,
+	);
+	await Bun.write(path.join(memoryRoot, "raw_memories.md"), rawDocument);
 }
 
 async function cleanupConsolidatedArtifacts(memoryRoot: string): Promise<void> {
@@ -837,7 +856,18 @@ async function readRolloutSummaries(memoryRoot: string): Promise<string> {
 			.text()
 			.catch(() => "");
 		if (!text.trim()) continue;
-		blocks.push(`--- ${name} ---\n${text.trim()}`);
+		// OKF atoms carry thread identity in frontmatter; rebuild the plain
+		// header the consolidation prompt has always seen. Legacy files (no
+		// frontmatter) already carry that header inline and pass verbatim.
+		const { frontmatter, body } = parseOkfDocument(text);
+		const threadId = typeof frontmatter?.thread_id === "string" ? frontmatter.thread_id : undefined;
+		const updatedAt = typeof frontmatter?.updated_at === "number" ? frontmatter.updated_at : undefined;
+		const content =
+			threadId !== undefined
+				? [`thread_id: ${threadId}`, `updated_at: ${updatedAt ?? ""}`, "", body.trim()].join("\n")
+				: body.trim();
+		if (!content.trim()) continue;
+		blocks.push(`--- ${name} ---\n${content.trim()}`);
 	}
 	if (blocks.length === 0) return "No rollout summaries yet.";
 	return blocks.join("\n\n");
@@ -860,7 +890,7 @@ async function runConsolidationModel(options: {
 	}>;
 }> {
 	const { memoryRoot, model, apiKey } = options;
-	const rawMemories = await Bun.file(path.join(memoryRoot, "raw_memories.md")).text();
+	const rawMemories = stripOkfFrontmatter(await Bun.file(path.join(memoryRoot, "raw_memories.md")).text());
 	const rolloutSummaries = await readRolloutSummaries(memoryRoot);
 	const input = prompt.render(consolidationTemplate, {
 		raw_memories: truncateByApproxTokens(rawMemories, 20_000),
@@ -938,8 +968,35 @@ async function applyConsolidation(
 		}>;
 	},
 ): Promise<void> {
-	await Bun.write(path.join(memoryRoot, "MEMORY.md"), `${consolidated.memoryMd.trim()}\n`);
-	await Bun.write(path.join(memoryRoot, "memory_summary.md"), `${consolidated.memorySummary.trim()}\n`);
+	const timestamp = okfTimestamp();
+	await Bun.write(
+		path.join(memoryRoot, "MEMORY.md"),
+		renderOkfDocument(
+			{
+				type: "Memory",
+				title: "jeopi Consolidated Memory",
+				description: "Long-term consolidated memory jeopi maintains for this project.",
+				tags: ["jeopi", "memory", "consolidated"],
+				timestamp,
+			},
+			// The model occasionally emits its own frontmatter; strip it so the
+			// atom never carries a nested fence.
+			stripOkfFrontmatter(consolidated.memoryMd.trim()),
+		),
+	);
+	await Bun.write(
+		path.join(memoryRoot, "memory_summary.md"),
+		renderOkfDocument(
+			{
+				type: "Memory Summary",
+				title: "jeopi Memory Summary",
+				description: "Prompt-time memory guidance injected at jeopi session start.",
+				tags: ["jeopi", "memory", "summary"],
+				timestamp,
+			},
+			stripOkfFrontmatter(consolidated.memorySummary.trim()),
+		),
+	);
 	const skillsDir = path.join(memoryRoot, "skills");
 	await fs.mkdir(skillsDir, { recursive: true });
 	const keep = new Set<string>();
@@ -1341,23 +1398,37 @@ async function appendLearnedLine(filePath: string, line: string): Promise<void> 
 	} catch (err) {
 		if (!isEnoent(err)) throw err;
 	}
+	// The `- ` filter keeps only lesson lines, so a legacy file (no
+	// frontmatter) and an OKF atom (frontmatter re-rendered below) both fold
+	// into the same newest-first list.
 	const prior = existing
 		.split("\n")
 		.map(l => l.trim())
 		.filter(l => l.startsWith("- ") && l !== line);
 	const lessons = [line, ...prior].slice(0, MAX_LEARNED_LESSONS);
-	await Bun.write(filePath, `${lessons.join("\n")}\n`);
+	const document = renderOkfDocument(
+		{
+			type: "Lessons",
+			title: "jeopi Learned Lessons",
+			description: "Lessons captured via the learn tool, newest first.",
+			tags: ["jeopi", "memory", "lessons"],
+			timestamp: okfTimestamp(),
+		},
+		lessons.join("\n"),
+	);
+	await Bun.write(filePath, document);
 }
 
 /**
  * Read `learned.md`, neutralizing each line on read too — a hand-edited or
  * pre-existing file bypasses write-time normalization and the block renders
  * unescaped into the system prompt. Returns "" when absent/unreadable.
+ * OKF frontmatter is stripped so only lesson lines reach the prompt.
  */
 async function readLearnedLessons(memoryRoot: string): Promise<string> {
 	let raw = "";
 	try {
-		raw = (await Bun.file(path.join(memoryRoot, LEARNED_LESSONS_FILE)).text()).trim();
+		raw = stripOkfFrontmatter(await Bun.file(path.join(memoryRoot, LEARNED_LESSONS_FILE)).text()).trim();
 	} catch {
 		return "";
 	}

@@ -6,6 +6,7 @@ import * as ai from "jeopi-ai";
 import { Effort, type Model } from "jeopi-ai";
 import { Settings } from "jeopi-cli/config/settings";
 import { buildMemoryToolDeveloperInstructions, getMemoryRoot, startMemoryStartupTask } from "jeopi-cli/memories";
+import { stripOkfFrontmatter, validateOkfDocument } from "jeopi-cli/memories/okf";
 import * as memoryStorage from "jeopi-cli/memories/storage";
 import { getAgentDbPath, Snowflake, TempDir } from "jeopi-utils";
 
@@ -232,12 +233,12 @@ describe("memories runtime", () => {
 
 		const memoryRoot = getMemoryRoot(fx.agentDir, fx.session.sessionManager.getCwd());
 		await settle(fx.whenSettled, "phase1->phase2 pipeline");
-		expect((await fs.readFile(path.join(memoryRoot, "MEMORY.md"), "utf8")).trim()).toBe(
-			"# Memory\n\nConsolidated body",
-		);
-		expect((await fs.readFile(path.join(memoryRoot, "memory_summary.md"), "utf8")).trim()).toBe(
-			"Consolidated summary",
-		);
+		const memoryMd = await fs.readFile(path.join(memoryRoot, "MEMORY.md"), "utf8");
+		expect(validateOkfDocument(memoryMd)).toEqual([]);
+		expect(stripOkfFrontmatter(memoryMd).trim()).toBe("# Memory\n\nConsolidated body");
+		const memorySummary = await fs.readFile(path.join(memoryRoot, "memory_summary.md"), "utf8");
+		expect(validateOkfDocument(memorySummary)).toEqual([]);
+		expect(stripOkfFrontmatter(memorySummary).trim()).toBe("Consolidated summary");
 		expect((await fs.readFile(path.join(memoryRoot, "skills", "deploy-playbook", "SKILL.md"), "utf8")).trim()).toBe(
 			"# Deploy\nUse blue/green.",
 		);
@@ -311,7 +312,9 @@ describe("memories runtime", () => {
 
 		const memoryRoot = getMemoryRoot(fx.agentDir, fx.session.sessionManager.getCwd());
 		await settle(fx.whenSettled, "effort-clamp pipeline");
-		expect((await fs.readFile(path.join(memoryRoot, "MEMORY.md"), "utf8")).trim()).toBe("# Memory\n\nBody");
+		expect(stripOkfFrontmatter(await fs.readFile(path.join(memoryRoot, "MEMORY.md"), "utf8")).trim()).toBe(
+			"# Memory\n\nBody",
+		);
 
 		expect(spy).toHaveBeenCalledTimes(2);
 		// stage1 requested `low`, phase2 requested `medium`; both must clamp up to the
@@ -380,7 +383,13 @@ describe("memories runtime", () => {
 		const files = await fs.readdir(path.join(memoryRoot, "rollout_summaries"));
 		expect(files.includes("old.md")).toBe(false);
 		expect(files).toEqual(expect.arrayContaining(["thread-a-alpha.md", "thread-b-beta.md"]));
+		// Every synced artifact is an OKF atom carrying its thread identity.
+		for (const file of ["thread-a-alpha.md", "thread-b-beta.md"]) {
+			const atom = await fs.readFile(path.join(memoryRoot, "rollout_summaries", file), "utf8");
+			expect(validateOkfDocument(atom)).toEqual([]);
+		}
 		const raw = await fs.readFile(path.join(memoryRoot, "raw_memories.md"), "utf8");
+		expect(validateOkfDocument(raw)).toEqual([]);
 		expect(raw.indexOf("## thread-b")).toBeLessThan(raw.indexOf("## thread-a"));
 	});
 
@@ -410,7 +419,7 @@ describe("memories runtime", () => {
 		expect(await Bun.file(path.join(memoryRoot, "MEMORY.md")).exists()).toBe(false);
 		expect(await Bun.file(path.join(memoryRoot, "memory_summary.md")).exists()).toBe(false);
 		expect(await Bun.file(path.join(memoryRoot, "skills")).exists()).toBe(false);
-		expect((await fs.readFile(path.join(memoryRoot, "raw_memories.md"), "utf8")).trim()).toBe(
+		expect(stripOkfFrontmatter(await fs.readFile(path.join(memoryRoot, "raw_memories.md"), "utf8")).trim()).toBe(
 			"# Raw Memories\n\nNo raw memories yet.",
 		);
 	});

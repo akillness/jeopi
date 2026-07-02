@@ -2,13 +2,15 @@
 
 ## [Unreleased]
 
+## [16.2.14] - 2026-07-02
+
 ### Added
 
 - Added `wrapFetchForExtraCa` and `withExtraCaFetch` utility functions to apply `NODE_EXTRA_CA_CERTS` to Bun's `RequestInit.tls.ca` configuration.
 
 ### Changed
 
-- Renamed `APP_NAME` from `omp` to `jeopi`. `CONFIG_DIR_NAME` remains `.omp`, so config-root paths are unchanged; XDG app directories and log-file prefixes now use `jeopi`.
+- Renamed `APP_NAME` from `omp` to `jeopi`. `CONFIG_DIR_NAME` is now `.jeopi` (was `.omp`); XDG app directories and log-file prefixes now use `jeopi`. Added `LEGACY_CONFIG_DIR_NAME` (`.omp`), `hasUnmigratedLegacyConfigDir()`, and `migrateLegacyConfigDir()` to detect and move an existing `~/.omp` to `~/.jeopi` (exposed as `jeopi config migrate-legacy` in coding-agent) — never run automatically, so a live process never renames a directory another process might have open.
 - The rotating log transport and crash-log path now derive their filename from `APP_NAME` (`jeopi.<DATE>.log`, `jeopi-crash.log`) instead of hardcoding `omp.*`, matching `getLogPath()`/`getDebugLogPath()` so path helpers and the writer agree.
 
 ## [16.2.9] - 2026-06-30

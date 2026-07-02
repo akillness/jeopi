@@ -2,8 +2,8 @@
  * Managed-skills primitives for the experimental auto-learn feature.
  *
  * Managed skills are auto-generated/enhanced `SKILL.md` files kept in an
- * isolated directory (`~/.omp/agent/managed-skills`) separate from
- * user-authored skills (`~/.omp/agent/skills`). They are discovered and
+ * isolated directory (`~/.jeopi/agent/managed-skills`) separate from
+ * user-authored skills (`~/.jeopi/agent/skills`). They are discovered and
  * surfaced like normal skills, but every write here is confined to
  * `getManagedSkillsDir()` — auto-management can never touch authored skills.
  */
@@ -14,14 +14,14 @@ import { YAML } from "bun";
 import { getAgentDir, isEnoent } from "jeopi-utils";
 
 /** Provider id stamped on discovered managed skills (distinguishes them from authored). */
-export const MANAGED_SKILLS_PROVIDER_ID = "omp-managed";
+export const MANAGED_SKILLS_PROVIDER_ID = "jeopi-managed";
 
 /** Hard cap on a managed SKILL.md body to keep generated skills bounded. */
 export const MAX_MANAGED_SKILL_BYTES = 64_000;
 
 const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-/** Resolve the isolated managed-skills directory (`~/.omp/agent/managed-skills`). */
+/** Resolve the isolated managed-skills directory (`~/.jeopi/agent/managed-skills`). */
 export function getManagedSkillsDir(agentDir: string = getAgentDir()): string {
 	return path.join(agentDir, "managed-skills");
 }

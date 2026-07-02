@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getManagedSkillsDir } from "jeopi-cli/autolearn/managed-skills";
-import "jeopi/discovery";
+import "jeopi-cli/discovery";
 import { loadSkills } from "jeopi-cli/extensibility/skills";
 import { removeWithRetries } from "jeopi-utils";
 import { getAgentDir, setAgentDir } from "jeopi-utils/dirs";
@@ -23,13 +23,13 @@ describe("managed-skills discovery", () => {
 	let originalAgentDir: string;
 	beforeEach(async () => {
 		originalAgentDir = getAgentDir();
-		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "omp-managed-disco-home-"));
+		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "jeopi-managed-disco-home-"));
 		// cwd MUST live under the fake home so loadSkills' ancestor walk is bounded
-		// and cannot pick up ambient /tmp/.omp or /.omp fixtures (full-suite-safe).
+		// and cannot pick up ambient /tmp/.jeopi or /.jeopi fixtures (full-suite-safe).
 		tempCwd = path.join(tempHome, "work");
 		await fs.mkdir(tempCwd, { recursive: true });
 		spyOn(os, "homedir").mockReturnValue(tempHome);
-		setAgentDir(path.join(tempHome, ".omp", "agent"));
+		setAgentDir(path.join(tempHome, ".jeopi", "agent"));
 		managedDir = getManagedSkillsDir();
 		// Authored user skills live in the sibling `skills/` dir under .../agent.
 		authoredDir = path.join(path.dirname(managedDir), "skills");
@@ -41,12 +41,12 @@ describe("managed-skills discovery", () => {
 		await removeWithRetries(tempHome);
 	});
 
-	it("surfaces a managed skill tagged with the omp-managed provider", async () => {
+	it("surfaces a managed skill tagged with the jeopi-managed provider", async () => {
 		await writeSkill(managedDir, "foo", "A managed skill.");
 		const { skills } = await loadSkills({ cwd: tempCwd });
 		const foo = skills.find(s => s.name === "foo");
 		expect(foo).toBeDefined();
-		expect(foo?.source).toBe("omp-managed:user");
+		expect(foo?.source).toBe("jeopi-managed:user");
 	});
 
 	it("lets an authored skill win a name collision and drops the managed one", async () => {
@@ -56,7 +56,7 @@ describe("managed-skills discovery", () => {
 		const bars = skills.filter(s => s.name === "bar");
 		expect(bars).toHaveLength(1);
 		expect(bars[0]?.source).toBe("native:user");
-		expect(skills.some(s => s.name === "bar" && s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.name === "bar" && s.source === "jeopi-managed:user")).toBe(false);
 	});
 
 	it("lets an authored skill from a NON-native provider win over a managed skill", async () => {
@@ -68,7 +68,7 @@ describe("managed-skills discovery", () => {
 		const bazzes = skills.filter(s => s.name === "baz");
 		expect(bazzes).toHaveLength(1);
 		expect(bazzes[0]?.source).toBe("agents:user");
-		expect(skills.some(s => s.name === "baz" && s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.name === "baz" && s.source === "jeopi-managed:user")).toBe(false);
 	});
 
 	it("lets a custom-directory authored skill win over a managed skill", async () => {
@@ -97,13 +97,13 @@ describe("managed-skills discovery", () => {
 		});
 		const dises = skills.filter(s => s.name === "dis");
 		expect(dises).toHaveLength(1);
-		expect(dises[0]?.source).toBe("omp-managed:user");
+		expect(dises[0]?.source).toBe("jeopi-managed:user");
 	});
 
 	it("defers a managed skill to an ENABLED authored skill hidden behind a disabled higher-priority one", async () => {
 		// claude (priority 80, fully disabled) shadows agents (70, enabled) at
 		// capability dedup; agents survives only in result.all. Managed must NOT mask
-		// the enabled authored name, so no omp-managed skill is surfaced here.
+		// the enabled authored name, so no jeopi-managed skill is surfaced here.
 		await writeSkill(path.join(tempHome, ".claude", "skills"), "shadowed", "Disabled claude.");
 		await writeSkill(path.join(tempHome, ".agents", "skills"), "shadowed", "Enabled agents.");
 		await writeSkill(managedDir, "shadowed", "Managed shadowed.");
@@ -112,7 +112,7 @@ describe("managed-skills discovery", () => {
 			enableClaudeUser: false,
 			enableClaudeProject: false,
 		});
-		expect(skills.some(s => s.name === "shadowed" && s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.name === "shadowed" && s.source === "jeopi-managed:user")).toBe(false);
 	});
 
 	it("skips a managed skill whose on-disk frontmatter name is unsafe", async () => {
@@ -124,12 +124,12 @@ describe("managed-skills discovery", () => {
 		);
 		const { skills } = await loadSkills({ cwd: tempCwd });
 		expect(skills.some(s => s.name.includes("<"))).toBe(false);
-		expect(skills.some(s => s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.source === "jeopi-managed:user")).toBe(false);
 	});
 
 	it("is a no-op when the managed dir is absent", async () => {
 		const { skills, warnings } = await loadSkills({ cwd: tempCwd });
-		expect(skills.some(s => s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.source === "jeopi-managed:user")).toBe(false);
 		expect(warnings.some(w => w.message.includes("managed-skills"))).toBe(false);
 	});
 });

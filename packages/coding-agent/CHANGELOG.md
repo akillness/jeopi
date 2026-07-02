@@ -2,20 +2,55 @@
 
 ## [Unreleased]
 
+## [16.2.17] - 2026-07-02
+
+### Changed
+
+- Clarified the root README changelog digest as the latest five released entries while keeping the full package history linked from `packages/coding-agent/CHANGELOG.md`.
+
+### Fixed
+
+- Fixed plugin discovery to keep honoring the pre-rebrand `omp` package.json manifest key alongside `jeopi` and `pi`, so plugins installed before the rename stay visible to the loader, installer, doctor, and extension scanner.
+- Fixed release CI on GitHub-hosted runners: the GPU-probe and raw-SSE tests now isolate state under the renamed `jeopi` XDG app directory instead of leaking into `~/.jeopi`, and the git clone deadline tests restore real timers before settling so Bun's Linux fake-timer `fs.promises.rm` hang can no longer wedge the suite.
+- Made release npm publish steps auto-skip when no npm credentials are configured (NPM_TOKEN secret or trusted publisher), so a credential-less release still ships binaries and the GitHub Release.
+
+## [16.2.16] - 2026-07-02
+
+### Changed
+
+- Removed remaining `omp`-branded release surfaces from jeopi: CI runner labels and artifact names, Homebrew formula generation, issue templates, profile alias markers, plugin manifest discovery, local helper scripts, auth-broker/autoresearch/MCP/cache environment variables, and user-facing command examples now use `jeopi`/`JEOPI_*` names while keeping explicit `~/.omp` legacy migration references intact.
+
+### Fixed
+
+- Fixed the source-install smoke path to create the `jeopi` dev-bin link via `scripts/link-jeopi.sh` after `bun link`, matching the repo `setup` flow and preventing CI from looking for a missing Bun global bin shim.
+
+## [16.2.15] - 2026-07-02
+
+### Fixed
+
+- Fixed the release workflow to refresh the root README changelog digest from `packages/coding-agent/CHANGELOG.md` during version bumps, so each release tag carries the same latest-five digest published on the branch.
+
+## [16.2.14] - 2026-07-02
+
 ### Added
 
 - Added `providers.anthropic.serverSideFallback` configuration option to opt into Anthropic's server-side-fallback beta chain, allowing Claude Fable 5 / Mythos 5 requests to automatically retry on Opus 4.8 when blocked by classifiers.
 - Added `task.softRequestBudgetNotice` configuration option to enable subagent soft-budget wrap-up steering notices while keeping the graceful abort guard active.
 - Added bundled `critic` (read-only plan-actionability gate with an `okay`/`iterate`/`reject` verdict schema) and `architect` (read-only architecture/spec reviewer with severity-rated findings and an inspected-files evidence contract) subagents, adapted from jeo-code's role prompts.
 - Added the `/jeo` bundled workflow command: a spec-first pipeline (interview → frozen seed → plan → blocking critic gate → bounded execution → artifact-gated verification) adapted from jeo-code's deep-interview/ralplan/team/ultragoal flow.
+- Added a runtime-enforced **critic gate**: when a `critic` subagent returns a non-`okay` verdict, the session hard-blocks execution in code — `task` refuses to spawn non-read-only agents and `write`/`edit`/patch reject working-tree mutations (the `local://` sandbox stays writable for seeds/plans) — until a fresh critic returns `okay` or the user sends a new message. A three-strike counter closes the iterate loop: after three consecutive non-okay verdicts even critic re-submission is refused, forcing a stop-and-report instead of an unbounded re-planning loop.
+- Made the local memory backend's documents OKF (Open Knowledge Format v0.1) atoms: `MEMORY.md`, `memory_summary.md`, `raw_memories.md`, `rollout_summaries/*.md`, and `learned.md` now carry YAML frontmatter with the required `type`/`title`/`description` fields (plus `tags`, `timestamp`, and `thread_id`/`updated_at` extensions where relevant), so a jeopi memory root is consumable as a knowledge bundle by any OKF tool (e.g. jeo-skills' `okf` skill). Prompt-injection and consolidation read paths strip the frontmatter, keeping model-facing text unchanged; legacy fenceless files keep working. New `memories/okf.ts` exposes `renderOkfDocument`/`parseOkfDocument`/`stripOkfFrontmatter`/`validateOkfDocument` (the validator mirrors the jeo okf linter rules), with contract tests in `test/memories/okf-format.test.ts`.
+- Added the **jeo identity** to jeopi's voice and TUI, ported from jeo-code: the system prompt now speaks as jeo (spec-first persona — lead with the answer, tight prose, real gates no theater), and the transcript leads every assistant segment with visible prose or a live thinking pulse with a bold accent `jeo` name label on its own line (jeo-code's `agentLabel()` look). Configurable via the new `ui.agentLabel` setting (appearance → Display; empty string disables, default `jeo`).
 
 ### Changed
 
-- Rebranded the CLI from `omp` to `jeopi`: the `bin` entry, dev launcher (`scripts/jeopi`), compiled binary output (`dist/jeopi`), release asset names (`jeopi-<os>-<arch>`), and all user-facing help/error/tip text now use the `jeopi` name. The config directory stays `~/.omp`, so existing auth, sessions, and settings carry over unchanged.
+- Classifier refusals (Anthropic `refusal`/`sensitive` stops) that exhaust the pinned retry fallback ladder — or hit a refusal with model fallback disabled / no chain configured — no longer surface a terminal error that ends the turn. Ported from jeo-code's rung-4 refusal recovery: the session now keeps resending the turn with capped exponential backoff (2s base doubling to a 30s cap, `PI_REFUSAL_BACKOFF_BASE_MS` override) after pruning the refusal from active context. Esc (`abortRetry`) breaks the wait immediately, and a 30-minute wall-clock budget (`PI_REFUSAL_BACKOFF_BUDGET_MS`) bounds the streak before falling back to the surfaced-error path. Refusal resends are exempt from `retry.maxRetries` and do not consume the transient-error retry budget, so a later 5xx in the same turn still gets its full attempt budget.
+- Rebranded the CLI from `omp` to `jeopi`: the `bin` entry, dev launcher (`scripts/jeopi`), compiled binary output (`dist/jeopi`), release asset names (`jeopi-<os>-<arch>`), and all user-facing help/error/tip text now use the `jeopi` name. The config directory is renamed `~/.omp` → `~/.jeopi` (`jeopi-utils`' `CONFIG_DIR_NAME`); run `jeopi config migrate-legacy` once to move existing auth, sessions, and settings over (refuses to overwrite `~/.jeopi` if it already exists). Also fixed five call sites that had hardcoded `.omp` instead of reading `CONFIG_DIR_NAME` — most notably native task-agent discovery (`task/discovery.ts`), which was silently returning zero agents because its source filter no longer matched the renamed directory.
+- Reworked the `/jeo` pipeline prompt around deep-research-style loop engineering: seeds and plans are passed by `local://` reference (never re-inlined), critic re-submissions carry delta-only notes with an explicit convergence contract (every `required_fixes` item addressed or rejected with evidence; unchanged re-submissions prohibited), and every loop is hard-bounded (interview ≤2 ask rounds, critic ≤2 iterations backed by the runtime's 3-strike stop, per-task retries ≤2, verification suite runs once) with mandatory reporting of anything a bound dropped.
 - Infused jeo-code's working philosophy into the core system prompt and the `task` worker prompt: spec-first crystallization of vague asks, a running task-state picture, failure-lesson feedback (change the next attempt, split stuck subgoals), and an artifact gate (an acceptance criterion with no supporting command+result is reported unresolved, never implied met).
+- Closed remaining jeo-code system-prompt gaps: third-party content (files, web, tool/MCP output) is now explicitly framed as untrusted data whose embedded directives carry no authority; unfamiliar APIs must be verified against source/types/docs before use, never called from memory; a passing test is never grounds to weaken, skip, or narrow it; status reports must describe only completed/in-progress work, never announce future work as a substitute for doing it, and must lead with a substantive answer rather than a bare disclaimer; and single-idea replies must stay prose, with reply length matched to the size of the change.
 - Replaced the welcome-screen and setup-wizard π block mark with a "jeopi" block-glyph wordmark (typography only on ASCII surfaces), added the persona tagline "Encode intention. Decode software." to the welcome box, retuned the logo gradient to the brand's electric-blue→violet→hot-pink sweep, and updated the setup splash/outro to render the new mark (compact splash text is now `j e o p i`).
 - Made the fork fully independent of the `@oh-my-pi` npm scope: all workspace packages published under unscoped names — CLI: `jeopi-cli` (binary command stays `jeopi`; the exact `jeopi` npm name is blocked by npm's typosquat filter as too similar to `joi`), libraries: `jeopi-utils`, `jeopi-ai`, `jeopi-catalog`, `jeopi-tui`, `jeopi-natives` (+ per-platform `jeopi-natives-<os>-<arch>` leaves), `jeopi-agent-core`, `jeopi-wire`, `jeopi-hashline`, `jeopi-mnemopi`, `jeopi-snapcompact`, `jeopi-stats`. Repository/homepage metadata repointed to `akillness/jeopi`, and `jeopi update` now targets this fork's GitHub releases, npm package, and Homebrew tap. Legacy `@oh-my-pi/pi-*` (plus `@mariozechner/pi-*` and `@earendil-works/pi-*`) plugin imports continue to resolve onto the renamed in-process packages through the legacy-pi compat shim.
-
 - Significantly optimized session loading and rendering performance, including a 10x speedup for streaming reveals on large messages, 35% faster session resumes for large files using native streaming JSONL parsing, and reduced overhead for edit-patch fallbacks.
 - Improved TUI responsiveness and reduced CPU usage during long-running tool sessions by throttling status-line redraws and optimizing subagent persistence checks.
 - Updated the tester subagent prompt to allow skipping tests for trivial changes.
@@ -32,6 +67,7 @@
 - Fixed RPC mode deferred shutdown (`pi.shutdown()`) and `abort_bash` commands from being blocked by active background bash processes.
 - Fixed model discovery ignoring `NODE_EXTRA_CA_CERTS` and resolved a rare Bun garbage collection segfault during discovery.
 - Fixed `task.maxConcurrency` and `task.maxRecursionDepth` limits being bypassed by sub-spawn paths or when queued spawns were cancelled.
+- Fixed a `SYSTEM.md` dedup test that hardcoded the legacy `.omp` config-dir path, which broke once the config directory resolved through `getConfigDirName()`/`getConfigAgentDirName()` — now resolves both paths dynamically.
 - Fixed various TUI and rendering issues, including macOS Ghostty `Command+V` image pasting, CJK history rendering across compactions, status-line redraw crashes with BigInt values, and overlapping rows in the subagent progress tree.
 - Fixed `/copy code` and `/copy cmd` commands being treated as normal prompts instead of copying the requested blocks.
 - Fixed legacy tool compatibility issues for `createReadTool`, `createGrepTool`, and extension validation failures for `omp install pi-lean-ctx`.

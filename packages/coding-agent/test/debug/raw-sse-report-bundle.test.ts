@@ -48,7 +48,7 @@ describe("raw SSE report bundle", () => {
 	it("includes captured raw SSE text and dropped-record disclosure", async () => {
 		cleanupRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-raw-sse-report-"));
 		const xdgStateHome = path.join(cleanupRoot, "state");
-		await fs.mkdir(path.join(xdgStateHome, "omp"), { recursive: true });
+		await fs.mkdir(path.join(xdgStateHome, "jeopi"), { recursive: true });
 		process.env.XDG_STATE_HOME = xdgStateHome;
 		setAgentDir(fallbackAgentDir);
 
@@ -64,7 +64,7 @@ describe("raw SSE report bundle", () => {
 			);
 		}
 		const rawSseText = buffer.toRawText();
-		expect(rawSseText).toContain(": omp-debug-dropped records=");
+		expect(rawSseText).toContain(": jeopi-debug-dropped records=");
 		expect(rawSseText).toContain("event: message_delta");
 
 		const result = await createReportBundle({ sessionFile: undefined, rawSseText });

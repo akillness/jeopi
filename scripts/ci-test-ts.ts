@@ -105,13 +105,13 @@ const localOnlyWorkspacePackages = ["packages/mnemopi", "python/robomp/web"];
 
 // Repo-level script tests. CI's `workspace` bucket only runs the concurrency
 // regression (it's the GHA-config guard that must gate merges); a local full run
-// also exercises the release-notes and link-omp tests. (A `ci-test-ts.test.ts`
+// also exercises the release-notes and link-jeopi tests. (A `ci-test-ts.test.ts`
 // entry used to sit here but the file never existed — bun silently ignores
 // unmatched filters when at least one other filter matches.)
 const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-release-notes.test.ts",
-	"scripts/link-omp.test.ts",
+	"scripts/link-jeopi.test.ts",
 ];
 
 const codingAgentNativePathPatterns = [
@@ -388,7 +388,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 	}
 }
 
-// The omp-kata runner pods inject sccache S3 credentials (`AWS_*`) and config
+// The self-hosted runner pods inject sccache S3 credentials (`AWS_*`) and config
 // (`SCCACHE_*`) pod-wide via `envFrom`, GitHub Actions injects `GITHUB_TOKEN`,
 // and a host may carry provider API keys. Any of these make env-sensitive code
 // non-deterministic in tests — e.g. leaked AWS creds make `amazon-bedrock` look
@@ -465,11 +465,11 @@ function isCI(): boolean {
 }
 
 // Fan-out width for the local parallel path, clamped to the command count.
-// Defaults to the machine's available parallelism; `OMP_TEST_CONCURRENCY`
+// Defaults to the machine's available parallelism; `JEOPI_TEST_CONCURRENCY`
 // overrides it — a positive integer to pick an exact width (dial down on a
 // memory-constrained laptop), or `all`/`max` to launch every chunk at once.
 function testConcurrency(total: number): number {
-	const raw = Bun.env.OMP_TEST_CONCURRENCY?.trim().toLowerCase();
+	const raw = Bun.env.JEOPI_TEST_CONCURRENCY?.trim().toLowerCase();
 	if (raw === "all" || raw === "max") {
 		return total;
 	}
@@ -639,7 +639,7 @@ async function runTestCommandsInParallel(commands: TestCommand[], concurrency: n
 	let completed = 0;
 	console.log(
 		`Running ${commands.length} test command(s), up to ${concurrency} in parallel ` +
-			`(OMP_TEST_CONCURRENCY=<n>|all to change).`,
+			`(JEOPI_TEST_CONCURRENCY=<n>|all to change).`,
 	);
 
 	async function worker(): Promise<void> {

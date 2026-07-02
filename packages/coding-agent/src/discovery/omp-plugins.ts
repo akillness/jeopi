@@ -6,11 +6,11 @@
  * sibling directories — `skills/`, `hooks/pre|post/`, `tools/`, `commands/`,
  * `rules/`, `prompts/`, and `.mcp.json` — are picked up by omp's standard
  * discovery surfaces. The native `jeopi` provider in `builtin.ts` only walks
- * `.omp/` and `~/.omp/agent/`, so without this provider those sub-trees are
+ * `.jeopi/` and `~/.jeopi/agent/`, so without this provider those sub-trees are
  * silently ignored.
  *
  * Provider priority is set below the native `jeopi` provider (100) so an
- * extension package never shadows the user's own `.omp/` configuration on
+ * extension package never shadows the user's own `.jeopi/` configuration on
  * dedup.
  *
  * @see ./omp-extension-roots.ts

@@ -1,13 +1,13 @@
 /**
- * Regression test for #2935: the plugins docs advertise `omp list` / `omp remove`
- * as top-level commands, but only `omp install` is registered. Before the fix,
+ * Regression test for #2935: the plugins docs advertise `jeopi list` / `jeopi remove`
+ * as top-level commands, but only `jeopi install` is registered. Before the fix,
  * `resolveCliArgv(["list"])` rewrote the bare verb to `["launch", "list"]`, so
- * `omp list` silently started an interactive agent session with "list" as the
+ * `jeopi list` silently started an interactive agent session with "list" as the
  * initial LLM prompt instead of managing plugins (the real command is
- * `omp plugin list`). Same footgun for `omp remove`.
+ * `jeopi plugin list`). Same footgun for `jeopi remove`.
  *
  * These tests pin the chosen bugfix: a bare, single-arg documented plugin verb
- * yields a helpful hint pointing at the real `omp plugin <action>` command
+ * yields a helpful hint pointing at the real `jeopi plugin <action>` command
  * rather than leaking the word to the model — while multi-word invocations that
  * merely happen to begin with one of these verbs still fall through to `launch`
  * so genuine prompts are unaffected.
@@ -19,22 +19,22 @@ import { describe, expect, test } from "bun:test";
 import { isSubcommand, resolveCliArgv } from "../src/cli-commands";
 
 describe("documented-but-unregistered plugin verbs do not leak to launch (#2935)", () => {
-	test("bare `omp list` hints at `omp plugin list` instead of launching with 'list' as the prompt", () => {
+	test("bare `jeopi list` hints at `jeopi plugin list` instead of launching with 'list' as the prompt", () => {
 		const result = resolveCliArgv(["list"]);
 		// Must NOT be the old silent-launch behavior.
 		expect(result).not.toEqual({ argv: ["launch", "list"] });
 		expect(result).not.toHaveProperty("argv");
 		// Must point at the real command.
 		expect(result).toHaveProperty("error");
-		expect("error" in result && result.error).toContain("omp plugin list");
+		expect("error" in result && result.error).toContain("jeopi plugin list");
 	});
 
-	test("bare `omp remove` hints at `omp plugin uninstall` instead of launching with 'remove' as the prompt", () => {
+	test("bare `jeopi remove` hints at `jeopi plugin uninstall` instead of launching with 'remove' as the prompt", () => {
 		const result = resolveCliArgv(["remove"]);
 		expect(result).not.toEqual({ argv: ["launch", "remove"] });
 		expect(result).not.toHaveProperty("argv");
 		expect(result).toHaveProperty("error");
-		expect("error" in result && result.error).toContain("omp plugin uninstall");
+		expect("error" in result && result.error).toContain("jeopi plugin uninstall");
 	});
 
 	test("genuine multi-word prompts beginning with these verbs still route to launch", () => {

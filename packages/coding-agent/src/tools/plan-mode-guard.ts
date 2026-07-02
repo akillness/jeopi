@@ -7,6 +7,7 @@ import {
 	resolveLocalUrlToPath,
 	resolveVaultUrlToPath,
 } from "../internal-urls";
+import { criticGateWriteMessage } from "../task/critic-gate";
 import type { ToolSession } from ".";
 import { normalizeLocalScheme, resolveToCwd } from "./path-utils";
 import { ToolError } from "./tool-errors";
@@ -136,6 +137,7 @@ export function enforcePlanModeWrite(
 	targetPath: string,
 	options?: { move?: string; op?: "create" | "update" | "delete" },
 ): void {
+	enforceCriticGateWrite(session, targetPath);
 	const state = session.getPlanModeState?.();
 	if (!state?.enabled) return;
 
@@ -152,4 +154,18 @@ export function enforcePlanModeWrite(
 	throw new ToolError(
 		"Plan mode: the working tree is read-only. Write your plan to a local://<slug>-plan.md file instead.",
 	);
+}
+
+/**
+ * Critic gate — while the session's latest critic verdict is not `okay`,
+ * working-tree mutations are rejected at the runtime level. The `local://`
+ * artifact sandbox stays writable (seeds, plans, and scratch notes live
+ * there). Runs inside {@link enforcePlanModeWrite} so every mutating tool
+ * (`write`, `edit` replace/patch/hashline) hits one choke point.
+ */
+export function enforceCriticGateWrite(session: ToolSession, targetPath: string): void {
+	const gate = session.getCriticGateState?.();
+	if (!gate) return;
+	if (targetsLocalSandbox(session, targetPath)) return;
+	throw new ToolError(criticGateWriteMessage(gate));
 }

@@ -64,12 +64,12 @@ Consequence: precedence and deduplication are **name-based only**. Two different
 
 ### Native provider (`builtin.ts`)
 
-Loads `.omp` rules from:
+Loads `.jeopi` rules from:
 
-- project: `<cwd>/.omp/rules/*.{md,mdc}` when the cwd `.omp` directory exists
-- user: `~/.omp/agent/rules/*.{md,mdc}`
-- sticky user rule: `~/.omp/agent/RULES.md`
-- sticky project rule: nearest ancestor `.omp/RULES.md` while walking from cwd toward the repository root
+- project: `<cwd>/.jeopi/rules/*.{md,mdc}` when the cwd `.jeopi` directory exists
+- user: `~/.jeopi/agent/rules/*.{md,mdc}`
+- sticky user rule: `~/.jeopi/agent/RULES.md`
+- sticky project rule: nearest ancestor `.jeopi/RULES.md` while walking from cwd toward the repository root
 
 Normalization:
 
@@ -174,7 +174,7 @@ Within a provider, item order comes from `loadFilesFromDir` glob result ordering
 
 Notable source-order differences:
 
-- `native` appends project `.omp/rules`, user `~/.omp/agent/rules`, user `RULES.md`, then nearest project `RULES.md`.
+- `native` appends project `.jeopi/rules`, user `~/.jeopi/agent/rules`, user `RULES.md`, then nearest project `RULES.md`.
 - `omp-plugins` appends `rules/` results per configured extension package root.
 - `agents` appends project-walk `.agent`/`.agents` rule dirs before user home dirs.
 - `cursor` appends user then project results.

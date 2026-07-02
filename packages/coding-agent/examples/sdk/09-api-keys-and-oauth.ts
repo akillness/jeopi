@@ -12,8 +12,8 @@ import {
 	SessionManager,
 } from "jeopi-cli";
 
-// Default: discoverAuthStorage() uses ~/.omp/agent/agent.db
-// discoverModels() loads built-in + custom models from ~/.omp/agent/models.json
+// Default: discoverAuthStorage() uses ~/.jeopi/agent/agent.db
+// discoverModels() loads built-in + custom models from ~/.jeopi/agent/models.json
 const authStorage = await discoverAuthStorage();
 const modelRegistry = await discoverModels(authStorage);
 

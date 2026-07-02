@@ -2,7 +2,7 @@
  * Update CLI command handler.
  *
  * Handles `jeopi update` to check for and install updates.
- * Uses the installer that owns the active omp executable when it can be detected.
+ * Uses the installer that owns the active jeopi executable when it can be detected.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -14,7 +14,7 @@ import { $which, APP_NAME, isEnoent, VERSION } from "jeopi-utils";
 import { theme } from "../modes/theme/theme";
 
 const REPO = "akillness/jeopi";
-const PACKAGE = "jeopi";
+const PACKAGE = "jeopi-cli";
 const HOMEBREW_FORMULA = "akillness/tap/jeopi";
 const MISE_TOOL = "github:akillness/jeopi";
 /**
@@ -170,10 +170,10 @@ function isPathInDirectory(filePath: string, directoryPath: string): boolean {
 	if (isPathInDirectoryLexical(filePath, directoryPath)) return true;
 	// Layer realpath resolution on top of the lexical guard. On Windows, ~/.bun
 	// is a junction when Bun is installed via Scoop, so `bun pm bin -g` and the
-	// PATH-resolved omp path can refer to the same directory through different
+	// PATH-resolved jeopi path can refer to the same directory through different
 	// strings. path.resolve does not traverse junctions/symlinks; realpath does.
 	// Resolve both the file and its parent directory: the file catches manager
-	// links like Homebrew's `bin/omp -> Cellar/.../bin/omp`; the parent fallback
+	// links like Homebrew's `bin/jeopi -> Cellar/.../bin/jeopi`; the parent fallback
 	// still tolerates fresh install paths where the file does not exist yet.
 	const dirReal = tryRealpath(path.resolve(directoryPath));
 	if (!dirReal) return false;
@@ -196,24 +196,24 @@ interface UpdateMethodResolutionOptions {
 type UpdateTarget = { method: "brew" } | { method: "mise" } | { method: "bun" } | { method: "binary"; path: string };
 
 function resolveUpdateMethod(
-	ompPath: string,
+	jeopiPath: string,
 	bunBinDir: string | undefined,
 	options: UpdateMethodResolutionOptions = {},
 ): UpdateMethod {
 	const { homebrewPrefix, miseBinDirs = [], miseDataDir } = options;
-	if (homebrewPrefix && isPathInDirectory(ompPath, path.join(homebrewPrefix, "bin"))) return "brew";
-	if (miseBinDirs.some(dir => isPathInDirectory(ompPath, dir))) return "mise";
-	if (miseDataDir && isPathInDirectory(ompPath, path.join(miseDataDir, "shims"))) return "mise";
-	if (bunBinDir && isPathInDirectory(ompPath, bunBinDir)) return "bun";
+	if (homebrewPrefix && isPathInDirectory(jeopiPath, path.join(homebrewPrefix, "bin"))) return "brew";
+	if (miseBinDirs.some(dir => isPathInDirectory(jeopiPath, dir))) return "mise";
+	if (miseDataDir && isPathInDirectory(jeopiPath, path.join(miseDataDir, "shims"))) return "mise";
+	if (bunBinDir && isPathInDirectory(jeopiPath, bunBinDir)) return "bun";
 	return "binary";
 }
 
 export function resolveUpdateMethodForTest(
-	ompPath: string,
+	jeopiPath: string,
 	bunBinDir: string | undefined,
 	options: UpdateMethodResolutionOptions = {},
 ): UpdateMethod {
-	return resolveUpdateMethod(ompPath, bunBinDir, options);
+	return resolveUpdateMethod(jeopiPath, bunBinDir, options);
 }
 async function resolveUpdateTarget(): Promise<UpdateTarget> {
 	const bunBinDir = await getBunGlobalBinDir();
@@ -221,11 +221,11 @@ async function resolveUpdateTarget(): Promise<UpdateTarget> {
 	const miseAvailable = $which("mise") !== undefined;
 	const miseBinDirs = miseAvailable ? await getMiseBinDirs() : [];
 	const miseDataDir = miseAvailable ? getMiseDataDir() : undefined;
-	const ompPath = resolveOmpPath();
+	const jeopiPath = resolveJeopiPath();
 
-	if (ompPath) {
-		const method = resolveUpdateMethod(ompPath, bunBinDir, { homebrewPrefix, miseBinDirs, miseDataDir });
-		if (method === "binary") return { method, path: ompPath };
+	if (jeopiPath) {
+		const method = resolveUpdateMethod(jeopiPath, bunBinDir, { homebrewPrefix, miseBinDirs, miseDataDir });
+		if (method === "binary") return { method, path: jeopiPath };
 		return { method };
 	}
 
@@ -514,7 +514,7 @@ async function pruneBunCacheAfterGlobalInstall(): Promise<BunInstallCachePruneRe
 	const packageNames = globalNodeModulesDir
 		? await collectInstalledPackageNames(globalNodeModulesDir)
 		: new Set<string>();
-	if (packageNames.size === 0 && !path.basename(cacheDir).toLowerCase().includes("omp")) return undefined;
+	if (packageNames.size === 0 && !path.basename(cacheDir).toLowerCase().includes("jeopi")) return undefined;
 	return await pruneBunInstallCache(cacheDir, packageNames.size === 0 ? undefined : packageNames);
 }
 
@@ -561,26 +561,26 @@ function getBinaryName(): string {
 /**
  * Resolve the path that `jeopi` maps to in the user's PATH.
  */
-function resolveOmpPath(): string | undefined {
+function resolveJeopiPath(): string | undefined {
 	return $which(APP_NAME) ?? undefined;
 }
 
 /**
- * Run the resolved omp binary and check if it reports the expected version.
+ * Run the resolved jeopi binary and check if it reports the expected version.
  */
 async function verifyInstalledVersion(expectedVersion: string): Promise<InstalledVersionVerification> {
-	const ompPath = resolveOmpPath();
-	if (!ompPath) return { ok: false };
+	const jeopiPath = resolveJeopiPath();
+	if (!jeopiPath) return { ok: false };
 	try {
-		const result = await $`${ompPath} --version`.quiet().nothrow();
-		if (result.exitCode !== 0) return { ok: false, path: ompPath };
+		const result = await $`${jeopiPath} --version`.quiet().nothrow();
+		if (result.exitCode !== 0) return { ok: false, path: jeopiPath };
 		const output = result.text().trim();
-		// Output format: "omp/X.Y.Z"
+		// Output format: "jeopi/X.Y.Z"
 		const match = output.match(/\/(\d+\.\d+\.\d+)/);
 		const actual = match?.[1];
-		return { ok: actual === expectedVersion, actual, path: ompPath };
+		return { ok: actual === expectedVersion, actual, path: jeopiPath };
 	} catch {
-		return { ok: false, path: ompPath };
+		return { ok: false, path: jeopiPath };
 	}
 }
 
@@ -702,7 +702,7 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 }
 
 /**
- * Build the bun argv used to globally install a specific omp version.
+ * Build the bun argv used to globally install a specific jeopi version.
  *
  * The version is selected by hitting {@link NPM_REGISTRY} directly in
  * {@link getLatestRelease}, so the install MUST observe the same catalog:
@@ -886,7 +886,7 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 		return;
 	}
 
-	// Choose update method based on the prioritized omp binary in PATH
+	// Choose update method based on the prioritized jeopi binary in PATH
 	try {
 		const target = await resolveUpdateTarget();
 		if (target.method === "brew") {
