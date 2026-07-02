@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.14] - 2026-07-02
+
 ### Added
 
 - Added opt-in support for Anthropic's server-side fallback beta (`server-side-fallback-2026-06-01`) on the `anthropic-messages` provider, including support for `AnthropicOptions.fallbacks`, mid-stream fallback content blocks, fallback billing/usage iterations, and automatic filtering of fallback blocks during cross-provider message transformations.

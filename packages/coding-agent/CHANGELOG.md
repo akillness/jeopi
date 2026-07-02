@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.14] - 2026-07-02
+
 ### Added
 
 - Added `providers.anthropic.serverSideFallback` configuration option to opt into Anthropic's server-side-fallback beta chain, allowing Claude Fable 5 / Mythos 5 requests to automatically retry on Opus 4.8 when blocked by classifiers.
@@ -21,7 +23,6 @@
 - Closed remaining jeo-code system-prompt gaps: third-party content (files, web, tool/MCP output) is now explicitly framed as untrusted data whose embedded directives carry no authority; unfamiliar APIs must be verified against source/types/docs before use, never called from memory; a passing test is never grounds to weaken, skip, or narrow it; status reports must describe only completed/in-progress work, never announce future work as a substitute for doing it, and must lead with a substantive answer rather than a bare disclaimer; and single-idea replies must stay prose, with reply length matched to the size of the change.
 - Replaced the welcome-screen and setup-wizard π block mark with a "jeopi" block-glyph wordmark (typography only on ASCII surfaces), added the persona tagline "Encode intention. Decode software." to the welcome box, retuned the logo gradient to the brand's electric-blue→violet→hot-pink sweep, and updated the setup splash/outro to render the new mark (compact splash text is now `j e o p i`).
 - Made the fork fully independent of the `@oh-my-pi` npm scope: all workspace packages published under unscoped names — CLI: `jeopi-cli` (binary command stays `jeopi`; the exact `jeopi` npm name is blocked by npm's typosquat filter as too similar to `joi`), libraries: `jeopi-utils`, `jeopi-ai`, `jeopi-catalog`, `jeopi-tui`, `jeopi-natives` (+ per-platform `jeopi-natives-<os>-<arch>` leaves), `jeopi-agent-core`, `jeopi-wire`, `jeopi-hashline`, `jeopi-mnemopi`, `jeopi-snapcompact`, `jeopi-stats`. Repository/homepage metadata repointed to `akillness/jeopi`, and `jeopi update` now targets this fork's GitHub releases, npm package, and Homebrew tap. Legacy `@oh-my-pi/pi-*` (plus `@mariozechner/pi-*` and `@earendil-works/pi-*`) plugin imports continue to resolve onto the renamed in-process packages through the legacy-pi compat shim.
-
 - Significantly optimized session loading and rendering performance, including a 10x speedup for streaming reveals on large messages, 35% faster session resumes for large files using native streaming JSONL parsing, and reduced overhead for edit-patch fallbacks.
 - Improved TUI responsiveness and reduced CPU usage during long-running tool sessions by throttling status-line redraws and optimizing subagent persistence checks.
 - Updated the tester subagent prompt to allow skipping tests for trivial changes.

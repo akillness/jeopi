@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.14] - 2026-07-02
+
 ### Breaking Changes
 
 - Upgraded the collaboration protocol (COLLAB_PROTO) to version 3. Guests using version 2 are now rejected during the handshake with a protocol-mismatch error due to new interactive UI request/response requirements.

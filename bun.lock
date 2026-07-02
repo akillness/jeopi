@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "omp-monorepo",
+      "name": "jeopi-monorepo",
       "dependencies": {
         "sherpa-onnx": "1.13.2",
         "sherpa-onnx-darwin-arm64": "1.13.3",
@@ -21,7 +21,7 @@
     },
     "packages/agent": {
       "name": "jeopi-agent-core",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
         "jeopi-ai": "catalog:",
@@ -39,7 +39,7 @@
     },
     "packages/ai": {
       "name": "jeopi-ai",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/catalog": {
       "name": "jeopi-catalog",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -69,7 +69,7 @@
     },
     "packages/coding-agent": {
       "name": "jeopi-cli",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "bin": {
         "jeopi": "dist/cli.js",
       },
@@ -137,7 +137,7 @@
     },
     "packages/hashline": {
       "name": "jeopi-hashline",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "dependencies": {
         "diff": "catalog:",
         "lru-cache": "catalog:",
@@ -148,7 +148,7 @@
     },
     "packages/mnemopi": {
       "name": "jeopi-mnemopi",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
@@ -174,7 +174,7 @@
     },
     "packages/natives": {
       "name": "jeopi-natives",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
@@ -189,7 +189,7 @@
     },
     "packages/snapcompact": {
       "name": "jeopi-snapcompact",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "dependencies": {
         "jeopi-ai": "catalog:",
         "jeopi-natives": "catalog:",
@@ -202,7 +202,7 @@
     },
     "packages/stats": {
       "name": "jeopi-stats",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "bin": {
         "jeopi-stats": "./src/index.ts",
       },
@@ -228,7 +228,7 @@
     },
     "packages/swarm-extension": {
       "name": "jeopi-swarm-extension",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "bin": {
         "jeopi-swarm": "src/cli.ts",
       },
@@ -254,7 +254,7 @@
     },
     "packages/tui": {
       "name": "jeopi-tui",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "dependencies": {
         "jeopi-natives": "catalog:",
         "jeopi-utils": "catalog:",
@@ -295,7 +295,7 @@
     },
     "packages/utils": {
       "name": "jeopi-utils",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "dependencies": {
         "handlebars": "catalog:",
         "jeopi-natives": "catalog:",
@@ -308,7 +308,7 @@
     },
     "packages/wire": {
       "name": "jeopi-wire",
-      "version": "16.2.13",
+      "version": "16.2.14",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
@@ -371,18 +371,18 @@
     "fflate": "0.8.3",
     "ghostty-web": "^0.4.0",
     "handlebars": "^4.7.9",
-    "jeopi-agent-core": "16.2.13",
-    "jeopi-ai": "16.2.13",
-    "jeopi-catalog": "16.2.13",
-    "jeopi-cli": "16.2.13",
-    "jeopi-hashline": "16.2.13",
-    "jeopi-mnemopi": "16.2.13",
-    "jeopi-natives": "16.2.13",
-    "jeopi-snapcompact": "16.2.13",
-    "jeopi-stats": "16.2.13",
-    "jeopi-tui": "16.2.13",
-    "jeopi-utils": "16.2.13",
-    "jeopi-wire": "16.2.13",
+    "jeopi-agent-core": "16.2.14",
+    "jeopi-ai": "16.2.14",
+    "jeopi-catalog": "16.2.14",
+    "jeopi-cli": "16.2.14",
+    "jeopi-hashline": "16.2.14",
+    "jeopi-mnemopi": "16.2.14",
+    "jeopi-natives": "16.2.14",
+    "jeopi-snapcompact": "16.2.14",
+    "jeopi-stats": "16.2.14",
+    "jeopi-tui": "16.2.14",
+    "jeopi-utils": "16.2.14",
+    "jeopi-wire": "16.2.14",
     "linkedom": "^0.18.12",
     "lint-staged": "^17.0.7",
     "lru-cache": "11.5.1",
@@ -933,7 +933,7 @@
 
     "boolean": ["boolean@3.2.0", "", {}, "sha512-d0II/GO9uf9lfUHH2BQsjxzRJZBdsjgsBiW4BvhWk/3qoKwQFjIDVN19PfX8F2D/r9PCMTtLWjYVCFrpeYUzsw=="],
 
-    "brace-expansion": ["brace-expansion@5.0.6", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-kLpxurY4Z4r9sgMsyG0Z9uzsBlgiU/EFKhj/h91/8yHu0edo7XuixOIH3VcJ8kkxs6/jPzoI6U9Vj3WqbMQ94g=="],
+    "brace-expansion": ["brace-expansion@5.0.7", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-7oFy703dxfY3/NLxC1fh2SUCQ0H9rmAY+5EpDVfXjUTTs+HEwR2nYaqLv+GWcTsumwxPfiz6CzCNkwXwBUwqCA=="],
 
     "browserslist": ["browserslist@4.28.4", "", { "dependencies": { "baseline-browser-mapping": "^2.10.38", "caniuse-lite": "^1.0.30001799", "electron-to-chromium": "^1.5.376", "node-releases": "^2.0.48", "update-browserslist-db": "^1.2.3" }, "bin": { "browserslist": "cli.js" } }, "sha512-MTc8i/x9jBQd1iMw2CFGS+rwMa07eYjLR0CCTLDACl9xhxy+nIs3KeML/biicXtk9JrZ6dnnTatmc7ErPXIxqw=="],
 

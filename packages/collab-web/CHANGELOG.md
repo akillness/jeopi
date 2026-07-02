@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.14] - 2026-07-02
+
 ### Fixed
 
 - Fixed missing response controls for "ask" questions in the mobile collaboration web UI.
