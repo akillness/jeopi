@@ -250,7 +250,10 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		publicPkgPaths.push(pkgPath);
 	}
 
-	await $`sd '"version": "[^"]+"' ${`"version": "${version}"`} ${publicPkgPaths}`;
+	for (const pkgPath of publicPkgPaths) {
+		const raw = await Bun.file(pkgPath).text();
+		await Bun.write(pkgPath, raw.replace(/"version": "[^"]+"/, `"version": "${version}"`));
+	}
 
 	// Verify
 	console.log("  Verifying versions:");
@@ -269,7 +272,10 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 
 	// 3. Update Rust workspace version
 	console.log(`Updating Rust workspace version to ${version}…`);
-	await $`sd '^version = "[^"]+"' ${`version = "${version}"`} Cargo.toml`;
+	{
+		const raw = await Bun.file("Cargo.toml").text();
+		await Bun.write("Cargo.toml", raw.replace(/^version = "[^"]+"/gm, `version = "${version}"`));
+	}
 
 	// Verify
 	const cargoToml = await Bun.file("Cargo.toml").text();
@@ -306,7 +312,10 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		"packages/natives/native/index.d.ts",
 		"packages/natives/native/index.js",
 	];
-	await $`sd '__piNativesV[A-Za-z0-9_]+' ${sentinelName} ${sentinelFiles}`;
+	for (const filePath of sentinelFiles) {
+		const raw = await Bun.file(filePath).text();
+		await Bun.write(filePath, raw.replace(/__piNativesV[A-Za-z0-9_]+/g, sentinelName));
+	}
 	const libRs = await Bun.file("crates/pi-natives/src/lib.rs").text();
 	if (!libRs.includes(`js_name = "${sentinelName}"`)) {
 		console.error(
