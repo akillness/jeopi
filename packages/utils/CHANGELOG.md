@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+## [16.2.21] - 2026-07-02
+
 ### Fixed
 
 - Fixed `extractRetryHint()` to parse Cloud Code Assist `Resets in …` quota text and `quotaResetDelay` metadata, preserving the provider's exact daily-quota reset window for callers.

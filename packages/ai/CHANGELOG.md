@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+
+## [16.2.21] - 2026-07-02
+
 ### Fixed
 
 - Fixed Cloud Code Assist `Individual quota reached` 429 responses to render as concise quota-exhausted messages with the affected model, account, reset delay, and `/login` recovery guidance instead of dumping the raw Google error JSON. The shared retry-hint parser now also understands Cloud Code Assist `Resets in …` text and `quotaResetDelay` metadata.
