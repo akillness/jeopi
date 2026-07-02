@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { YAML } from "bun";
-import { isEnoent, logger } from "jeopi-utils";
+import { CONFIG_DIR_NAME, isEnoent, logger } from "jeopi-utils";
 import type { SecretEntry } from "./obfuscator";
 import { compileSecretRegex } from "./regex";
 
@@ -18,7 +18,7 @@ export {
  * Project-local entries override global entries with matching content.
  */
 export async function loadSecrets(cwd: string, agentDir: string): Promise<SecretEntry[]> {
-	const projectPath = path.join(cwd, ".omp", "secrets.yml");
+	const projectPath = path.join(cwd, CONFIG_DIR_NAME, "secrets.yml");
 	const globalPath = path.join(agentDir, "secrets.yml");
 
 	const globalEntries = await loadSecretsFile(globalPath);

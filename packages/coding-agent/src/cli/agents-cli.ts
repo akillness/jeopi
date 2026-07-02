@@ -7,7 +7,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { YAML } from "bun";
 import chalk from "chalk";
-import { getAgentDir, getProjectDir, isEnoent } from "jeopi-utils";
+import { CONFIG_DIR_NAME, getAgentDir, getProjectDir, isEnoent } from "jeopi-utils";
 import { theme } from "../modes/theme/theme";
 import { loadBundledAgents } from "../task/agents";
 import type { AgentDefinition } from "../task/types";
@@ -46,7 +46,7 @@ function resolveTargetDir(flags: AgentsCommandArgs["flags"]): string {
 	}
 
 	if (flags.project) {
-		return path.resolve(getProjectDir(), ".omp", "agents");
+		return path.resolve(getProjectDir(), CONFIG_DIR_NAME, "agents");
 	}
 
 	return path.join(getAgentDir(), "agents");

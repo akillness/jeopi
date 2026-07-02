@@ -10,6 +10,7 @@
 
 - Fixed an issue where panics in native worker tasks (such as grep, AST parsing, globbing, workspace listing, HTML-to-markdown conversion, fuzzy finding, and clipboard image reading) would abort the host process instead of properly rejecting the returned JavaScript Promise.
 - Fixed a crash on Windows under low memory or commit charge conditions when spawning worker threads for token counting or sorting operations.
+- Fixed `native/loader-state.js`'s standalone natives-cache directory resolution (`~/.omp/natives`) not following the `jeopi-utils` config-directory rename to `.jeopi`; this loader cannot depend on `jeopi-utils` (see its own header comment) and had its own hardcoded copy, which silently drifted from `getNativesDir()` after the rename.
 
 ## [16.2.11] - 2026-07-01
 

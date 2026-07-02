@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getManagedSkillsDir } from "jeopi-cli/autolearn/managed-skills";
-import "jeopi/discovery";
+import "jeopi-cli/discovery";
 import { loadSkills } from "jeopi-cli/extensibility/skills";
 import { removeWithRetries } from "jeopi-utils";
 import { getAgentDir, setAgentDir } from "jeopi-utils/dirs";
@@ -25,11 +25,11 @@ describe("managed-skills discovery", () => {
 		originalAgentDir = getAgentDir();
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "omp-managed-disco-home-"));
 		// cwd MUST live under the fake home so loadSkills' ancestor walk is bounded
-		// and cannot pick up ambient /tmp/.omp or /.omp fixtures (full-suite-safe).
+		// and cannot pick up ambient /tmp/.jeopi or /.jeopi fixtures (full-suite-safe).
 		tempCwd = path.join(tempHome, "work");
 		await fs.mkdir(tempCwd, { recursive: true });
 		spyOn(os, "homedir").mockReturnValue(tempHome);
-		setAgentDir(path.join(tempHome, ".omp", "agent"));
+		setAgentDir(path.join(tempHome, ".jeopi", "agent"));
 		managedDir = getManagedSkillsDir();
 		// Authored user skills live in the sibling `skills/` dir under .../agent.
 		authoredDir = path.join(path.dirname(managedDir), "skills");

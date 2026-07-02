@@ -30,15 +30,15 @@ Extension loading builds a list of module entry files, imports each module with 
 
 Native `extension-module` discovery comes from:
 
-- Project directory: `<cwd>/.omp/extensions`
-- User directory: `~/.omp/agent/extensions`
-- Native legacy/settings JSON entries: `<cwd>/.omp/settings.json#extensions` and `~/.omp/agent/settings.json#extensions`
+- Project directory: `<cwd>/.jeopi/extensions`
+- User directory: `~/.jeopi/agent/extensions`
+- Native legacy/settings JSON entries: `<cwd>/.jeopi/settings.json#extensions` and `~/.jeopi/agent/settings.json#extensions`
 
-The project root is the native provider's `.omp` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `omp --profile <name>` it becomes `~/.omp/profiles/<name>/agent/extensions` (and it honors `PI_CODING_AGENT_DIR`). See [Profiles](./config-usage.md#profiles).
+The project root is the native provider's `.jeopi` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `omp --profile <name>` it becomes `~/.jeopi/profiles/<name>/agent/extensions` (and it honors `PI_CODING_AGENT_DIR`). See [Profiles](./config-usage.md#profiles).
 
 Notes:
 
-- Native auto-discovery is currently `.omp` based.
+- Native auto-discovery is currently `.jeopi` based.
 - Legacy `.pi` is still accepted in package manifests (`pi.extensions`) and project override lookup, but `.pi/extensions` is not a native root here.
 
 ### 2) Discovered JS/TS hook factories
@@ -64,18 +64,18 @@ Configured path sources in the main session startup path (`sdk.ts`):
 
 Settings files:
 
-- User: `~/.omp/agent/config.yml` (or custom agent dir via `PI_CODING_AGENT_DIR`)
-- Project/native settings capability: `<cwd>/.omp/config.yml` and `<cwd>/.omp/settings.json`
+- User: `~/.jeopi/agent/config.yml` (or custom agent dir via `PI_CODING_AGENT_DIR`)
+- Project/native settings capability: `<cwd>/.jeopi/config.yml` and `<cwd>/.jeopi/settings.json`
 
 Native extension-module discovery also reads legacy JSON extension lists from:
 
-- `~/.omp/agent/settings.json`
-- `<cwd>/.omp/settings.json`
+- `~/.jeopi/agent/settings.json`
+- `<cwd>/.jeopi/settings.json`
 
 Examples:
 
 ```yaml
-# ~/.omp/agent/config.yml
+# ~/.jeopi/agent/config.yml
 extensions:
   - ~/my-exts/safety.ts
   - ./local/ext-pack
@@ -83,7 +83,7 @@ extensions:
 
 ```json
 {
-  "extensions": ["./.omp/extensions/my-extra"]
+  "extensions": ["./.jeopi/extensions/my-extra"]
 }
 ```
 
@@ -230,7 +230,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 ### User-level
 
 ```text
-~/.omp/agent/
+~/.jeopi/agent/
   config.yml
   extensions/
     guardrails.ts
@@ -242,7 +242,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 
 ```text
 <repo>/
-  .omp/
+  .jeopi/
     settings.json
     extensions/
       checks/

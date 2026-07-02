@@ -36,7 +36,7 @@ harbor: ...
    matching `jeopi-natives-linux-<arch>` prebuilt, and runs
    `bun .../dist/cli.js --print --mode json --no-session --auto-approve`.
 2. **Auth via the host gateway — no keys in containers.** A generated
-   `~/.omp/agent/models.yml` routes the model providers' `baseUrl` at the host
+   `~/.jeopi/agent/models.yml` routes the model providers' `baseUrl` at the host
    pm2 `omp-auth-gateway` (`http://host.docker.internal:4000`, `transport:
    pi-native`). The gateway resolves credentials host-side; containers only ever
    see a dummy `apiKey`. Cost/tokens are parsed from omp's `message_end` events.

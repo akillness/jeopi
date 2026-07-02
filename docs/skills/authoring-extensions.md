@@ -19,7 +19,7 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-That is a working extension. Drop it into `~/.omp/agent/extensions/hello.ts` and restart omp to see the notification.
+That is a working extension. Drop it into `~/.jeopi/agent/extensions/hello.ts` and restart omp to see the notification.
 
 ## Full example
 
@@ -77,11 +77,11 @@ export default function myExtension(pi: ExtensionAPI) {
 
 omp loads extension modules from these sources:
 
-1. Native `.omp` locations discovered through the capability system:
-   - `<cwd>/.omp/extensions/`
-   - `~/.omp/agent/extensions/`
-   - legacy extension paths listed in `.omp/settings.json#extensions` or `~/.omp/agent/settings.json#extensions`
-2. Installed plugins under `~/.omp/plugins/node_modules` (`omp plugin install` npm/git specs, or `omp plugin link`) via their `omp.extensions`/`pi.extensions` manifests. Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
+1. Native `.jeopi` locations discovered through the capability system:
+   - `<cwd>/.jeopi/extensions/`
+   - `~/.jeopi/agent/extensions/`
+   - legacy extension paths listed in `.jeopi/settings.json#extensions` or `~/.jeopi/agent/settings.json#extensions`
+2. Installed plugins under `~/.jeopi/plugins/node_modules` (`omp plugin install` npm/git specs, or `omp plugin link`) via their `omp.extensions`/`pi.extensions` manifests. Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
 3. Explicit configured paths passed by the CLI (`omp --extension ./my-ext.ts`, also `-e`; `--hook` is treated as an alias) and by the `extensions:` setting in config.
 
 The runtime de-duplicates by resolved absolute path — first seen wins.
@@ -224,10 +224,10 @@ Extensions are a strict superset of hooks. New authoring should use `ExtensionAP
 
 ## Debugging
 
-omp writes structured logs to a rotating file under `~/.omp/logs/` (debug level is always on; nothing is written to the console, which would corrupt the TUI). Tail today's log to see extension load diagnostics:
+omp writes structured logs to a rotating file under `~/.jeopi/logs/` (debug level is always on; nothing is written to the console, which would corrupt the TUI). Tail today's log to see extension load diagnostics:
 
 ```
-tail -f ~/.omp/logs/omp.$(date +%F).log
+tail -f ~/.jeopi/logs/omp.$(date +%F).log
 ```
 
 Failed extension loads are logged with their path and error. Loaded extensions may also emit their own debug logs via `pi.logger`.
@@ -235,7 +235,7 @@ Failed extension loads are logged with their path and error. Loaded extensions m
 To temporarily disable a specific extension module by name without removing the file:
 
 ```yaml
-# ~/.omp/agent/config.yml
+# ~/.jeopi/agent/config.yml
 disabledExtensions:
   - extension-module:my-ext
 ```

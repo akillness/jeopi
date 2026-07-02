@@ -63,7 +63,7 @@ export function renderFormula(version: string, sums: Record<string, string>): st
 	//
 	// `with_env(HOME: buildpath)` redirects the CLI's `os.homedir()` lookup to
 	// the writable staging dir so `generate_completions_from_executable` does
-	// not touch the real `/Users/<user>/.omp` (denied by Homebrew's sandbox
+	// not touch the real `/Users/<user>/.jeopi` (denied by Homebrew's sandbox
 	// profile, which would otherwise fail the popen).
 	return `class Jeopi < Formula
   desc "${DESC}"

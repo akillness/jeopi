@@ -3,8 +3,8 @@
  *
  * Discovers agent definitions from:
  *   - Bundled agents (shipped with omp-coding-agent)
- *   - ~/.omp/agent/agents/*.md (user-level)
- *   - .omp/agents/*.md (project-level)
+ *   - ~/.jeopi/agent/agents/*.md (user-level)
+ *   - .jeopi/agents/*.md (project-level)
  *
  * Supports:
  *   - Single agent spawn per call (parallelism = parallel task calls)
@@ -48,6 +48,7 @@ import type { AsyncJobManager } from "../async";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
+import { CRITIC_AGENT_NAME, evaluateCriticGateSpawn, parseCriticVerdict, updateCriticGateState } from "./critic-gate";
 import { type DiscoveryResult, discoverAgents, getAgent } from "./discovery";
 import { runSubprocess } from "./executor";
 import {
@@ -1118,6 +1119,21 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			};
 		}
 
+		// Critic gate: while the latest critic verdict is non-okay, only
+		// read-only agents may spawn (plan revision / re-gating); execution
+		// lanes are blocked by the runtime, not just the prompt.
+		const criticGateRejection = evaluateCriticGateSpawn(
+			this.session.getCriticGateState?.(),
+			agentName,
+			isReadOnlyAgent(agent),
+		);
+		if (criticGateRejection) {
+			return {
+				content: [{ type: "text", text: criticGateRejection }],
+				details: { projectAgentsDir, results: [], totalDurationMs: 0 },
+			};
+		}
+
 		const planModeState = this.session.getPlanModeState?.();
 		const planModeBaseTools = ["read", "grep", "glob", "lsp", "web_search"];
 		const planModeTools = [
@@ -1387,6 +1403,23 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			};
 
 			const result = await runTask();
+
+			// Record critic verdicts into the session's hard execution gate. Only
+			// clean, schema-validated completions move the gate — a failed or
+			// aborted critic run leaves the previous state untouched.
+			if (
+				agent.name === CRITIC_AGENT_NAME &&
+				this.session.setCriticGateState &&
+				result.exitCode === 0 &&
+				!result.aborted
+			) {
+				const parsed = parseCriticVerdict(result.output);
+				if (parsed) {
+					this.session.setCriticGateState(
+						updateCriticGateState(this.session.getCriticGateState?.(), parsed, result.id),
+					);
+				}
+			}
 
 			let mergeSummary = "";
 			let changesApplied: boolean | null = null;

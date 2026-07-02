@@ -176,8 +176,11 @@ describe("createAgentSession session storage isolation", () => {
 				await withoutSecrets.session.dispose();
 			}
 
-			fs.mkdirSync(path.join(cwd, ".omp"), { recursive: true });
-			fs.writeFileSync(path.join(cwd, ".omp", "secrets.yml"), "- type: plain\n  content: sdk-secret-token-123456\n");
+			fs.mkdirSync(path.join(cwd, ".jeopi"), { recursive: true });
+			fs.writeFileSync(
+				path.join(cwd, ".jeopi", "secrets.yml"),
+				"- type: plain\n  content: sdk-secret-token-123456\n",
+			);
 
 			const withSecrets = await createAgentSession(commonOptions);
 			try {
@@ -194,8 +197,11 @@ describe("createAgentSession session storage isolation", () => {
 			tempDirs.push(tempDir);
 			const cwd = path.join(tempDir, "project");
 			const agentDir = path.join(tempDir, "agent");
-			fs.mkdirSync(path.join(cwd, ".omp"), { recursive: true });
-			fs.writeFileSync(path.join(cwd, ".omp", "secrets.yml"), "- type: plain\n  content: sdk-secret-token-123456\n");
+			fs.mkdirSync(path.join(cwd, ".jeopi"), { recursive: true });
+			fs.writeFileSync(
+				path.join(cwd, ".jeopi", "secrets.yml"),
+				"- type: plain\n  content: sdk-secret-token-123456\n",
+			);
 
 			const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 			if (!model) throw new Error("Expected anthropic model");

@@ -380,8 +380,8 @@ ${chalk.bold("Plugin Options:")}
   --plugin-dir <path>        Load plugin from directory (repeatable)
 
 ${chalk.bold("Useful Commands:")}
-  jeopi agents unpack           - Export bundled subagents to ~/.omp/agent/agents (default)
-  jeopi agents unpack --project - Export bundled subagents to ./.omp/agents`;
+  jeopi agents unpack           - Export bundled subagents to ~/.jeopi/agent/agents (default)
+  jeopi agents unpack --project - Export bundled subagents to ./.jeopi/agents`;
 }
 
 export function printHelp(): void {

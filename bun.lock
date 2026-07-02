@@ -71,7 +71,7 @@
       "name": "jeopi-cli",
       "version": "16.2.13",
       "bin": {
-        "jeopi": "src/cli.ts",
+        "jeopi": "dist/cli.js",
       },
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
@@ -178,6 +178,13 @@
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
+      },
+      "optionalDependencies": {
+        "jeopi-natives-darwin-arm64": "16.2.13",
+        "jeopi-natives-darwin-x64": "16.2.13",
+        "jeopi-natives-linux-arm64": "16.2.13",
+        "jeopi-natives-linux-x64": "16.2.13",
+        "jeopi-natives-win32-x64": "16.2.13",
       },
     },
     "packages/snapcompact": {
@@ -1125,6 +1132,8 @@
     "jeopi-mnemopi": ["jeopi-mnemopi@workspace:packages/mnemopi"],
 
     "jeopi-natives": ["jeopi-natives@workspace:packages/natives"],
+
+    "jeopi-natives-darwin-arm64": ["jeopi-natives-darwin-arm64@16.2.13", "", { "os": "darwin", "cpu": "arm64" }, "sha512-LX4BXgj4GVER3WlBlgKP0ZKjY4MpOw6WR4EXlqNflcxYB+Uo5SfD0JNyJn3nTdhtmET4jwzCfiPPLMUWKiQkzw=="],
 
     "jeopi-snapcompact": ["jeopi-snapcompact@workspace:packages/snapcompact"],
 

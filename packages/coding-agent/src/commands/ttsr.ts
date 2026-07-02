@@ -64,12 +64,12 @@ export default class Ttsr extends Command {
 		"jeopi ttsr test src/foo.ts",
 		"jeopi ttsr test --file src/foo.ts",
 		"jeopi ttsr test --file src/foo.ts --source text",
-		"jeopi ttsr test --rule .omp/rules/no-any.md --source tool --path src/foo.ts 'const x: any = 1'",
+		"jeopi ttsr test --rule .jeopi/rules/no-any.md --source tool --path src/foo.ts 'const x: any = 1'",
 		"echo 'Box::leak(&mut v)' | jeopi ttsr test --file - --path src/lib.rs",
 		"jeopi ttsr test --source tool --tool edit --path src/foo.ts 'const x: any = 1'",
 		"jeopi ttsr scan",
 		"jeopi ttsr scan src/",
-		"jeopi ttsr scan -r .omp/rules/no-any.md src/",
+		"jeopi ttsr scan -r .jeopi/rules/no-any.md src/",
 	];
 
 	async run(): Promise<void> {

@@ -178,7 +178,7 @@ logger.warn("Theme file invalid, using fallback", { path });
 logger.debug("LSP fallback triggered", { reason });
 ```
 
-Logs go to `~/.omp/logs/omp.YYYY-MM-DD.log` with automatic rotation.
+Logs go to `~/.jeopi/logs/jeopi.YYYY-MM-DD.log` with automatic rotation.
 
 ## TUI Sanitization
 

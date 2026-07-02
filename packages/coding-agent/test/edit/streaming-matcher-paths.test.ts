@@ -178,7 +178,7 @@ import { getCapability } from "jeopi-cli/capability";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "jeopi-cli/capability/rule";
 import type { LoadContext } from "jeopi-cli/capability/types";
 // Register all discovery providers as a side effect.
-import "jeopi/discovery";
+import "jeopi-cli/discovery";
 import { TtsrManager } from "jeopi-cli/export/ttsr";
 
 async function loadBundledTsNoAnyRule(): Promise<Rule> {

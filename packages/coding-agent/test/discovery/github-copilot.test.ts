@@ -20,11 +20,11 @@ import type { Prompt } from "jeopi-cli/capability/prompt";
 import { type Rule, resetActiveRulesForTests, setActiveRules } from "jeopi-cli/capability/rule";
 import { RuleProtocolHandler } from "jeopi-cli/internal-urls/rule-protocol";
 import { removeSyncWithRetries } from "jeopi-utils";
-import "jeopi/capability/context-file";
-import "jeopi/capability/instruction";
-import "jeopi/capability/prompt";
-import "jeopi/capability/rule";
-import "jeopi/discovery/github";
+import "jeopi-cli/capability/context-file";
+import "jeopi-cli/capability/instruction";
+import "jeopi-cli/capability/prompt";
+import "jeopi-cli/capability/rule";
+import "jeopi-cli/discovery/github";
 
 const ENV_KEYS = ["COPILOT_HOME", "COPILOT_CUSTOM_INSTRUCTIONS_DIRS"] as const;
 

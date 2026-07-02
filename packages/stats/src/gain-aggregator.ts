@@ -57,7 +57,7 @@ function matchesProject(cwd: string | undefined, project: string): boolean {
 /**
  * Collapse conventional worktree sub-paths to their logical project root.
  *
- * Rules are generic: omp internal wt paths are dropped; conventional worktree
+ * Rules are generic: jeopi internal wt paths are dropped; conventional worktree
  * suffixes (`.wt/`, `-wt/`, `.worktrees/`, `-worktrees/`) are stripped. No
  * author-specific IDE or tool paths are baked in.
  *
@@ -66,7 +66,7 @@ function matchesProject(cwd: string | undefined, project: string): boolean {
 export function normalizeProjectPath(p: string): string | null {
 	const clean = canonicalProjectPath(p);
 	if (TEMP_PATH_RE.test(clean)) return null;
-	if (/\/\.omp\/wt\//u.test(clean)) return null;
+	if (/\/\.(?:omp|jeopi)\/wt\//u.test(clean)) return null;
 
 	const worktreePatterns = [
 		/^(.+)\/\.wt\/[^/]+(?:\/.*)?$/u,

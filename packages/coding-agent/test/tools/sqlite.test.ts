@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { removeWithRetries } from "jeopi-utils";
-import "jeopi/tools/renderers";
+import "jeopi-cli/tools/renderers";
 import { Settings } from "jeopi-cli/config/settings";
 import { ReadTool } from "jeopi-cli/tools/read";
 import {

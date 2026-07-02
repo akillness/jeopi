@@ -12,7 +12,7 @@ import {
 import { loadSlashCommands } from "jeopi-cli/extensibility/slash-commands";
 import { discoverAgents } from "jeopi-cli/task/discovery";
 import { removeWithRetries } from "jeopi-utils";
-import "jeopi/discovery/claude-plugins";
+import "jeopi-cli/discovery/claude-plugins";
 import { type MCPServer, mcpCapability } from "jeopi-cli/capability/mcp";
 import type { Skill } from "jeopi-cli/capability/skill";
 import type { SlashCommand } from "jeopi-cli/capability/slash-command";

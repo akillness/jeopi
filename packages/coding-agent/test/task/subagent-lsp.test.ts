@@ -17,7 +17,7 @@ import type { IsolationHandle, WorktreeBaseline } from "jeopi-cli/task/worktree"
 import * as worktreeModule from "jeopi-cli/task/worktree";
 import type { ToolSession } from "jeopi-cli/tools";
 import { removeWithRetries } from "jeopi-utils";
-import "jeopi/tools/yield";
+import "jeopi-cli/tools/yield";
 import { EventBus } from "jeopi-cli/utils/event-bus";
 
 const TEST_TASK: TaskParams = {

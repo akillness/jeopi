@@ -271,6 +271,7 @@ import {
 	type SecretObfuscator,
 } from "../secrets/obfuscator";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
+import type { CriticGateState } from "../task/critic-gate";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -1513,6 +1514,10 @@ export class AgentSession {
 	#advisorPrimaryTurnsCompleted = 0;
 	#advisorInterruptImmuneTurnStart: number | undefined;
 	#planModeState: PlanModeState | undefined;
+	/** Hard execution gate driven by `critic` subagent verdicts (see task/critic-gate.ts).
+	 *  Engaged while the latest verdict is non-okay; cleared by an okay verdict,
+	 *  the next user-authored prompt, or a new session. */
+	#criticGateState: CriticGateState | undefined;
 	#goalModeState: GoalModeState | undefined;
 	#goalRuntime: GoalRuntime;
 	#advisorEnabled = false;
@@ -6677,6 +6682,14 @@ export class AgentSession {
 		}
 	}
 
+	getCriticGateState(): CriticGateState | undefined {
+		return this.#criticGateState;
+	}
+
+	setCriticGateState(state: CriticGateState | undefined): void {
+		this.#criticGateState = state;
+	}
+
 	getGoalModeState(): GoalModeState | undefined {
 		return this.#goalModeState;
 	}
@@ -7112,6 +7125,9 @@ export class AgentSession {
 		// Agent-initiated synthetic prompts (auto-continue, plan, reminders) do not.
 		if (options?.userInitiated ?? !options?.synthetic) {
 			this.#advisorAutoResumeSuppressed = false;
+			// The user regaining control is the only override for the critic gate:
+			// a fresh user message clears any engaged non-okay verdict.
+			this.#criticGateState = undefined;
 		}
 
 		// If streaming, queue via steer() or followUp() based on option
@@ -8334,6 +8350,7 @@ export class AgentSession {
 		this.#midRunNudgeCount = 0;
 		this.#planReferenceSent = false;
 		this.#planReferencePath = "local://PLAN.md";
+		this.#criticGateState = undefined;
 		this.#resetAdvisorSessionState();
 		this.#reconnectToAgent();
 
