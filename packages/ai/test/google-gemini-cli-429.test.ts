@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { streamGoogleGeminiCli } from "jeopi-ai/providers/google-gemini-cli";
+import type { Context, FetchImpl, Model } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
 import { extractRetryHint } from "jeopi-utils";
 
 // The fail-fast regex used inside the provider to distinguish "known quota errors" (throw immediately)
@@ -6,6 +9,46 @@ import { extractRetryHint } from "jeopi-utils";
 // Option A (minimal): only hard quota limits fail-fast; transient rate-limit messages fall through to retry.
 const FAIL_FAST_RE = /quota|exhausted/i;
 const shouldFailFast = (errorText: string) => FAIL_FAST_RE.test(errorText);
+const context: Context = { messages: [{ role: "user", content: "hi", timestamp: 1 }] };
+
+const cliModel: Model<"google-gemini-cli"> = buildModel({
+	id: "gemini-3-flash",
+	name: "Gemini 3 Flash (CCA)",
+	api: "google-gemini-cli",
+	provider: "google-antigravity",
+	baseUrl: "https://example.com",
+	reasoning: true,
+	input: ["text"],
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	contextWindow: 200_000,
+	maxTokens: 32_000,
+});
+
+const individualQuotaBody = JSON.stringify({
+	error: {
+		code: 429,
+		message:
+			"Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 28h48m25s.",
+		status: "RESOURCE_EXHAUSTED",
+		details: [
+			{
+				"@type": "type.googleapis.com/google.rpc.ErrorInfo",
+				reason: "QUOTA_EXHAUSTED",
+				domain: "cloudcode-pa.googleapis.com",
+				metadata: {
+					uiMessage: "true",
+					model: "gemini-3-flash-agent",
+					quotaResetDelay: "28h48m25.991228095s",
+					quotaResetTimeStamp: "2026-07-03T18:44:59Z",
+				},
+			},
+			{
+				"@type": "type.googleapis.com/google.rpc.RetryInfo",
+				retryDelay: "103705.991228095s",
+			},
+		],
+	},
+});
 
 describe("google-gemini-cli 429 fail-fast detection", () => {
 	it("fails fast on 'Quota exceeded' messages", () => {
@@ -71,6 +114,13 @@ describe("extractRetryHint – body text parsing", () => {
 	it("parses compound duration 'reset after 1h30m10s'", () => {
 		expect(extractRetryHint(undefined, "Your quota will reset after 1h30m10s")).toBe(5_410_000);
 	});
+	it("parses Cloud Code Assist 'Resets in' quota text", () => {
+		expect(extractRetryHint(undefined, "Individual quota reached. Resets in 28h48m25s.")).toBe(103_705_000);
+	});
+
+	it("parses Cloud Code Assist quotaResetDelay metadata", () => {
+		expect(extractRetryHint(undefined, '"quotaResetDelay":"28h48m25.991228095s"')).toBeCloseTo(103_705_991.228095);
+	});
 
 	it("parses Codex-style 'try again in Xms'", () => {
 		expect(extractRetryHint(undefined, "try again in 250ms")).toBe(250);
@@ -107,5 +157,88 @@ describe("extractRetryHint – body text parsing", () => {
 
 	it("returns undefined for empty error string and no headers", () => {
 		expect(extractRetryHint(undefined, "")).toBeUndefined();
+	});
+});
+
+describe("google-gemini-cli quota error formatting", () => {
+	it("formats Individual quota 429s as actionable reset messages instead of raw JSON", async () => {
+		let calls = 0;
+		const fetchMock: FetchImpl = async () => {
+			calls += 1;
+			return new Response(individualQuotaBody, {
+				status: 429,
+				headers: { "content-type": "application/json" },
+			});
+		};
+
+		const stream = streamGoogleGeminiCli(cliModel, context, {
+			apiKey: JSON.stringify({ token: "token", projectId: "proj-123", email: "user@example.com" }),
+			fetch: fetchMock,
+		});
+		const result = await stream.result();
+
+		expect(calls).toBe(1);
+		expect(result.stopReason).toBe("error");
+		expect(result.errorStatus).toBe(429);
+		expect(result.errorMessage).toContain(
+			"Cloud Code Assist API error (429): Cloud Code Assist quota exhausted for gemini-3-flash-agent on user@example.com.",
+		);
+		expect(result.errorMessage).toContain("Individual quota reached.");
+		expect(result.errorMessage).toContain("Your quota will reset after 28h48m25.991228095s (2026-07-03T18:44:59Z).");
+		expect(result.errorMessage).toContain("Add another Google account with /login");
+		expect(result.errorMessage).not.toContain('"details"');
+	});
+
+	it("formats Individual quota 429s with literal newlines in the message field", async () => {
+		let calls = 0;
+		const bodyWithNewline = `{
+  "error": {
+    "code": 429,
+    "message": "Individual quota reached. Please upgrade your subscription to increase your\n limits. Resets in 28h48m25s.",
+    "status": "RESOURCE_EXHAUSTED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "QUOTA_EXHAUSTED",
+        "domain": "cloudcode-pa.googleapis.com",
+        "metadata": {
+          "uiMessage": "true",
+          "model": "gemini-3-flash-agent",
+          "quotaResetDelay": "28h48m25.991228095s",
+          "quotaResetTimeStamp": "2026-07-03T18:44:59Z"
+        }
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+        "retryDelay": "103705.991228095s"
+      }
+    ]
+  }
+}`.replace("\\n", "\n"); // Force a literal newline inside the message string
+
+		const fetchMock: FetchImpl = async () => {
+			calls += 1;
+			return new Response(bodyWithNewline, {
+				status: 429,
+				headers: { "content-type": "application/json" },
+			});
+		};
+
+		const stream = streamGoogleGeminiCli(cliModel, context, {
+			apiKey: JSON.stringify({ token: "token", projectId: "proj-123", email: "user@example.com" }),
+			fetch: fetchMock,
+		});
+		const result = await stream.result();
+
+		expect(calls).toBe(1);
+		expect(result.stopReason).toBe("error");
+		expect(result.errorStatus).toBe(429);
+		expect(result.errorMessage).toContain(
+			"Cloud Code Assist API error (429): Cloud Code Assist quota exhausted for gemini-3-flash-agent on user@example.com.",
+		);
+		expect(result.errorMessage).toContain("Individual quota reached.");
+		expect(result.errorMessage).toContain("Your quota will reset after 28h48m25.991228095s (2026-07-03T18:44:59Z).");
+		expect(result.errorMessage).toContain("Add another Google account with /login");
+		expect(result.errorMessage).not.toContain('"details"');
 	});
 });

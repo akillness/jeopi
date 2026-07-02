@@ -1,11 +1,12 @@
 import { scheduler } from "node:timers/promises";
 
-// "reset after 1h2m3s" / "10m15s" / "39s"
-const QUOTA_RESET_PATTERN = /reset after (?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i;
+// "reset after 1h2m3s" / "Resets in 28h48m25.991s" / "10m15s" / "39s"
+const DURATION_TEXT_PATTERN = /([0-9.]+\s*(?:ms|h|m|s)(?:\s*[0-9.]+\s*(?:ms|h|m|s))*)/i;
+const QUOTA_RESET_PATTERN = new RegExp(`(?:reset after|resets?\\s+in)\\s+${DURATION_TEXT_PATTERN.source}`, "i");
+// JSON fields: "retryDelay": "34.074824224s", "quotaResetDelay": "28h48m25.991228095s"
+const DURATION_FIELD_PATTERN = /"(?:retryDelay|quotaResetDelay)":\s*"([^"]+)"/i;
 // "Please retry in 250ms" / "Please retry in 12s"
 const PLEASE_RETRY_PATTERN = /Please retry in ([0-9.]+)(ms|s)/i;
-// JSON field: "retryDelay": "34.074824224s"
-const RETRY_DELAY_FIELD_PATTERN = /"retryDelay":\s*"([0-9.]+)(ms|s)"/i;
 // "try again in 250ms" / "try again in 12s" / "try again in 12sec" /
 // "try again in 5 min" / "try again in ~158 min." / "try again in 2h" /
 // "try again in 90 minutes" / "try again in 1 hour"
@@ -21,9 +22,9 @@ const TRY_AGAIN_PATTERN = /try again in\s+~?\s*([0-9.]+)\s*(ms|sec|s|minutes?|mi
  *  - `x-ratelimit-reset-after` (seconds)
  *
  * Body patterns:
- *  - `Your quota will reset after 18h31m10s` / `10m15s` / `39s`
+ *  - `Your quota will reset after 18h31m10s` / `Resets in 28h48m25s` / `39s`
  *  - `Please retry in 250ms` / `Please retry in 12s`
- *  - `"retryDelay": "34.074824224s"` (JSON error detail field)
+ *  - `"retryDelay": "34.074824224s"` / `"quotaResetDelay": "28h48m25.991228095s"`
  *  - `try again in 250ms` / `try again in 12s` / `try again in 5 min` / `try again in ~158 min`
  *
  * Returns `undefined` if no signal is found.
@@ -56,16 +57,16 @@ export function extractRetryHint(source: Response | Headers | null | undefined, 
 	if (!body) return undefined;
 
 	const quotaMatch = QUOTA_RESET_PATTERN.exec(body);
-	if (quotaMatch) {
-		const hours = quotaMatch[1] ? Number.parseInt(quotaMatch[1], 10) : 0;
-		const minutes = quotaMatch[2] ? Number.parseInt(quotaMatch[2], 10) : 0;
-		const seconds = Number.parseFloat(quotaMatch[3]!);
-		if (!Number.isNaN(seconds)) {
-			const totalMs = ((hours * 60 + minutes) * 60 + seconds) * 1000;
-			if (totalMs > 0) return totalMs;
-		}
+	if (quotaMatch?.[1]) {
+		const totalMs = parseDurationTextMs(quotaMatch[1]);
+		if (totalMs !== undefined) return totalMs;
 	}
-	for (const pattern of [PLEASE_RETRY_PATTERN, RETRY_DELAY_FIELD_PATTERN, TRY_AGAIN_PATTERN]) {
+	const durationFieldMatch = DURATION_FIELD_PATTERN.exec(body);
+	if (durationFieldMatch?.[1]) {
+		const totalMs = parseDurationTextMs(durationFieldMatch[1]);
+		if (totalMs !== undefined) return totalMs;
+	}
+	for (const pattern of [PLEASE_RETRY_PATTERN, TRY_AGAIN_PATTERN]) {
 		const match = pattern.exec(body);
 		if (match?.[1]) {
 			const value = Number.parseFloat(match[1]);
@@ -76,6 +77,20 @@ export function extractRetryHint(source: Response | Headers | null | undefined, 
 		}
 	}
 	return undefined;
+}
+function parseDurationTextMs(value: string): number | undefined {
+	let totalMs = 0;
+	let matched = false;
+	for (const match of value.matchAll(/([0-9.]+)\s*(ms|h|m|s)/gi)) {
+		const amount = Number.parseFloat(match[1] ?? "");
+		const unit = match[2];
+		if (!Number.isFinite(amount) || !unit) continue;
+		const unitMs = unitToMs(unit);
+		if (unitMs === undefined) continue;
+		totalMs += amount * unitMs;
+		matched = true;
+	}
+	return matched && totalMs > 0 ? totalMs : undefined;
 }
 
 function unitToMs(unit: string): number | undefined {

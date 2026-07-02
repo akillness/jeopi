@@ -12998,6 +12998,12 @@ export class AgentSession {
 		// Smart Fallback if no exact headers found
 		return undefined;
 	}
+	#formatRetryDelayCapError(errorMessage: string, delayMs: number, maxDelayMs: number, usageLimit: boolean): string {
+		if (usageLimit) {
+			return `Quota exhausted. Provider requested ${delayMs}ms wait (${formatDuration(delayMs)}), exceeds retry.maxDelayMs (${maxDelayMs}ms), so jeopi did not sleep. Original error: ${errorMessage}`;
+		}
+		return `Provider requested ${delayMs}ms wait, exceeds retry.maxDelayMs (${maxDelayMs}ms). Original error: ${errorMessage}`;
+	}
 
 	/**
 	 * Handle retryable errors with exponential backoff.
@@ -13174,13 +13180,14 @@ export class AgentSession {
 		const maxDelayMs = retrySettings.maxDelayMs;
 		if (maxDelayMs > 0 && delayMs > maxDelayMs && !switchedCredential && !switchedModel && !classifierRefusal) {
 			const attempt = this.#retryAttempt;
+			const usageLimit = AIError.is(id, AIError.Flag.UsageLimit);
 			this.#retryAttempt = 0;
 			this.#refusalBackoff = undefined;
 			await this.#emitSessionEvent({
 				type: "auto_retry_end",
 				success: false,
 				attempt,
-				finalError: `Provider requested ${delayMs}ms wait, exceeds retry.maxDelayMs (${maxDelayMs}ms). Original error: ${errorMessage}`,
+				finalError: this.#formatRetryDelayCapError(errorMessage, delayMs, maxDelayMs, usageLimit),
 			});
 			this.#resolveRetry();
 			return false;

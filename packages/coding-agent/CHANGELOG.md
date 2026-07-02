@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+
+- Fixed long-window quota exhaustion (including Cloud Code Assist daily quota) being shown as a generic `Retry failed after 1 attempts` error. When the provider retry window exceeds `retry.maxDelayMs`, jeopi now explains that the quota is exhausted, reports the provider wait, and avoids the retry-failed wrapper because no sleep/retry was started.
 
 ## [16.2.20] - 2026-07-02
 

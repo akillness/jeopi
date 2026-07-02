@@ -423,6 +423,99 @@ export function shouldRefreshGeminiCliCredentials(
 	const skewMs = isAntigravity ? ANTIGRAVITY_REFRESH_SKEW_MS : GOOGLE_GEMINI_REFRESH_SKEW_MS;
 	return nowMs + skewMs >= expiresAt;
 }
+interface CloudCodeAssistQuotaDetails {
+	message?: string;
+	model?: string;
+	quotaResetDelay?: string;
+	quotaResetTimeStamp?: string;
+	retryDelay?: string;
+}
+
+function recordOf(value: unknown): Record<string, unknown> | undefined {
+	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+function stringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
+	const value = record?.[key];
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function extractCloudCodeAssistQuotaDetails(errorBody: string): CloudCodeAssistQuotaDetails | undefined {
+	if (!/\bquota\b|QUOTA_EXHAUSTED|RESOURCE_EXHAUSTED/i.test(errorBody)) return undefined;
+	const jsonStart = errorBody.indexOf("{");
+	if (jsonStart === -1) return undefined;
+
+	try {
+		const jsonText = errorBody.slice(jsonStart).replace(/\r?\n/g, " ");
+		const parsed = JSON.parse(jsonText);
+		const root = recordOf(parsed);
+		const error = recordOf(root?.error);
+		if (!error) return undefined;
+
+		const message = stringField(error, "message");
+		const status = stringField(error, "status");
+		const details = Array.isArray(error.details) ? error.details : [];
+
+		let isQuotaExhausted =
+			status === "RESOURCE_EXHAUSTED" && message !== undefined && /\bquota\b|exhausted/i.test(message);
+		let model: string | undefined;
+		let quotaResetDelay: string | undefined;
+		let quotaResetTimeStamp: string | undefined;
+		let retryDelay: string | undefined;
+
+		for (const rawDetail of details) {
+			const detail = recordOf(rawDetail);
+			if (!detail) continue;
+			const reason = stringField(detail, "reason");
+			if (reason === "QUOTA_EXHAUSTED") {
+				isQuotaExhausted = true;
+			}
+			retryDelay ??= stringField(detail, "retryDelay");
+			const metadata = recordOf(detail.metadata);
+			model ??= stringField(metadata, "model");
+			quotaResetDelay ??= stringField(metadata, "quotaResetDelay");
+			quotaResetTimeStamp ??=
+				stringField(metadata, "quotaResetTimeStamp") ?? stringField(metadata, "quotaResetTimestamp");
+		}
+
+		if (!isQuotaExhausted) return undefined;
+		return { message, model, quotaResetDelay, quotaResetTimeStamp, retryDelay };
+	} catch {
+		return undefined;
+	}
+}
+
+function sentence(text: string): string {
+	return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function formatCloudCodeAssistQuotaMessage(errorBody: string, email?: string): string | undefined {
+	const details = extractCloudCodeAssistQuotaDetails(errorBody);
+	if (!details) return undefined;
+
+	const target = details.model ? ` for ${details.model}` : "";
+	const account = email ? ` on ${email}` : "";
+	const parts = [`Cloud Code Assist quota exhausted${target}${account}.`];
+
+	const providerSummary = details.message
+		?.replace(/\s+/g, " ")
+		.trim()
+		.split(/\s+Resets?\s+in\s+/i)[0];
+	if (providerSummary) {
+		parts.push(sentence(providerSummary));
+	}
+
+	const resetDelay = details.quotaResetDelay ?? details.retryDelay;
+	if (resetDelay) {
+		const resetTime = details.quotaResetTimeStamp ? ` (${details.quotaResetTimeStamp})` : "";
+		parts.push(`Your quota will reset after ${resetDelay}${resetTime}.`);
+	} else if (details.quotaResetTimeStamp) {
+		parts.push(`Your quota resets at ${details.quotaResetTimeStamp}.`);
+	}
+
+	parts.push("Add another Google account with /login, switch models/providers, or wait for the reset.");
+	return parts.join(" ");
+}
 
 interface CloudCodeAssistRequest {
 	project: string;
@@ -759,7 +852,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					event => options?.onSseEvent?.({ event: event.event, data: event.data, raw: [...event.raw] }, model),
 				)) {
 					if (chunk.error) {
-						const detail = chunk.error.message || chunk.error.status || "unknown error";
+						const quotaDetail = formatCloudCodeAssistQuotaMessage(
+							JSON.stringify({ error: chunk.error }),
+							parsedCredentials.email,
+						);
+						const detail = quotaDetail ?? chunk.error.message ?? chunk.error.status ?? "unknown error";
 						const message = `Cloud Code Assist stream error: ${detail}`;
 						throw typeof chunk.error.code === "number" && chunk.error.code >= 400
 							? new AIError.GeminiCliApiError(message, chunk.error.code)
@@ -949,14 +1046,17 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							}
 						}
 						const errorText = await response.text();
-						const validationUrl = extractGoogleValidationUrl(errorText);
-						const errorMessage = validationUrl
-							? formatGoogleValidationRequiredMessage(
-									validationUrl,
-									"retry your request",
-									parsedCredentials.email,
-								)
-							: errorText;
+						const quotaMessage = formatCloudCodeAssistQuotaMessage(errorText, parsedCredentials.email);
+						const validationUrl = quotaMessage ? undefined : extractGoogleValidationUrl(errorText);
+						const errorMessage =
+							quotaMessage ??
+							(validationUrl
+								? formatGoogleValidationRequiredMessage(
+										validationUrl,
+										"retry your request",
+										parsedCredentials.email,
+									)
+								: errorText);
 						throw new AIError.GeminiCliApiError(
 							`Cloud Code Assist API error (${response.status}): ${errorMessage}`,
 							response.status,
@@ -993,8 +1093,10 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 
 							if (!currentResponse.ok) {
 								const retryErrorText = await currentResponse.text();
+								const retryErrorMessage =
+									formatCloudCodeAssistQuotaMessage(retryErrorText, parsedCredentials.email) ?? retryErrorText;
 								throw new AIError.GeminiCliApiError(
-									`Cloud Code Assist API error (${currentResponse.status}): ${retryErrorText}`,
+									`Cloud Code Assist API error (${currentResponse.status}): ${retryErrorMessage}`,
 									currentResponse.status,
 									{ headers: currentResponse.headers },
 								);
