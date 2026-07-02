@@ -950,6 +950,17 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	"ui.agentLabel": {
+		type: "string",
+		default: "jeo",
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Agent Label",
+			description:
+				"Identity name led on its own line before assistant replies and thinking blocks (jeo-code style). Empty disables the label",
+		},
+	},
 	hideThinkingBlock: {
 		type: "boolean",
 		default: false,

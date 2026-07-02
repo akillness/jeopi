@@ -122,7 +122,7 @@ import { getEditorCommand, openInEditor } from "../utils/external-editor";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../utils/session-color";
 import { messageHasDisplayableThinking } from "../utils/thinking-display";
 import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../utils/title-generator";
-import type { AssistantMessageComponent } from "./components/assistant-message";
+import { type AssistantMessageComponent, setAssistantAgentLabel } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
 import { CustomEditor } from "./components/custom-editor";
@@ -677,6 +677,8 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		this.hideThinkingBlock = settings.get("hideThinkingBlock");
 		this.proseOnlyThinking = settings.get("proseOnlyThinking");
+		// jeo TUI identity: the accent name label leading assistant segments.
+		setAssistantAgentLabel(settings.get("ui.agentLabel") ?? "jeo");
 
 		const hookCommands: SlashCommand[] = (
 			this.session.extensionRunner?.getRegisteredCommands(BUILTIN_SLASH_COMMAND_RESERVED_NAMES) ?? []

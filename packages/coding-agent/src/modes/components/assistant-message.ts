@@ -164,6 +164,24 @@ export function resetThinkingSpeedTracker(): void {
 }
 
 /**
+ * Agent identity label led on its own line before each assistant segment —
+ * jeo-code's TUI identity ported to jeopi: a bold accent `jeo` name leads
+ * thought blocks and replies so the transcript reads as jeo speaking.
+ * Configured from `ui.agentLabel` at session start; "" disables the label.
+ */
+let assistantAgentLabel = "jeo";
+
+/** Set the assistant identity label ("" disables). Called from interactive-mode startup. */
+export function setAssistantAgentLabel(label: string): void {
+	assistantAgentLabel = label.trim();
+}
+
+/** Current assistant identity label ("" when disabled). */
+export function getAssistantAgentLabel(): string {
+	return assistantAgentLabel;
+}
+
+/**
  * Linear-interpolate two `#rrggbb` colors in sRGB space. `t` clamps to [0,1]:
  * `t = 0` → `from`, `t = 1` → `to`. Drives the streaming speed badge, fading
  * from a dim gray toward the theme accent as tok/s rises.
@@ -727,6 +745,15 @@ export class AssistantMessageComponent extends Container {
 					c.type === "thinking" &&
 					resolveThinkingDisplay(c, this.proseOnlyThinking).visible),
 		);
+
+		// jeo identity: a bold accent name label on its own line leads every
+		// assistant segment with visible prose or a live thinking pulse —
+		// mirrors jeo-code's TUI (`agentLabel()` leading thought blocks and the
+		// final reply). Tool-call-only blocks stay unlabeled; their cards carry
+		// their own identity.
+		if (assistantAgentLabel && (hasVisibleContent || this.#shouldAnimateThinking(message))) {
+			this.#contentContainer.addChild(new Text(theme.fg("accent", theme.bold(assistantAgentLabel)), 1, 0));
+		}
 
 		// Render content in order
 		let thinkingIndex = 0;
