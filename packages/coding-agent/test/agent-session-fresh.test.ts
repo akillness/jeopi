@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { Agent, AppendOnlyContextManager } from "@oh-my-pi/pi-agent-core";
-import type { ProviderSessionState } from "@oh-my-pi/pi-ai";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { Agent, AppendOnlyContextManager } from "jeopi-agent-core";
+import type { ProviderSessionState } from "jeopi-ai";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { TempDir } from "jeopi-utils";
 
 interface FreshHarness {
 	agent: Agent;

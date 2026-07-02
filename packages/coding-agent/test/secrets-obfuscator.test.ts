@@ -3,17 +3,17 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import type { AssistantMessage, Context, Message } from "@oh-my-pi/pi-ai";
+import { type } from "arktype";
+import type { AgentMessage } from "jeopi-agent-core";
+import type { AssistantMessage, Context, Message } from "jeopi-ai";
 import {
 	deobfuscateAgentMessages,
 	deobfuscateToolArguments,
 	obfuscateMessages,
 	obfuscateProviderContext,
 	SecretObfuscator,
-} from "@oh-my-pi/pi-coding-agent/secrets/obfuscator";
-import { compileSecretRegex } from "@oh-my-pi/pi-coding-agent/secrets/regex";
-import { type } from "arktype";
+} from "jeopi-cli/secrets/obfuscator";
+import { compileSecretRegex } from "jeopi-cli/secrets/regex";
 
 describe("compileSecretRegex", () => {
 	it("adds global flag when not provided", () => {

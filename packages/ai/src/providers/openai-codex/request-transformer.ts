@@ -1,6 +1,6 @@
-import type { Effort } from "@oh-my-pi/pi-catalog/effort";
-import { supportsAllTurnsReasoningContext, supportsCodexReasoningSummary } from "@oh-my-pi/pi-catalog/identity";
-import { requireSupportedEffort } from "@oh-my-pi/pi-catalog/model-thinking";
+import type { Effort } from "jeopi-catalog/effort";
+import { supportsAllTurnsReasoningContext, supportsCodexReasoningSummary } from "jeopi-catalog/identity";
+import { requireSupportedEffort } from "jeopi-catalog/model-thinking";
 import type { Api, Model } from "../../types";
 
 /** Reasoning replay scope for the Codex Responses API (`reasoning.context`). */

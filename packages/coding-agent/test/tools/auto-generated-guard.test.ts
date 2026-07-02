@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { assertEditableFile, assertEditableFileContent } from "@oh-my-pi/pi-coding-agent/tools/auto-generated-guard";
-import { ToolError } from "@oh-my-pi/pi-coding-agent/tools/tool-errors";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { assertEditableFile, assertEditableFileContent } from "jeopi-cli/tools/auto-generated-guard";
+import { ToolError } from "jeopi-cli/tools/tool-errors";
 
 let tempDir: string;
 

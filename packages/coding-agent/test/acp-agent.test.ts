@@ -17,27 +17,23 @@ import {
 	zPromptResponse,
 	zSessionNotification,
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
-import type { Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { resolveLocalUrlToPath } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import {
-	ACP_BOOTSTRAP_RACE_GUARD_MS,
-	AcpAgent,
-	createAcpExtensionUiContext,
-} from "@oh-my-pi/pi-coding-agent/modes/acp/acp-agent";
-import type { PlanModeState } from "@oh-my-pi/pi-coding-agent/plan-mode/state";
-import type { AgentSession, AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SILENT_ABORT_MARKER } from "@oh-my-pi/pi-coding-agent/session/messages";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "@oh-my-pi/pi-coding-agent/stt/models";
+import type { Model } from "jeopi-ai";
+import { buildModel } from "jeopi-catalog/build";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { resolveLocalUrlToPath } from "jeopi-cli/internal-urls";
+import { ACP_BOOTSTRAP_RACE_GUARD_MS, AcpAgent, createAcpExtensionUiContext } from "jeopi-cli/modes/acp/acp-agent";
+import type { PlanModeState } from "jeopi-cli/plan-mode/state";
+import type { AgentSession, AgentSessionEvent } from "jeopi-cli/session/agent-session";
+import { SILENT_ABORT_MARKER } from "jeopi-cli/session/messages";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "jeopi-cli/stt/models";
 import {
 	DEFAULT_TTS_LOCAL_MODEL_KEY,
 	DEFAULT_TTS_VOICE,
 	TTS_LOCAL_MODELS,
 	TTS_LOCAL_VOICE_OPTIONS,
-} from "@oh-my-pi/pi-coding-agent/tts/models";
-import { getConfigRootDir, setAgentDir } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/tts/models";
+import { getConfigRootDir, setAgentDir } from "jeopi-utils";
 import type { z } from "zod/v4";
 
 /**

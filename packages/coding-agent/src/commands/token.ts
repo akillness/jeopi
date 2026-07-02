@@ -2,9 +2,9 @@
  * Get the API key or OAuth token for a provider.
  */
 
-import { PROVIDER_REGISTRY } from "@oh-my-pi/pi-ai";
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
 import chalk from "chalk";
+import { PROVIDER_REGISTRY } from "jeopi-ai";
+import { Args, Command, Flags } from "jeopi-utils/cli";
 import { isAuthenticated, ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
 import { getAvailableAuthMethods } from "../web/search/providers/perplexity-auth";

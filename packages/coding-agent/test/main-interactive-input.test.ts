@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { applyResolvedSystemPromptInputs, submitInteractiveInput } from "@oh-my-pi/pi-coding-agent/main";
-import type { SubmittedUserInput } from "@oh-my-pi/pi-coding-agent/modes/types";
-import type { CreateAgentSessionOptions } from "@oh-my-pi/pi-coding-agent/sdk";
-import { discoverTitleSystemPromptFile } from "@oh-my-pi/pi-coding-agent/system-prompt";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { applyResolvedSystemPromptInputs, submitInteractiveInput } from "jeopi-cli/main";
+import type { SubmittedUserInput } from "jeopi-cli/modes/types";
+import type { CreateAgentSessionOptions } from "jeopi-cli/sdk";
+import { discoverTitleSystemPromptFile } from "jeopi-cli/system-prompt";
+import { removeWithRetries } from "jeopi-utils";
 
 const cleanupDirs: string[] = [];
 

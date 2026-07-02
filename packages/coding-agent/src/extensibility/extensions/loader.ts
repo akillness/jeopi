@@ -4,11 +4,11 @@
 import type * as fs1 from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { ImageContent, Model, TextContent, TSchema } from "@oh-my-pi/pi-ai";
-import type { KeyId } from "@oh-my-pi/pi-tui";
-import { hasFsCode, isEacces, isEnoent, logger } from "@oh-my-pi/pi-utils";
 import { Type } from "arktype";
+import type { ThinkingLevel } from "jeopi-agent-core";
+import type { ImageContent, Model, TextContent, TSchema } from "jeopi-ai";
+import type { KeyId } from "jeopi-tui";
+import { hasFsCode, isEacces, isEnoent, logger } from "jeopi-utils";
 import * as zodModule from "zod/v4";
 import { type ExtensionModule, extensionModuleCapability } from "../../capability/extension-module";
 import { type Hook, hookCapability } from "../../capability/hook";

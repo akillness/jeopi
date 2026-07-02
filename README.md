@@ -42,15 +42,27 @@ Real gates, no theater. The rest of this README is the engine both share.
 
 ## Install
 
+**Bun (recommended)**
+
+```sh
+bun install -g jeopi-cli
+jeopi --version # jeopi/16.x
+```
+
+**npm**
+
+```sh
+npm install -g jeopi-cli
+```
+
 **From source**
 
 ```sh
 git clone https://github.com/akillness/jeopi.git && cd jeopi
 bun run setup   # installs deps, builds natives, links the global `jeopi` command
-jeopi --version # jeopi/16.x
 ```
 
-macOS · Linux · Windows · bun ≥ 1.3.14. Existing `~/.omp` auth, sessions, and settings are picked up as-is — `/login` once, keep it forever.
+macOS · Linux · Windows · bun ≥ 1.3.14. Existing `~/.omp` auth, sessions, and settings are picked up as-is — `/login` once, keep it forever. jeopi is published as unscoped npm packages — CLI: `jeopi-cli` (binary command: `jeopi`), libraries: `jeopi-*` — fully independent of the `@oh-my-pi` scope, while legacy `@oh-my-pi/pi-*` plugin imports keep resolving through the built-in compat shim.
 
 ## The spec-first spine
 
@@ -435,7 +447,7 @@ The same prompt cards surface over ACP, so editors get the picker without writin
 
 ### SDK — embed in Node
 
-`@oh-my-pi/pi-coding-agent`
+`jeopi`
 
 Node and TypeScript hosts pull the engine in directly. The package exposes `ModelRegistry`, `SessionManager`, `createAgentSession`, and `discoverAuthStorage`; the session emits typed events you subscribe to.
 
@@ -445,7 +457,7 @@ import {
   SessionManager,
   createAgentSession,
   discoverAuthStorage,
-} from "@oh-my-pi/pi-coding-agent";
+} from "jeopi-cli";
 
 const auth = await discoverAuthStorage();
 const models = new ModelRegistry(auth);
@@ -534,7 +546,7 @@ bun setup
 bun dev
 ```
 
-`bun setup` installs Bun workspaces and builds `@oh-my-pi/pi-natives`. Re-run `bun run build:native` after changing Rust crates or `packages/natives`.
+`bun setup` installs Bun workspaces and builds `jeopi-natives`. Re-run `bun run build:native` after changing Rust crates or `packages/natives`.
 
 For a non-interactive smoke check:
 
@@ -554,26 +566,26 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 
 | Package                                                   | Description                                                                |
 | --------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **[@oh-my-pi/collab-web](packages/collab-web)**           | Browser guest client, mock host, and local relay for collab live sessions  |
-| **[@oh-my-pi/pi-ai](packages/ai)**                        | Multi-provider LLM client with streaming and model/provider integration    |
-| **[@oh-my-pi/pi-catalog](packages/catalog)**              | Model catalog: bundled model database, provider descriptors, and identity  |
-| **[@oh-my-pi/pi-agent-core](packages/agent)**             | Agent runtime with tool calling and state management                       |
-| **[@oh-my-pi/pi-coding-agent](packages/coding-agent)**    | Interactive coding agent CLI and SDK                                       |
-| **[@oh-my-pi/pi-tui](packages/tui)**                      | Terminal UI library with differential rendering                            |
-| **[@oh-my-pi/pi-natives](packages/natives)**              | N-API bindings for grep, shell, image, text, syntax highlighting, and more |
-| **[@oh-my-pi/omp-stats](packages/stats)**                 | Local observability dashboard for AI usage statistics                      |
-| **[@oh-my-pi/pi-utils](packages/utils)**                  | Shared utilities (logging, streams, dirs/env/process helpers)              |
-| **[@oh-my-pi/pi-wire](packages/wire)**                    | Shared collab live-session protocol types and relay constants              |
-| **[@oh-my-pi/hashline](packages/hashline)**               | Line-anchored patch language and applier behind the `edit` tool            |
-| **[@oh-my-pi/pi-mnemopi](packages/mnemopi)**              | Local SQLite memory engine for Oh My Pi agents                             |
-| **[@oh-my-pi/snapcompact](packages/snapcompact)**         | Bitmap-frame context compression package and SQuAD eval suite              |
-| **[@oh-my-pi/swarm-extension](packages/swarm-extension)** | Swarm orchestration extension package                                      |
+| **[jeopi-collab-web](packages/collab-web)**           | Browser guest client, mock host, and local relay for collab live sessions  |
+| **[jeopi-ai](packages/ai)**                        | Multi-provider LLM client with streaming and model/provider integration    |
+| **[jeopi-catalog](packages/catalog)**              | Model catalog: bundled model database, provider descriptors, and identity  |
+| **[jeopi-agent-core](packages/agent)**             | Agent runtime with tool calling and state management                       |
+| **[jeopi-cli](packages/coding-agent)**    | Interactive coding agent CLI and SDK                                       |
+| **[jeopi-tui](packages/tui)**                      | Terminal UI library with differential rendering                            |
+| **[jeopi-natives](packages/natives)**              | N-API bindings for grep, shell, image, text, syntax highlighting, and more |
+| **[jeopi-stats](packages/stats)**                 | Local observability dashboard for AI usage statistics                      |
+| **[jeopi-utils](packages/utils)**                  | Shared utilities (logging, streams, dirs/env/process helpers)              |
+| **[jeopi-wire](packages/wire)**                    | Shared collab live-session protocol types and relay constants              |
+| **[jeopi-hashline](packages/hashline)**               | Line-anchored patch language and applier behind the `edit` tool            |
+| **[jeopi-mnemopi](packages/mnemopi)**              | Local SQLite memory engine for Oh My Pi agents                             |
+| **[jeopi-snapcompact](packages/snapcompact)**         | Bitmap-frame context compression package and SQuAD eval suite              |
+| **[jeopi-swarm-extension](packages/swarm-extension)** | Swarm orchestration extension package                                      |
 
 ### Rust Crates
 
 | Crate                                              | Description                                                                                         |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **[pi-natives](crates/pi-natives)**                | Core Rust native addon (N-API `cdylib`) used by `@oh-my-pi/pi-natives`; aggregates the crates below |
+| **[pi-natives](crates/pi-natives)**                | Core Rust native addon (N-API `cdylib`) used by `jeopi-natives`; aggregates the crates below |
 | **[pi-shell](crates/pi-shell)**                    | Embedded shell / PTY / process management split out of `pi-natives` (wraps `brush-*`)               |
 | **[pi-ast](crates/pi-ast)**                        | tree-sitter-based code summarizer and AST utilities (50+ language grammars)                         |
 | **[pi-iso](crates/pi-iso)**                        | Task isolation backend resolver: APFS clones, btrfs/zfs reflinks, overlayfs, projfs, rcopy          |

@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { APP_NAME } from "@oh-my-pi/pi-utils";
+import { APP_NAME } from "jeopi-utils";
 
 export async function initXdg(): Promise<void> {
 	if (process.platform !== "linux" && process.platform !== "darwin") {

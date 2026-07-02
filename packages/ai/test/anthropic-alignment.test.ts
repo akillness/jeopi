@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as tls from "node:tls";
-import { Effort } from "@oh-my-pi/pi-ai";
+import { type as arkType } from "arktype";
+import { Effort } from "jeopi-ai";
 import {
 	applyClaudeToolPrefix,
 	buildAnthropicClientOptions,
@@ -20,20 +21,11 @@ import {
 	mapStainlessOs,
 	streamAnthropic,
 	stripClaudeToolPrefix,
-} from "@oh-my-pi/pi-ai/providers/anthropic";
-import { getEnvApiKey, streamSimple } from "@oh-my-pi/pi-ai/stream";
-import type {
-	AssistantMessage,
-	Context,
-	Model,
-	ModelSpec,
-	TJsonSchema,
-	TokenTaskBudget,
-	Tool,
-} from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
-import { type as arkType } from "arktype";
+} from "jeopi-ai/providers/anthropic";
+import { getEnvApiKey, streamSimple } from "jeopi-ai/stream";
+import type { AssistantMessage, Context, Model, ModelSpec, TJsonSchema, TokenTaskBudget, Tool } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
+import { removeSyncWithRetries } from "jeopi-utils";
 import { withEnv } from "./helpers";
 
 const ANTHROPIC_MODEL_SPEC: ModelSpec<"anthropic-messages"> = {

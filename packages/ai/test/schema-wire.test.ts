@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeAnthropicToolSchema } from "@oh-my-pi/pi-ai/providers/anthropic";
-import type { Tool } from "@oh-my-pi/pi-ai/types";
+import { type } from "arktype";
+import { normalizeAnthropicToolSchema } from "jeopi-ai/providers/anthropic";
+import type { Tool } from "jeopi-ai/types";
 import {
 	adaptSchemaForStrict,
 	decontaminateZodInstance,
@@ -12,8 +13,7 @@ import {
 	stripToolDescriptions,
 	toolWireSchema,
 	zodToWireSchema,
-} from "@oh-my-pi/pi-ai/utils/schema";
-import { type } from "arktype";
+} from "jeopi-ai/utils/schema";
 import { z } from "zod/v4";
 
 describe("isZodSchema", () => {

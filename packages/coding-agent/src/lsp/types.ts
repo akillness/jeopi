@@ -1,5 +1,5 @@
-import type { ptree } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { ptree } from "jeopi-utils";
 
 // =============================================================================
 // Tool Schema

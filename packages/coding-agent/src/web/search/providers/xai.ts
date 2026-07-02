@@ -1,4 +1,4 @@
-import { type ApiKey, type AuthStorage, withAuth } from "@oh-my-pi/pi-ai";
+import { type ApiKey, type AuthStorage, withAuth } from "jeopi-ai";
 import type { SearchCitation, SearchResponse, SearchSource, SearchUsage } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults } from "../utils";

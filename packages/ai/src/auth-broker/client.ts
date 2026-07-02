@@ -5,8 +5,9 @@
  * `omp auth-broker status` (liveness checks). All endpoints except
  * `/v1/healthz` require a bearer token.
  */
-import { readSseEvents } from "@oh-my-pi/pi-utils";
+
 import { type } from "arktype";
+import { readSseEvents } from "jeopi-utils";
 import type { AuthCredential } from "../auth-storage";
 import type {
 	CredentialDisableRequest,

@@ -1,18 +1,18 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { InteractiveMode } from "@oh-my-pi/pi-coding-agent/modes/interactive-mode";
-import { initTheme, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@oh-my-pi/pi-coding-agent/task";
-import type { TodoPhase } from "@oh-my-pi/pi-coding-agent/tools/todo";
-import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
-import type { NativeScrollbackLiveRegion } from "@oh-my-pi/pi-tui";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { Agent } from "jeopi-agent-core";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { InteractiveMode } from "jeopi-cli/modes/interactive-mode";
+import { initTheme, theme } from "jeopi-cli/modes/theme/theme";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "jeopi-cli/task";
+import type { TodoPhase } from "jeopi-cli/tools/todo";
+import { EventBus } from "jeopi-cli/utils/event-bus";
+import type { NativeScrollbackLiveRegion } from "jeopi-tui";
+import { TempDir } from "jeopi-utils";
 
 function renderTodos(mode: InteractiveMode): string {
 	return Bun.stripANSI(mode.todoContainer.render(120).join("\n"));

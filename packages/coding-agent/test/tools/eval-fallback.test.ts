@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import * as evalIndex from "@oh-my-pi/pi-coding-agent/eval";
-import * as pyKernel from "@oh-my-pi/pi-coding-agent/eval/py/kernel";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { EvalTool } from "@oh-my-pi/pi-coding-agent/tools/eval";
-import { resolveEvalBackends } from "@oh-my-pi/pi-coding-agent/tools/eval-backends";
+import { Settings } from "jeopi-cli/config/settings";
+import * as evalIndex from "jeopi-cli/eval";
+import * as pyKernel from "jeopi-cli/eval/py/kernel";
+import type { ToolSession } from "jeopi-cli/tools";
+import { EvalTool } from "jeopi-cli/tools/eval";
+import { resolveEvalBackends } from "jeopi-cli/tools/eval-backends";
 
 let originalPiPy: string | undefined;
 let originalPiJs: string | undefined;

@@ -1,10 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import {
-	renderSegmentTrack,
-	resolveSegmentPalette,
-	type TrackSegment,
-} from "@oh-my-pi/pi-coding-agent/modes/components/segment-track";
-import { initTheme, type ThemeColor, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { renderSegmentTrack, resolveSegmentPalette, type TrackSegment } from "jeopi-cli/modes/components/segment-track";
+import { initTheme, type ThemeColor, theme } from "jeopi-cli/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

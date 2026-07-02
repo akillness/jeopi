@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadCapability } from "@oh-my-pi/pi-coding-agent/capability";
-import { clearCache as clearFsCache } from "@oh-my-pi/pi-coding-agent/capability/fs";
-import { clearClaudePluginRootsCache } from "@oh-my-pi/pi-coding-agent/discovery/helpers";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
-import "@oh-my-pi/pi-coding-agent/discovery/claude-plugins";
-import type { MCPServer } from "@oh-my-pi/pi-coding-agent/capability/mcp";
+import { loadCapability } from "jeopi-cli/capability";
+import { clearCache as clearFsCache } from "jeopi-cli/capability/fs";
+import { clearClaudePluginRootsCache } from "jeopi-cli/discovery/helpers";
+import { removeWithRetries } from "jeopi-utils";
+import "jeopi/discovery/claude-plugins";
+import type { MCPServer } from "jeopi-cli/capability/mcp";
 
 describe("issue-851: claude-plugins loads flat .mcp.json shape", () => {
 	let tempDir: string;

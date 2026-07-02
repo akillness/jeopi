@@ -1,20 +1,20 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { Agent } from "jeopi-agent-core";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
 import {
 	formatMCPConnectionStatusMessage,
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
 	type McpConnectionStatusEvent,
-} from "@oh-my-pi/pi-coding-agent/mcp/startup-events";
-import { InteractiveMode } from "@oh-my-pi/pi-coding-agent/modes/interactive-mode";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
-import { logger, TempDir } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/mcp/startup-events";
+import { InteractiveMode } from "jeopi-cli/modes/interactive-mode";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { EventBus } from "jeopi-cli/utils/event-bus";
+import { logger, TempDir } from "jeopi-utils";
 
 /**
  * Behavioral wiring guard for MCP startup status (mirrors

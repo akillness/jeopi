@@ -1,4 +1,4 @@
-import { untilAborted } from "@oh-my-pi/pi-utils";
+import { untilAborted } from "jeopi-utils";
 import { throwIfAborted } from "../tool-errors";
 
 /** Sleeps inside evaluated browser code while honoring the owning run's cancellation signal. */

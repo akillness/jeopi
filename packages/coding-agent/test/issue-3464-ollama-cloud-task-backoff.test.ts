@@ -1,18 +1,18 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type StreamFn } from "@oh-my-pi/pi-agent-core";
-import type { AssistantMessage, Model } from "@oh-my-pi/pi-ai";
-import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { type GeneratedProvider, getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { Semaphore } from "@oh-my-pi/pi-coding-agent/task/parallel";
-import { wrapStreamFnWithProviderConcurrency } from "@oh-my-pi/pi-coding-agent/task/provider-concurrency";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { Agent, type StreamFn } from "jeopi-agent-core";
+import type { AssistantMessage, Model } from "jeopi-ai";
+import { createMockModel } from "jeopi-ai/providers/mock";
+import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
+import { type GeneratedProvider, getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { Semaphore } from "jeopi-cli/task/parallel";
+import { wrapStreamFnWithProviderConcurrency } from "jeopi-cli/task/provider-concurrency";
+import { TempDir } from "jeopi-utils";
 
 interface Deferred {
 	promise: Promise<void>;

@@ -2,8 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { __internalsForTesting, withFileLock } from "@oh-my-pi/pi-coding-agent/config/file-lock";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { __internalsForTesting, withFileLock } from "jeopi-cli/config/file-lock";
+import { removeWithRetries } from "jeopi-utils";
 
 const { tryAcquireLock, releaseLock, readLockInfo, isLockStale, getLockPath } = __internalsForTesting;
 

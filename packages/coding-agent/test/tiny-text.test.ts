@@ -7,7 +7,7 @@ import {
 	normalizeGeneratedTitle,
 	prepareTitleInput,
 	stripCodeBlocks,
-} from "@oh-my-pi/pi-coding-agent/tiny/text";
+} from "jeopi-cli/tiny/text";
 
 describe("stripCodeBlocks", () => {
 	it("drops fenced code blocks but keeps the surrounding prose", () => {

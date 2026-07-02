@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { AutoLearnController, buildAutoLearnInstructions } from "@oh-my-pi/pi-coding-agent/autolearn/controller";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { AgentSession, AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import { AutoLearnController, buildAutoLearnInstructions } from "jeopi-cli/autolearn/controller";
+import { Settings } from "jeopi-cli/config/settings";
+import type { AgentSession, AgentSessionEvent } from "jeopi-cli/session/agent-session";
 
 interface CapturedNudge {
 	message: { customType: string; content: string; display?: boolean; attribution?: string };

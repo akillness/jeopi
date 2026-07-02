@@ -15,9 +15,9 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { commands, isSubcommand, resolveCliArgv } from "@oh-my-pi/pi-coding-agent/cli-commands";
-import { looksLikeLocalPath } from "@oh-my-pi/pi-coding-agent/commands/install";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
+import { commands, isSubcommand, resolveCliArgv } from "jeopi-cli/cli-commands";
+import { looksLikeLocalPath } from "jeopi-cli/commands/install";
+import { removeSyncWithRetries } from "jeopi-utils";
 
 describe("install command is registered as a top-level subcommand", () => {
 	test("CLI runner sees `install` as a known command", () => {
@@ -27,7 +27,7 @@ describe("install command is registered as a top-level subcommand", () => {
 
 	test("CLI runner rejects only bare reserved management words", () => {
 		expect(resolveCliArgv(["extensions"])).toEqual({
-			error: '`omp extensions` is not a management command. Use `omp plugin list` / `omp plugin install`, or run `omp launch extensions` if you meant to send "extensions" as a prompt.',
+			error: '`jeopi extensions` is not a management command. Use `jeopi plugin list` / `jeopi plugin install`, or run `jeopi launch extensions` if you meant to send "extensions" as a prompt.',
 		});
 		expect(resolveCliArgv(["extensions", "are", "not", "loading"])).toEqual({
 			argv: ["launch", "extensions", "are", "not", "loading"],

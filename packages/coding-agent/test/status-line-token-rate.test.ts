@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { calculateTokensPerSecond } from "@oh-my-pi/pi-coding-agent/modes/components/status-line/token-rate";
+import type { AssistantMessage } from "jeopi-ai";
+import { calculateTokensPerSecond } from "jeopi-cli/modes/components/status-line/token-rate";
 
 function assistantMessage(overrides?: Partial<AssistantMessage>): AssistantMessage {
 	return {

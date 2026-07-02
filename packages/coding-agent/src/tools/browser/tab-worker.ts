@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { Snowflake, untilAborted } from "@oh-my-pi/pi-utils";
+import { Snowflake, untilAborted } from "jeopi-utils";
 import type { HTMLElement } from "linkedom";
 import type {
 	Browser,

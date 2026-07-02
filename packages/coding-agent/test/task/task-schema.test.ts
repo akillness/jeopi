@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { TaskTool, taskSchema } from "@oh-my-pi/pi-coding-agent/task";
-import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { type } from "arktype";
+import { Settings } from "jeopi-cli/config/settings";
+import { TaskTool, taskSchema } from "jeopi-cli/task";
+import * as discoveryModule from "jeopi-cli/task/discovery";
+import type { ToolSession } from "jeopi-cli/tools";
 
 // Contract: the single-spawn schema (`task.batch: false`; the exported
 // `taskSchema` instance) carries no batch fields. The batch shape (`tasks[]` +

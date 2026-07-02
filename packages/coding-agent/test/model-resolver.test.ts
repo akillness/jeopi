@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { type Api, Effort, type Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { DEFAULT_MODEL_PER_PROVIDER } from "@oh-my-pi/pi-catalog/provider-models";
+import { type Api, Effort, type Model } from "jeopi-ai";
+import { buildModel } from "jeopi-catalog/build";
+import { DEFAULT_MODEL_PER_PROVIDER } from "jeopi-catalog/provider-models";
 import {
 	expandRoleAlias,
 	extractExplicitThinkingSelector,
@@ -16,8 +16,8 @@ import {
 	resolveModelOverride,
 	resolveModelRoleValue,
 	resolveModelScope,
-} from "@oh-my-pi/pi-coding-agent/config/model-resolver";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+} from "jeopi-cli/config/model-resolver";
+import { Settings } from "jeopi-cli/config/settings";
 
 // Mock models for testing
 const mockModels: Model<"anthropic-messages">[] = [

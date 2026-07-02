@@ -1,4 +1,4 @@
-import { getPuppeteerDir, logger, Snowflake, workerHostEntry } from "@oh-my-pi/pi-utils";
+import { getPuppeteerDir, logger, Snowflake, workerHostEntry } from "jeopi-utils";
 import type { Page, Target } from "puppeteer-core";
 import { callSessionTool } from "../../eval/js/tool-bridge";
 import { webpExclusionForModel } from "../../utils/image-loading";

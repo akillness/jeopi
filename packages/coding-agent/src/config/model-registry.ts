@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import * as path from "node:path";
-import { registerCustomApi, unregisterCustomApis } from "@oh-my-pi/pi-ai/api-registry";
+import { registerCustomApi, unregisterCustomApis } from "jeopi-ai/api-registry";
 import type {
 	Api,
 	Context,
@@ -9,28 +9,24 @@ import type {
 	RemoteCompactionConfig,
 	SimpleStreamOptions,
 	ThinkingConfig,
-} from "@oh-my-pi/pi-ai/types";
-import type { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { isVertexExpressOpenAIUrl } from "@oh-my-pi/pi-catalog/hosts";
-import { readModelCache } from "@oh-my-pi/pi-catalog/model-cache";
-import {
-	createModelManager,
-	type ModelManagerOptions,
-	type ModelRefreshStrategy,
-} from "@oh-my-pi/pi-catalog/model-manager";
-import { getBundledModels, getBundledProviders } from "@oh-my-pi/pi-catalog/models";
+} from "jeopi-ai/types";
+import type { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
+import { buildModel } from "jeopi-catalog/build";
+import { isVertexExpressOpenAIUrl } from "jeopi-catalog/hosts";
+import { readModelCache } from "jeopi-catalog/model-cache";
+import { createModelManager, type ModelManagerOptions, type ModelRefreshStrategy } from "jeopi-catalog/model-manager";
+import { getBundledModels, getBundledProviders } from "jeopi-catalog/models";
 import {
 	googleAntigravityModelManagerOptions,
 	googleGeminiCliModelManagerOptions,
 	openaiCodexModelManagerOptions,
 	PROVIDER_DESCRIPTORS,
-} from "@oh-my-pi/pi-catalog/provider-models";
+} from "jeopi-catalog/provider-models";
 import {
 	collapseBuiltModelVariants,
 	getVariantAliasSources,
 	resolveVariantAlias,
-} from "@oh-my-pi/pi-catalog/variant-collapse";
+} from "jeopi-catalog/variant-collapse";
 
 const SPECIAL_MODEL_MANAGER_PROVIDER_IDS: readonly string[] = [
 	"google-antigravity",
@@ -48,11 +44,11 @@ const STARTUP_MODEL_CACHE_PROVIDER_IDS: readonly string[] = [
 // packages/ai/src/registry/lm-studio.ts, and packages/ai/src/registry/vllm.ts.
 const LOCAL_PROVIDER_PLACEHOLDERS = new Set<string>(["llama-cpp-local", "lm-studio-local", "vllm-local"]);
 
-import type { ApiKeyResolver, FetchImpl } from "@oh-my-pi/pi-ai";
-import { registerOAuthProvider, unregisterOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
-import type { OAuthCredentials, OAuthLoginCallbacks } from "@oh-my-pi/pi-ai/oauth/types";
-import { getBundledModelReferenceIndex, resolveModelReference } from "@oh-my-pi/pi-catalog/identity";
-import { isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "@oh-my-pi/pi-utils";
+import type { ApiKeyResolver, FetchImpl } from "jeopi-ai";
+import { registerOAuthProvider, unregisterOAuthProviders } from "jeopi-ai/oauth";
+import type { OAuthCredentials, OAuthLoginCallbacks } from "jeopi-ai/oauth/types";
+import { getBundledModelReferenceIndex, resolveModelReference } from "jeopi-catalog/identity";
+import { isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "jeopi-utils";
 import { parseModelString, resolveProviderModelReference } from "../config/model-resolver";
 import type { AuthStorage, OAuthCredential } from "../session/auth-storage";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";

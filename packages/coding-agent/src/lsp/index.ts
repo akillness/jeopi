@@ -1,14 +1,14 @@
 import * as fs from "node:fs";
 import path from "node:path";
+import type { BunFile } from "bun";
 import type {
 	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
-} from "@oh-my-pi/pi-agent-core";
-import { logger, once, prompt, untilAborted } from "@oh-my-pi/pi-utils";
-import type { BunFile } from "bun";
+} from "jeopi-agent-core";
+import { logger, once, prompt, untilAborted } from "jeopi-utils";
 import { type Theme, theme } from "../modes/theme/theme";
 import lspDescription from "../prompts/tools/lsp.md" with { type: "text" };
 import type { ToolSession } from "../tools";

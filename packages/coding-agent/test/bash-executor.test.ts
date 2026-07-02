@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings, type ShellMinimizerSettings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { syncBashSessionCwd } from "@oh-my-pi/pi-coding-agent/exec/bash-cwd-sync";
-import { buildMinimizerOptions, executeBash } from "@oh-my-pi/pi-coding-agent/exec/bash-executor";
-import { DEFAULT_MAX_BYTES } from "@oh-my-pi/pi-coding-agent/session/streaming-output";
-import * as shellSnapshot from "@oh-my-pi/pi-coding-agent/utils/shell-snapshot";
-import type { Shell } from "@oh-my-pi/pi-natives";
-import * as piNatives from "@oh-my-pi/pi-natives";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
+import { resetSettingsForTest, Settings, type ShellMinimizerSettings } from "jeopi-cli/config/settings";
+import { syncBashSessionCwd } from "jeopi-cli/exec/bash-cwd-sync";
+import { buildMinimizerOptions, executeBash } from "jeopi-cli/exec/bash-executor";
+import { DEFAULT_MAX_BYTES } from "jeopi-cli/session/streaming-output";
+import * as shellSnapshot from "jeopi-cli/utils/shell-snapshot";
+import type { Shell } from "jeopi-natives";
+import * as piNatives from "jeopi-natives";
+import { removeSyncWithRetries } from "jeopi-utils";
 
 // Matches the schema default for `tools.artifactHeadBytes` (20 KB) used by
 // OutputSink when bash-executor pulls settings via resolveOutputSinkHeadBytes.

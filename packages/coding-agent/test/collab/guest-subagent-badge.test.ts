@@ -1,19 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { generateRoomKey, importRoomKey } from "@oh-my-pi/pi-coding-agent/collab/crypto";
-import { CollabGuestLink } from "@oh-my-pi/pi-coding-agent/collab/guest";
-import {
-	type AgentSnapshot,
-	COLLAB_PROTO,
-	type CollabFrame,
-	formatCollabLink,
-} from "@oh-my-pi/pi-coding-agent/collab/protocol";
-import { CollabSocket } from "@oh-my-pi/pi-coding-agent/collab/relay-client";
+import { generateRoomKey, importRoomKey } from "jeopi-cli/collab/crypto";
+import { CollabGuestLink } from "jeopi-cli/collab/guest";
+import { type AgentSnapshot, COLLAB_PROTO, type CollabFrame, formatCollabLink } from "jeopi-cli/collab/protocol";
+import { CollabSocket } from "jeopi-cli/collab/relay-client";
 import {
 	countRunningSubagentBadgeAgents,
 	getRunningSubagentBadgeRegistry,
-} from "@oh-my-pi/pi-coding-agent/modes/running-subagent-badge";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
+} from "jeopi-cli/modes/running-subagent-badge";
+import type { InteractiveModeContext } from "jeopi-cli/modes/types";
+import { AgentRegistry } from "jeopi-cli/registry/agent-registry";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 // In-memory transport: shared FakeWebSocket + InMemoryRelay harness (see

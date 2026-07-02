@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { containsWorkflow, highlightWorkflow, WORKFLOW_NOTICE } from "@oh-my-pi/pi-coding-agent/modes/workflow";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import { containsWorkflow, highlightWorkflow, WORKFLOW_NOTICE } from "jeopi-cli/modes/workflow";
 
 beforeAll(() => {
 	// highlightWorkflow reads the global theme's color mode.

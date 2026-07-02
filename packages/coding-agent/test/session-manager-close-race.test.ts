@@ -24,14 +24,14 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
+import { getBundledModel } from "jeopi-catalog/models";
+import { SessionManager } from "jeopi-cli/session/session-manager";
 import {
 	MemorySessionStorage,
 	type SessionStorage,
 	type SessionStorageWriter,
-} from "@oh-my-pi/pi-coding-agent/session/session-storage";
-import type { SessionTitleUpdate } from "@oh-my-pi/pi-coding-agent/session/session-title-slot";
+} from "jeopi-cli/session/session-storage";
+import type { SessionTitleUpdate } from "jeopi-cli/session/session-title-slot";
 
 class CloseHoldingStorage implements SessionStorage {
 	readonly #inner = new MemorySessionStorage();

@@ -1,4 +1,4 @@
-import { bareModelId, preferredDialect } from "@oh-my-pi/pi-catalog/identity";
+import { bareModelId, preferredDialect } from "jeopi-catalog/identity";
 import { getDialectDefinition } from "./factory";
 
 const CLAUDE_FABLE_ID = /(?:^|[./])claude[-.]fable(?:[-.]|$)/i;

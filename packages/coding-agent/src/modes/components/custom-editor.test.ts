@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import { setKittyProtocolActive } from "@oh-my-pi/pi-tui/keys";
 import { $ } from "bun";
+import { setKittyProtocolActive } from "jeopi-tui/keys";
 import { getDefaultPasteImageKeys } from "../../config/keybindings";
 import { getEditorTheme, initTheme } from "../theme/theme";
 import {

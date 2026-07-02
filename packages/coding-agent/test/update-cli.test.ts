@@ -13,8 +13,8 @@ import {
 	resolveBunGlobalNodeModulesDirFromLocations,
 	resolveUpdateMethodForTest,
 	sweepStaleBackups,
-} from "@oh-my-pi/pi-coding-agent/cli/update-cli";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/cli/update-cli";
+import { removeWithRetries } from "jeopi-utils";
 
 const tempDirs: string[] = [];
 
@@ -85,13 +85,13 @@ describe("update-cli install target detection", () => {
 
 describe("update-cli package manager commands", () => {
 	it("targets the Homebrew tap formula and switches to reinstall for forced updates", () => {
-		expect(buildHomebrewUpdateArgs(false)).toEqual(["upgrade", "can1357/tap/omp"]);
-		expect(buildHomebrewUpdateArgs(true)).toEqual(["reinstall", "can1357/tap/omp"]);
+		expect(buildHomebrewUpdateArgs(false)).toEqual(["upgrade", "akillness/tap/jeopi"]);
+		expect(buildHomebrewUpdateArgs(true)).toEqual(["reinstall", "akillness/tap/jeopi"]);
 	});
 
 	it("targets the mise GitHub backend tool and force-reinstalls the checked version when requested", () => {
-		expect(buildMiseUpgradeArgs()).toEqual(["upgrade", "github:can1357/oh-my-pi", "--bump"]);
-		expect(buildMiseForceInstallArgs("15.10.5")).toEqual(["install", "--force", "github:can1357/oh-my-pi@15.10.5"]);
+		expect(buildMiseUpgradeArgs()).toEqual(["upgrade", "github:akillness/jeopi", "--bump"]);
+		expect(buildMiseForceInstallArgs("15.10.5")).toEqual(["install", "--force", "github:akillness/jeopi@15.10.5"]);
 	});
 });
 
@@ -111,21 +111,21 @@ describe("update-cli bun install command", () => {
 			"-g",
 			"--no-cache",
 			"--registry=https://registry.npmjs.org/",
-			"@oh-my-pi/pi-coding-agent@15.7.6",
+			"jeopi@15.7.6",
 		]);
 	});
 
 	it("pins the native addon core and the platform-specific leaf to the same version so the loader sentinel cannot drift on supported tags", () => {
 		// Regression: bun install -g <pkg>@<v> would update only the top-level
-		// package, leaving @oh-my-pi/pi-natives and @oh-my-pi/pi-natives-<tag>
+		// package, leaving jeopi-natives and jeopi-natives-<tag>
 		// at their previous version. The next launch then loaded a stale .node
 		// file and aborted at validateLoadedBindings with `The .node file on
 		// disk is from a different release than this loader`. See
 		// https://github.com/can1357/oh-my-pi/issues/1824.
 		for (const tag of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"]) {
 			const args = buildBunInstallArgs("15.9.0", tag);
-			expect(args).toContain("@oh-my-pi/pi-natives@15.9.0");
-			expect(args).toContain(`@oh-my-pi/pi-natives-${tag}@15.9.0`);
+			expect(args).toContain("jeopi-natives@15.9.0");
+			expect(args).toContain(`jeopi-natives-${tag}@15.9.0`);
 		}
 	});
 
@@ -136,8 +136,8 @@ describe("update-cli bun install command", () => {
 		// pipeline doesn't publish, otherwise bun aborts with EBADPLATFORM
 		// and hides the real diagnostic from `loadNative`'s aggregated error.
 		const args = buildBunInstallArgs("15.9.0", "linux-arm");
-		expect(args).toContain("@oh-my-pi/pi-natives@15.9.0");
-		expect(args.some(arg => arg.startsWith("@oh-my-pi/pi-natives-"))).toBe(false);
+		expect(args).toContain("jeopi-natives@15.9.0");
+		expect(args.some(arg => arg.startsWith("jeopi-natives-"))).toBe(false);
 	});
 
 	it("derives global node_modules from supported bun global locations", () => {
@@ -163,15 +163,15 @@ describe("update-cli bun cache pruning", () => {
 			path.join(dir, "react@19.2.6@@@1", "package.json"),
 			JSON.stringify({ name: "react", version: "19.2.6" }),
 		);
-		await Bun.write(path.join(dir, "@oh-my-pi", "pi-utils", "15.7.6@@@1"), "");
-		await Bun.write(path.join(dir, "@oh-my-pi", "pi-utils", "15.8.0@@@1"), "");
+		await Bun.write(path.join(dir, "jeopi-utils", "15.7.6@@@1"), "");
+		await Bun.write(path.join(dir, "jeopi-utils", "15.8.0@@@1"), "");
 		await Bun.write(
-			path.join(dir, "@oh-my-pi", "pi-utils@15.7.6@@@1", "package.json"),
-			JSON.stringify({ name: "@oh-my-pi/pi-utils", version: "15.7.6" }),
+			path.join(dir, "jeopi-utils@15.7.6@@@1", "package.json"),
+			JSON.stringify({ name: "jeopi-utils", version: "15.7.6" }),
 		);
 		await Bun.write(
-			path.join(dir, "@oh-my-pi", "pi-utils@15.8.0@@@1", "package.json"),
-			JSON.stringify({ name: "@oh-my-pi/pi-utils", version: "15.8.0" }),
+			path.join(dir, "jeopi-utils@15.8.0@@@1", "package.json"),
+			JSON.stringify({ name: "jeopi-utils", version: "15.8.0" }),
 		);
 		await Bun.write(path.join(dir, "chalk", "4.1.2@@@1"), "");
 		await Bun.write(path.join(dir, "chalk", "5.6.2@@@1"), "");
@@ -184,17 +184,17 @@ describe("update-cli bun cache pruning", () => {
 			JSON.stringify({ name: "chalk", version: "5.6.2" }),
 		);
 
-		const result = await pruneBunInstallCache(dir, new Set(["react", "@oh-my-pi/pi-utils"]));
+		const result = await pruneBunInstallCache(dir, new Set(["react", "jeopi-utils"]));
 
 		expect(result).toEqual({ scannedPackages: 2, removedEntries: 4 });
 		expect(await Bun.file(path.join(dir, "react", "18.3.1@@@1")).exists()).toBe(false);
 		expect(await Bun.file(path.join(dir, "react@18.3.1@@@1", "package.json")).exists()).toBe(false);
 		expect(await Bun.file(path.join(dir, "react", "19.2.6@@@1")).exists()).toBe(true);
 		expect(await Bun.file(path.join(dir, "react@19.2.6@@@1", "package.json")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "@oh-my-pi", "pi-utils", "15.7.6@@@1")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "@oh-my-pi", "pi-utils@15.7.6@@@1", "package.json")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "@oh-my-pi", "pi-utils", "15.8.0@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "@oh-my-pi", "pi-utils@15.8.0@@@1", "package.json")).exists()).toBe(true);
+		expect(await Bun.file(path.join(dir, "jeopi-utils", "15.7.6@@@1")).exists()).toBe(false);
+		expect(await Bun.file(path.join(dir, "jeopi-utils@15.7.6@@@1", "package.json")).exists()).toBe(false);
+		expect(await Bun.file(path.join(dir, "jeopi-utils", "15.8.0@@@1")).exists()).toBe(true);
+		expect(await Bun.file(path.join(dir, "jeopi-utils@15.8.0@@@1", "package.json")).exists()).toBe(true);
 		expect(await Bun.file(path.join(dir, "chalk", "4.1.2@@@1")).exists()).toBe(true);
 		expect(await Bun.file(path.join(dir, "chalk@4.1.2@@@1", "package.json")).exists()).toBe(true);
 	});
@@ -254,7 +254,7 @@ describe("update-cli binary replacement", () => {
 				expectedVersion: "15.1.8",
 				verifyInstalledVersion: async () => ({ ok: false, path: targetPath }),
 			}),
-		).rejects.toThrow("restored previous omp binary");
+		).rejects.toThrow("restored previous jeopi binary");
 
 		expect(await Bun.file(targetPath).text()).toBe("old binary");
 		expect(await Bun.file(tempPath).exists()).toBe(false);

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { executeBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-commands/builtin-registry";
-import * as clipboard from "@oh-my-pi/pi-coding-agent/utils/clipboard";
+import type { AgentMessage } from "jeopi-agent-core";
+import type { InteractiveModeContext } from "jeopi-cli/modes/types";
+import { executeBuiltinSlashCommand } from "jeopi-cli/slash-commands/builtin-registry";
+import * as clipboard from "jeopi-cli/utils/clipboard";
 
 function assistantText(text: string): AgentMessage {
 	return { role: "assistant", content: [{ type: "text", text }] } as unknown as AgentMessage;

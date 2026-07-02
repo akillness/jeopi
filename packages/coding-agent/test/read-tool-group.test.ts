@@ -1,13 +1,10 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import * as url from "node:url";
-import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { getDefault } from "@oh-my-pi/pi-coding-agent/config/settings-schema";
-import {
-	ReadToolGroupComponent,
-	readArgsTargetInternalUrl,
-} from "@oh-my-pi/pi-coding-agent/modes/components/read-tool-group";
-import * as themeModule from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { resetSettingsForTest, Settings, settings } from "jeopi-cli/config/settings";
+import { getDefault } from "jeopi-cli/config/settings-schema";
+import { ReadToolGroupComponent, readArgsTargetInternalUrl } from "jeopi-cli/modes/components/read-tool-group";
+import * as themeModule from "jeopi-cli/modes/theme/theme";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);

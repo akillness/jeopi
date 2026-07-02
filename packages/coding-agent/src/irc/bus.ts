@@ -14,7 +14,7 @@
  * includes the sender, so a real turn could never happen in time).
  */
 
-import { logger, Snowflake } from "@oh-my-pi/pi-utils";
+import { logger, Snowflake } from "jeopi-utils";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import type { CustomMessage } from "../session/messages";

@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
-import type { AgentMessage, AgentTool } from "@oh-my-pi/pi-agent-core";
+import type { AgentMessage, AgentTool } from "jeopi-agent-core";
 import {
 	AUTO_HANDOFF_THRESHOLD_FOCUS,
 	generateHandoff,
 	generateHandoffFromContext,
 	renderHandoffPrompt,
-} from "@oh-my-pi/pi-agent-core/compaction";
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
-import type { AssistantMessage, Model, ToolCall } from "@oh-my-pi/pi-ai";
-import * as ai from "@oh-my-pi/pi-ai";
-import { Effort } from "@oh-my-pi/pi-ai";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+} from "jeopi-agent-core/compaction";
+import { ThinkingLevel } from "jeopi-agent-core/thinking";
+import type { AssistantMessage, Model, ToolCall } from "jeopi-ai";
+import * as ai from "jeopi-ai";
+import { Effort } from "jeopi-ai";
+import { getBundledModel } from "jeopi-catalog/models";
 
 function createAssistantMessage(content: AssistantMessage["content"]): AssistantMessage {
 	return {

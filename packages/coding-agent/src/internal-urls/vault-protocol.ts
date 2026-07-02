@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, isEnoent } from "@oh-my-pi/pi-utils";
+import { $which, isEnoent } from "jeopi-utils";
 import { isSettingsInitialized, settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { parseInternalUrl } from "./parse";

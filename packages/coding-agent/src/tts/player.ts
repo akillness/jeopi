@@ -7,7 +7,7 @@
  * that walks the resulting fallback chain.
  */
 import * as fs from "node:fs/promises";
-import { $which } from "@oh-my-pi/pi-utils";
+import { $which } from "jeopi-utils";
 import { getToolPath } from "../utils/tools-manager";
 
 export interface PlayerCommand {

@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import type { Subprocess } from "bun";
 import {
 	$env,
 	isBunTestRuntime,
@@ -6,8 +7,7 @@ import {
 	logger,
 	stripWindowsExtendedLengthPathPrefix,
 	workerHostEntry,
-} from "@oh-my-pi/pi-utils";
-import type { Subprocess } from "bun";
+} from "jeopi-utils";
 
 /**
  * Shared lifecycle scaffolding for the ONNX inference subprocess clients

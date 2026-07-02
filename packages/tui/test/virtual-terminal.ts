@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
-import type { Terminal, TerminalAppearance } from "@oh-my-pi/pi-tui/terminal";
 import { CellFlags, Ghostty, type GhosttyCell, type GhosttyTerminal } from "ghostty-web";
+import type { Terminal, TerminalAppearance } from "jeopi-tui/terminal";
 
 // ---------------------------------------------------------------------------
 // Shared Ghostty VT engine

@@ -5,6 +5,7 @@
  * credentials as the TUI.
  */
 import * as path from "node:path";
+import { YAML } from "bun";
 import {
 	getAgentDbPath,
 	getAgentDir,
@@ -12,8 +13,7 @@ import {
 	getConfigRootDir,
 	isEnoent,
 	logger,
-} from "@oh-my-pi/pi-utils";
-import { YAML } from "bun";
+} from "jeopi-utils";
 import { AuthStorage } from "../auth-storage";
 import * as AIError from "../error";
 import { AuthBrokerClient } from "./client";

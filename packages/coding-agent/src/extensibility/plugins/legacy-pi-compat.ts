@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import { isBuiltin } from "node:module";
 import * as path from "node:path";
 import * as url from "node:url";
-import { isCompiledBinary, stripWindowsExtendedLengthPathPrefix } from "@oh-my-pi/pi-utils";
+import { isCompiledBinary, stripWindowsExtendedLengthPathPrefix } from "jeopi-utils";
 import { BUNDLED_PI_REGISTRY_KEYS } from "./legacy-pi-bundled-keys";
 
 const IS_COMPILED_BINARY = isCompiledBinary();
@@ -165,6 +165,35 @@ const PI_PACKAGE_NAMES = ["pi-agent-core", "pi-ai", "pi-coding-agent", "pi-nativ
 
 const PI_SCOPE_ALTERNATION = PI_SCOPE_ALIASES.join("|");
 const PI_PACKAGE_ALTERNATION = PI_PACKAGE_NAMES.join("|");
+
+// The bundled packages were renamed to unscoped `jeopi-*` names when the fork
+// went independent. Canonical `@oh-my-pi/pi-*` keys remain the registry / alias
+// currency (legacy plugins import them), but on-disk resolution must target the
+// renamed packages. Maps canonical basename → installed package name.
+const PI_INSTALLED_PACKAGE_NAMES: Readonly<Record<string, string>> = {
+	"pi-agent-core": "jeopi-agent-core",
+	"pi-ai": "jeopi-ai",
+	"pi-coding-agent": "jeopi-cli",
+	"pi-natives": "jeopi-natives",
+	"pi-tui": "jeopi-tui",
+	"pi-utils": "jeopi-utils",
+};
+
+/**
+ * Translate a canonical `@oh-my-pi/<pi-pkg>[/subpath]` specifier to the renamed
+ * installed package specifier (`jeopi-*[/subpath]`). Non-canonical input is
+ * returned unchanged.
+ */
+function toInstalledPiSpecifier(canonicalSpecifier: string): string {
+	const prefix = `${CANONICAL_PI_SCOPE}/`;
+	if (!canonicalSpecifier.startsWith(prefix)) return canonicalSpecifier;
+	const rest = canonicalSpecifier.slice(prefix.length);
+	const slashIdx = rest.indexOf("/");
+	const basename = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+	const installed = PI_INSTALLED_PACKAGE_NAMES[basename];
+	if (!installed) return canonicalSpecifier;
+	return slashIdx === -1 ? installed : `${installed}${rest.slice(slashIdx)}`;
+}
 
 // Upstream `@mariozechner/*` packages exposed a few subpaths at the package
 // root that we relocated under a different folder. Each entry rewrites
@@ -404,7 +433,9 @@ function getResolvedSpecifier(specifier: string): string {
 
 /**
  * Resolve a canonical `@oh-my-pi/*` specifier to a filesystem path, preferring
- * a bundled compat shim when one is registered for the package root.
+ * a bundled compat shim when one is registered for the package root. Without an
+ * override, resolution targets the renamed installed package (`jeopi-*`) — the
+ * canonical scope no longer exists on disk.
  *
  * Falls back to `getResolvedSpecifier` (which may throw under compiled binary
  * mode); callers handle that the same way they would for non-overridden
@@ -415,7 +446,7 @@ function resolveCanonicalPiSpecifier(remappedSpecifier: string): string {
 	if (override) {
 		return override;
 	}
-	return getResolvedSpecifier(remappedSpecifier);
+	return getResolvedSpecifier(toInstalledPiSpecifier(remappedSpecifier));
 }
 
 function toImportSpecifier(resolvedPath: string): string {
@@ -1017,13 +1048,13 @@ function resolveLegacyPiSpecifier(args: { path: string; importer: string }): { p
 	} catch {
 		// Fallback for compiled binary mode: the bundled packages live inside
 		// /$bunfs/root and aren't reachable by filesystem resolution. Prefer the
-		// canonical specifier against the importing file's directory when the
-		// plugin installed @oh-my-pi peer deps, then try the original legacy
-		// specifier for plugins that still vendor only @mariozechner or
+		// renamed installed specifier against the importing file's directory when
+		// the plugin installed jeopi-* peer deps, then try the original legacy
+		// specifier for plugins that still vendor @oh-my-pi, @mariozechner, or
 		// @earendil-works peer deps.
 		const importerDir = path.dirname(args.importer);
 		try {
-			return { path: Bun.resolveSync(remappedSpecifier, importerDir) };
+			return { path: Bun.resolveSync(toInstalledPiSpecifier(remappedSpecifier), importerDir) };
 		} catch {
 			try {
 				return { path: Bun.resolveSync(args.path, importerDir) };

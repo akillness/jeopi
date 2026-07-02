@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { streamBedrock } from "@oh-my-pi/pi-ai/providers/amazon-bedrock";
-import type { Context, FetchImpl, Model } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import { streamBedrock } from "jeopi-ai/providers/amazon-bedrock";
+import type { Context, FetchImpl, Model } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
 import { withEnv } from "./helpers";
 
 const profileArn = "arn:aws:bedrock:us-east-2:1234567890:application-inference-profile/company-opus-48";

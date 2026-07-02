@@ -1,15 +1,15 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { InteractiveMode } from "@oh-my-pi/pi-coding-agent/modes/interactive-mode";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { SubmittedUserInput } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { Agent } from "jeopi-agent-core";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { resetSettingsForTest, Settings, settings } from "jeopi-cli/config/settings";
+import { InteractiveMode } from "jeopi-cli/modes/interactive-mode";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import type { SubmittedUserInput } from "jeopi-cli/modes/types";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { TempDir } from "jeopi-utils";
 
 async function flushMicrotasks(): Promise<void> {
 	await Promise.resolve();

@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import { CustomEditor } from "@oh-my-pi/pi-coding-agent/modes/components/custom-editor";
-import { getEditorTheme, initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { StdinBuffer } from "@oh-my-pi/pi-tui/stdin-buffer";
+import { CustomEditor } from "jeopi-cli/modes/components/custom-editor";
+import { getEditorTheme, initTheme } from "jeopi-cli/modes/theme/theme";
+import { StdinBuffer } from "jeopi-tui/stdin-buffer";
 
 /**
  * Regression for #3857.

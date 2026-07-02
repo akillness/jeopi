@@ -22,7 +22,7 @@
  * throws into the turn. A process-level singleton ({@link vocalizer}) is shared
  * by the event controller (streaming deltas) and the ask tool (spoken questions).
  */
-import { logger } from "@oh-my-pi/pi-utils";
+import { logger } from "jeopi-utils";
 import { settings } from "../config/settings";
 import { DEFAULT_TTS_VOICE } from "./models";
 import { createStreamingPlayer, DUCK_GAIN } from "./streaming-player";

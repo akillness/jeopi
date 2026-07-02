@@ -1,4 +1,4 @@
-import { $env } from "@oh-my-pi/pi-utils";
+import { $env } from "jeopi-utils";
 
 export function isFoundryEnabled(): boolean {
 	const value = $env.CLAUDE_CODE_USE_FOUNDRY;

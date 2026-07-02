@@ -7,7 +7,7 @@ import {
 	type ActiveRepoContext,
 	resolveActiveRepoContext,
 	resolveActiveRepoContextSync,
-} from "@oh-my-pi/pi-coding-agent/utils/active-repo-context";
+} from "jeopi-cli/utils/active-repo-context";
 
 const itWithSymlinkPrivilege = process.platform === "win32" ? it.skip : it;
 

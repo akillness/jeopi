@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildSystemPrompt as buildSdkSystemPrompt } from "@oh-my-pi/pi-coding-agent/sdk";
+import { buildSystemPrompt as buildSdkSystemPrompt } from "jeopi-cli/sdk";
 import {
 	buildSystemPrompt,
 	DEFAULT_SYSTEM_PROMPT_TOOL_NAMES,
 	type SystemPromptToolMetadata,
-} from "@oh-my-pi/pi-coding-agent/system-prompt";
-import type { Tool } from "@oh-my-pi/pi-coding-agent/tools";
+} from "jeopi-cli/system-prompt";
+import type { Tool } from "jeopi-cli/tools";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
 
 const EMPTY_TREE = {

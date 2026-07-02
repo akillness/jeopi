@@ -4,8 +4,8 @@
  * Handles `jeopi plugin <command>` subcommands for plugin lifecycle management.
  */
 
-import { APP_NAME, getProjectDir } from "@oh-my-pi/pi-utils";
 import chalk from "chalk";
+import { APP_NAME, getProjectDir } from "jeopi-utils";
 import { resolveOrDefaultProjectRegistryPath } from "../discovery/helpers";
 import { PluginManager, parseSettingValue, validateSetting } from "../extensibility/plugins";
 import {

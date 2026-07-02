@@ -13,9 +13,9 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import type { UsageReport } from "@oh-my-pi/pi-ai";
-import { renderUsageReports } from "@oh-my-pi/pi-coding-agent/modes/controllers/command-controller";
-import { initTheme, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import type { UsageReport } from "jeopi-ai";
+import { renderUsageReports } from "jeopi-cli/modes/controllers/command-controller";
+import { initTheme, theme } from "jeopi-cli/modes/theme/theme";
 
 const HOUR = 3_600_000;
 

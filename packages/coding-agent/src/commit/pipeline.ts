@@ -1,7 +1,7 @@
 import * as path from "node:path";
-import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Api, ApiKey, Model } from "@oh-my-pi/pi-ai";
-import { getProjectDir, logger, prompt } from "@oh-my-pi/pi-utils";
+import type { ThinkingLevel } from "jeopi-agent-core";
+import type { Api, ApiKey, Model } from "jeopi-ai";
+import { getProjectDir, logger, prompt } from "jeopi-utils";
 import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
 import { discoverAuthStorage } from "../sdk";

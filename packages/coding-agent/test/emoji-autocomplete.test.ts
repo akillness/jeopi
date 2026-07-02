@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	applyEmojiCompletion,
-	getEmojiSuggestions,
-	tryEmojiInlineReplace,
-} from "@oh-my-pi/pi-coding-agent/modes/emoji-autocomplete";
+import { applyEmojiCompletion, getEmojiSuggestions, tryEmojiInlineReplace } from "jeopi-cli/modes/emoji-autocomplete";
 
 describe("emoji autocomplete", () => {
 	describe("getEmojiSuggestions", () => {

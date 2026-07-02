@@ -1,14 +1,7 @@
 import { afterEach, describe, expect, it, type Mock, mock, spyOn } from "bun:test";
-import { streamPiNative } from "@oh-my-pi/pi-ai/providers/pi-native-client";
-import type {
-	AssistantMessage,
-	AssistantMessageEvent,
-	Context,
-	FetchImpl,
-	Model,
-	ModelSpec,
-} from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import { streamPiNative } from "jeopi-ai/providers/pi-native-client";
+import type { AssistantMessage, AssistantMessageEvent, Context, FetchImpl, Model, ModelSpec } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
 
 function sseBytes(events: AssistantMessageEvent[]): Uint8Array {
 	const encoder = new TextEncoder();

@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, setSystemTime } from "bun:test";
-import { Agent, type AgentTool } from "@oh-my-pi/pi-agent-core";
-import type { Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { CustomTool } from "@oh-my-pi/pi-coding-agent/extensibility/custom-tools/types";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { type } from "arktype";
+import { Agent, type AgentTool } from "jeopi-agent-core";
+import type { Model } from "jeopi-ai";
+import { buildModel } from "jeopi-catalog/build";
+import { Settings } from "jeopi-cli/config/settings";
+import type { CustomTool } from "jeopi-cli/extensibility/custom-tools/types";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { SessionManager } from "jeopi-cli/session/session-manager";
 
 // Cache-stability invariant: when MCP servers reconnect with byte-identical tool
 // definitions, `refreshMCPTools` must not rebuild the system prompt. A rebuild

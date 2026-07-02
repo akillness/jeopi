@@ -1,7 +1,7 @@
 import { vi } from "bun:test";
-import { resetSettingsForTest } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { isTuiTight, setTuiTight } from "@oh-my-pi/pi-tui";
-import { getAgentDir, getProjectDir, setAgentDir, setProjectDir } from "@oh-my-pi/pi-utils";
+import { resetSettingsForTest } from "jeopi-cli/config/settings";
+import { isTuiTight, setTuiTight } from "jeopi-tui";
+import { getAgentDir, getProjectDir, setAgentDir, setProjectDir } from "jeopi-utils";
 
 export interface SettingsTestState {
 	agentDir: string;

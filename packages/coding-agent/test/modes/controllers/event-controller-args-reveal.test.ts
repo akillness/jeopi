@@ -6,15 +6,15 @@
  * how assistant text snaps at message_end.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { kStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
-import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ToolExecutionComponent } from "@oh-my-pi/pi-coding-agent/modes/components/tool-execution";
-import { EventController } from "@oh-my-pi/pi-coding-agent/modes/controllers/event-controller";
-import { STREAMING_REVEAL_FRAME_MS } from "@oh-my-pi/pi-coding-agent/modes/controllers/streaming-reveal";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import type { AssistantMessage } from "jeopi-ai";
+import { kStreamingPartialJson } from "jeopi-ai/utils/block-symbols";
+import { resetSettingsForTest, Settings, settings } from "jeopi-cli/config/settings";
+import { ToolExecutionComponent } from "jeopi-cli/modes/components/tool-execution";
+import { EventController } from "jeopi-cli/modes/controllers/event-controller";
+import { STREAMING_REVEAL_FRAME_MS } from "jeopi-cli/modes/controllers/streaming-reveal";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import type { InteractiveModeContext } from "jeopi-cli/modes/types";
+import type { AgentSessionEvent } from "jeopi-cli/session/agent-session";
 
 beforeAll(async () => {
 	await initTheme();

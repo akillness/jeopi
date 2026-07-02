@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { StatusLineComponent } from "@oh-my-pi/pi-coding-agent/modes/components/status-line";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { StatusLineComponent } from "jeopi-cli/modes/components/status-line";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import type { AgentSession } from "jeopi-cli/session/agent-session";
 
 async function flushMicrotasks(): Promise<void> {
 	await Promise.resolve();

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import type { Tool as AiTool } from "@oh-my-pi/pi-ai";
-import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { EvalTool, getEvalToolDescription } from "@oh-my-pi/pi-coding-agent/tools/eval";
+import type { Tool as AiTool } from "jeopi-ai";
+import { toolWireSchema } from "jeopi-ai/utils/schema";
+import { Settings } from "jeopi-cli/config/settings";
+import type { ToolSession } from "jeopi-cli/tools";
+import { EvalTool, getEvalToolDescription } from "jeopi-cli/tools/eval";
 
 function makeSession(opts: { spawns?: string | null; backends?: Record<string, boolean> }): ToolSession {
 	const settings = Settings.isolated();

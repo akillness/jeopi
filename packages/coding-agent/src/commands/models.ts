@@ -1,8 +1,8 @@
 /**
  * List, search, and refresh available models.
  */
-import { APP_NAME } from "@oh-my-pi/pi-utils";
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { APP_NAME } from "jeopi-utils";
+import { Args, Command, Flags } from "jeopi-utils/cli";
 import { resolveModelsArgs, runModelsCommand } from "../cli/models-cli";
 
 export default class Models extends Command {

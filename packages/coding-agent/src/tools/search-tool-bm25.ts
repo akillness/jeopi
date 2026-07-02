@@ -1,8 +1,8 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Text } from "@oh-my-pi/pi-tui";
-import { prompt } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "jeopi-agent-core";
+import type { Component } from "jeopi-tui";
+import { Text } from "jeopi-tui";
+import { prompt } from "jeopi-utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
 import searchToolBm25Description from "../prompts/tools/search-tool-bm25.md" with { type: "text" };

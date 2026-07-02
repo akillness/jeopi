@@ -20,17 +20,17 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import { effectiveReserveTokens, estimateTokens, prepareCompaction } from "@oh-my-pi/pi-agent-core/compaction";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { computeNonMessageTokens } from "@oh-my-pi/pi-coding-agent/modes/utils/context-usage";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
-import * as snapcompact from "@oh-my-pi/snapcompact";
+import { Agent } from "jeopi-agent-core";
+import { effectiveReserveTokens, estimateTokens, prepareCompaction } from "jeopi-agent-core/compaction";
+import { getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { computeNonMessageTokens } from "jeopi-cli/modes/utils/context-usage";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import * as snapcompact from "jeopi-snapcompact";
+import { TempDir } from "jeopi-utils";
 
 describe("AgentSession snapcompact frame-budget sizing", () => {
 	let tempDir: TempDir;

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import type { IrcMessage } from "@oh-my-pi/pi-coding-agent/irc/bus";
-import { getThemeByName } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { type IrcDetails, ircToolRenderer } from "@oh-my-pi/pi-coding-agent/tools/irc";
-import { sanitizeText } from "@oh-my-pi/pi-utils";
+import type { IrcMessage } from "jeopi-cli/irc/bus";
+import { getThemeByName } from "jeopi-cli/modes/theme/theme";
+import { type IrcDetails, ircToolRenderer } from "jeopi-cli/tools/irc";
+import { sanitizeText } from "jeopi-utils";
 
 async function theme() {
 	const t = await getThemeByName("dark");

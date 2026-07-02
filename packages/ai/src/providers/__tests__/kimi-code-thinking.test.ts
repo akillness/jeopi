@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { getBundledModel } from "@oh-my-pi/pi-catalog";
+import { getBundledModel } from "jeopi-catalog";
 import type { Context } from "../../types";
 import type { MessageCreateParamsStreaming } from "../anthropic-wire";
 import { streamOpenAIAnthropicShim } from "../openai-anthropic-shim";

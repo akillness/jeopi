@@ -13,12 +13,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { EventController } from "@oh-my-pi/pi-coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { TERMINAL } from "@oh-my-pi/pi-tui";
+import type { AssistantMessage } from "jeopi-ai";
+import { resetSettingsForTest, Settings, settings } from "jeopi-cli/config/settings";
+import { EventController } from "jeopi-cli/modes/controllers/event-controller";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import type { InteractiveModeContext } from "jeopi-cli/modes/types";
+import { TERMINAL } from "jeopi-tui";
 
 beforeAll(() => {
 	initTheme();

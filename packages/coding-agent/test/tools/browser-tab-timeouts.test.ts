@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	normalizeSelector,
-	resolveOpTimeouts,
-	resolveWaitTimeout,
-} from "@oh-my-pi/pi-coding-agent/tools/browser/tab-worker";
+import { normalizeSelector, resolveOpTimeouts, resolveWaitTimeout } from "jeopi-cli/tools/browser/tab-worker";
 
 // Regression coverage for the "weird timeouts" failure mode: interactive `tab.*` helpers
 // used to run with the full cell budget as their internal puppeteer timeout, so a stalled

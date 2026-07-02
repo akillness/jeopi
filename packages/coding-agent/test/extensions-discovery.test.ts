@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { initializeWithSettings } from "@oh-my-pi/pi-coding-agent/discovery";
-import { discoverAndLoadExtensions, loadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
-import { getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { initializeWithSettings } from "jeopi-cli/discovery";
+import { discoverAndLoadExtensions, loadExtensions } from "jeopi-cli/extensibility/extensions/loader";
+import { getProjectAgentDir, TempDir } from "jeopi-utils";
 import { filterUserScoped } from "./utils/filter-user-extensions";
 
 describe("extensions discovery", () => {

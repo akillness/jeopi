@@ -7,8 +7,8 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import { APP_NAME } from "@oh-my-pi/pi-utils";
+} from "jeopi-tui";
+import { APP_NAME } from "jeopi-utils";
 import { gradientLogo, JEOPI_LOGO } from "../components/welcome";
 import { theme } from "../theme/theme";
 import type { InteractiveModeContext } from "../types";

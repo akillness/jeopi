@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, setSystemTime, vi } from "bun:test";
-import { type Component, type RenderScheduler, TUI } from "@oh-my-pi/pi-tui";
+import { type Component, type RenderScheduler, TUI } from "jeopi-tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 class BlockingDoubleInterruptComponent implements Component {

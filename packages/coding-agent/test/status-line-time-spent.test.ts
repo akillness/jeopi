@@ -12,11 +12,11 @@
  *   window so `/clear` and fresh-session flows zero the meter.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { StatusLineComponent } from "@oh-my-pi/pi-coding-agent/modes/components/status-line";
-import type { SegmentContext } from "@oh-my-pi/pi-coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@oh-my-pi/pi-coding-agent/modes/components/status-line/segments";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { StatusLineComponent } from "jeopi-cli/modes/components/status-line";
+import type { SegmentContext } from "jeopi-cli/modes/components/status-line/segments";
+import { renderSegment } from "jeopi-cli/modes/components/status-line/segments";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
 
 beforeAll(async () => {
 	resetSettingsForTest();

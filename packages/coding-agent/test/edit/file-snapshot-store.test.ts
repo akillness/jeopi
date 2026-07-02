@@ -2,12 +2,12 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { InMemorySnapshotStore } from "@oh-my-pi/hashline";
 import {
 	canonicalSnapshotKey,
 	getFileSnapshotStore,
 	parseSeenLinesFromHashlineBody,
-} from "@oh-my-pi/pi-coding-agent/edit/file-snapshot-store";
+} from "jeopi-cli/edit/file-snapshot-store";
+import type { InMemorySnapshotStore } from "jeopi-hashline";
 
 interface SessionOwner {
 	fileSnapshotStore?: InMemorySnapshotStore;

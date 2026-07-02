@@ -1,14 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import {
-	GALLERY_STATES,
-	parseGalleryStates,
-	renderGalleryState,
-	resolveFixture,
-} from "@oh-my-pi/pi-coding-agent/cli/gallery-cli";
-import type { GalleryFixture } from "@oh-my-pi/pi-coding-agent/cli/gallery-fixtures";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { initTheme, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { toolRenderers } from "@oh-my-pi/pi-coding-agent/tools/renderers";
+import { GALLERY_STATES, parseGalleryStates, renderGalleryState, resolveFixture } from "jeopi-cli/cli/gallery-cli";
+import type { GalleryFixture } from "jeopi-cli/cli/gallery-fixtures";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { initTheme, theme } from "jeopi-cli/modes/theme/theme";
+import { toolRenderers } from "jeopi-cli/tools/renderers";
 
 beforeAll(async () => {
 	resetSettingsForTest();

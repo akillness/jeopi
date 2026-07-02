@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { renderResult } from "@oh-my-pi/pi-coding-agent/lsp/render";
-import * as themeModule from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { renderResult } from "jeopi-cli/lsp/render";
+import * as themeModule from "jeopi-cli/modes/theme/theme";
 
 beforeAll(async () => {
 	await themeModule.initTheme(false, undefined, undefined, "dark", "light");

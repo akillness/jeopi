@@ -2,18 +2,13 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { formatHashlineHeader, formatNumberedLine, formatNumberedLines } from "@oh-my-pi/hashline";
-import type {
-	AgentTool,
-	AgentToolContext,
-	AgentToolResult,
-	AgentToolUpdateCallback,
-	ToolTier,
-} from "@oh-my-pi/pi-agent-core";
-import type { ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { glob, type SummaryResult, summarizeCode } from "@oh-my-pi/pi-natives";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Text } from "@oh-my-pi/pi-tui";
+import { type } from "arktype";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback, ToolTier } from "jeopi-agent-core";
+import type { ImageContent, TextContent } from "jeopi-ai";
+import { formatHashlineHeader, formatNumberedLine, formatNumberedLines } from "jeopi-hashline";
+import { glob, type SummaryResult, summarizeCode } from "jeopi-natives";
+import type { Component } from "jeopi-tui";
+import { Text } from "jeopi-tui";
 import {
 	getRemoteDir,
 	type ImageMetadata,
@@ -22,8 +17,7 @@ import {
 	prompt,
 	readImageMetadata,
 	untilAborted,
-} from "@oh-my-pi/pi-utils";
-import { type } from "arktype";
+} from "jeopi-utils";
 import { LRUCache } from "lru-cache/raw";
 import {
 	canonicalSnapshotKey,

@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
+import type * as Fastembed from "fastembed";
 import {
 	ensureRuntimeInstalled,
 	getFastembedRuntimeDir,
@@ -7,8 +8,7 @@ import {
 	logger,
 	type RuntimeInstallSpec,
 	resolveRuntimeModule,
-} from "@oh-my-pi/pi-utils";
-import type * as Fastembed from "fastembed";
+} from "jeopi-utils";
 import packageManifest from "../../package.json" with { type: "json" };
 
 type FastembedModule = typeof Fastembed;

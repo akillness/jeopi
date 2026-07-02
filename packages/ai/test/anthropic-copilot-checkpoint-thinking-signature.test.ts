@@ -1,14 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { convertAnthropicMessages } from "@oh-my-pi/pi-ai/providers/anthropic";
-import type {
-	AssistantMessage,
-	Message,
-	Model,
-	ModelSpec,
-	ToolResultMessage,
-	UserMessage,
-} from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import { convertAnthropicMessages } from "jeopi-ai/providers/anthropic";
+import type { AssistantMessage, Message, Model, ModelSpec, ToolResultMessage, UserMessage } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
 
 /**
  * End-to-end encoder contract for #2851. GitHub Copilot's `anthropic-messages`

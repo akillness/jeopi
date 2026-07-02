@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { DEFAULT_FUZZY_THRESHOLD, executePatchSingle, executeReplaceSingle } from "@oh-my-pi/pi-coding-agent/edit";
-import { HashlineFilesystem } from "@oh-my-pi/pi-coding-agent/edit/hashline/filesystem";
-import { resolveLocalUrlToPath } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import type { WritethroughCallback } from "@oh-my-pi/pi-coding-agent/lsp";
-import type { PlanModeState } from "@oh-my-pi/pi-coding-agent/plan-mode/state";
-import type { ClientBridge } from "@oh-my-pi/pi-coding-agent/session/client-bridge";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { DEFAULT_FUZZY_THRESHOLD, executePatchSingle, executeReplaceSingle } from "jeopi-cli/edit";
+import { HashlineFilesystem } from "jeopi-cli/edit/hashline/filesystem";
+import { resolveLocalUrlToPath } from "jeopi-cli/internal-urls";
+import type { WritethroughCallback } from "jeopi-cli/lsp";
+import type { PlanModeState } from "jeopi-cli/plan-mode/state";
+import type { ClientBridge } from "jeopi-cli/session/client-bridge";
+import type { ToolSession } from "jeopi-cli/tools";
+import { removeWithRetries } from "jeopi-utils";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 

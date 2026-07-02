@@ -1,8 +1,8 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Text } from "@oh-my-pi/pi-tui";
-import { prompt } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "jeopi-agent-core";
+import type { Component } from "jeopi-tui";
+import { Text } from "jeopi-tui";
+import { prompt } from "jeopi-utils";
 import type { AsyncJob, AsyncJobManager } from "../async";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";

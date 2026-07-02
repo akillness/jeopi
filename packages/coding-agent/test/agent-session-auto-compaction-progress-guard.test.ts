@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import * as compactionModule from "@oh-my-pi/pi-agent-core/compaction";
-import { resolveThresholdTokens, shouldCompact } from "@oh-my-pi/pi-agent-core/compaction";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { loadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
-import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+import { Agent } from "jeopi-agent-core";
+import * as compactionModule from "jeopi-agent-core/compaction";
+import { resolveThresholdTokens, shouldCompact } from "jeopi-agent-core/compaction";
+import { getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { loadExtensions } from "jeopi-cli/extensibility/extensions/loader";
+import { ExtensionRunner } from "jeopi-cli/extensibility/extensions/runner";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { getProjectAgentDir, TempDir } from "jeopi-utils";
 
 /**
  * Regression test for the auto-compaction thrash loop.

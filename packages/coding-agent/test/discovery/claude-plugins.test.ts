@@ -2,20 +2,20 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadCapability } from "@oh-my-pi/pi-coding-agent/capability";
-import { clearCache as clearFsCache } from "@oh-my-pi/pi-coding-agent/capability/fs";
+import { loadCapability } from "jeopi-cli/capability";
+import { clearCache as clearFsCache } from "jeopi-cli/capability/fs";
 import {
 	clearClaudePluginRootsCache,
 	listClaudePluginRoots,
 	parseClaudePluginsRegistry,
-} from "@oh-my-pi/pi-coding-agent/discovery/helpers";
-import { loadSlashCommands } from "@oh-my-pi/pi-coding-agent/extensibility/slash-commands";
-import { discoverAgents } from "@oh-my-pi/pi-coding-agent/task/discovery";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
-import "@oh-my-pi/pi-coding-agent/discovery/claude-plugins";
-import { type MCPServer, mcpCapability } from "@oh-my-pi/pi-coding-agent/capability/mcp";
-import type { Skill } from "@oh-my-pi/pi-coding-agent/capability/skill";
-import type { SlashCommand } from "@oh-my-pi/pi-coding-agent/capability/slash-command";
+} from "jeopi-cli/discovery/helpers";
+import { loadSlashCommands } from "jeopi-cli/extensibility/slash-commands";
+import { discoverAgents } from "jeopi-cli/task/discovery";
+import { removeWithRetries } from "jeopi-utils";
+import "jeopi/discovery/claude-plugins";
+import { type MCPServer, mcpCapability } from "jeopi-cli/capability/mcp";
+import type { Skill } from "jeopi-cli/capability/skill";
+import type { SlashCommand } from "jeopi-cli/capability/slash-command";
 
 describe("parseClaudePluginsRegistry", () => {
 	test("parses valid registry", () => {

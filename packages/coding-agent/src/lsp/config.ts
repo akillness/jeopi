@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, isRecord, logger, pathIsWithin } from "@oh-my-pi/pi-utils";
 import { YAML } from "bun";
+import { $which, isRecord, logger, pathIsWithin } from "jeopi-utils";
 import { getConfigDirPaths } from "../config";
 import { type ClaudePluginRoot, getPreloadedPluginRoots } from "../discovery/helpers";
 import { BiomeClient } from "./clients/biome-client";

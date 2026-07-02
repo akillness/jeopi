@@ -1,5 +1,5 @@
-import { logger } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import { logger } from "jeopi-utils";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
 import * as AIError from "../error";
 import type {

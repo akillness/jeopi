@@ -16,12 +16,12 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
-import { AuthStorage } from "@oh-my-pi/pi-ai";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { getModelMatchPreferences, resolveCliModel } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { loadCliExtensionProviders } from "@oh-my-pi/pi-coding-agent/sdk";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { AuthStorage } from "jeopi-ai";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { getModelMatchPreferences, resolveCliModel } from "jeopi-cli/config/model-resolver";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { loadCliExtensionProviders } from "jeopi-cli/sdk";
+import { TempDir } from "jeopi-utils";
 
 let tmp: TempDir;
 let extPath: string;

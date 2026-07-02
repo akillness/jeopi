@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+import { getSupportedEfforts } from "jeopi-catalog/model-thinking";
+import { getBundledModel } from "jeopi-catalog/models";
 
 // Pins fix #2 of the compaction effort-override bug. Models that reason
 // natively but reject the wire `reasoning.effort` param (e.g.

@@ -2,8 +2,8 @@
  * Root command for the coding agent CLI.
  */
 
-import { APP_NAME } from "@oh-my-pi/pi-utils";
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { APP_NAME } from "jeopi-utils";
+import { Args, Command, Flags } from "jeopi-utils/cli";
 import { parseArgs } from "../cli/args";
 import { runRootCommand } from "../main";
 import { prepareAcpTerminalAuthArgs } from "../modes/acp/terminal-auth";

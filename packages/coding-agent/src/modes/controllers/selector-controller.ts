@@ -1,10 +1,10 @@
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import { PASTE_CODE_LOGIN_PROVIDERS } from "@oh-my-pi/pi-ai";
-import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
-import type { OAuthProvider } from "@oh-my-pi/pi-ai/oauth/types";
-import type { Component, OverlayHandle } from "@oh-my-pi/pi-tui";
-import { Input, Loader, Spacer, setTuiTight, Text } from "@oh-my-pi/pi-tui";
-import { getAgentDbPath, getAgentDir, getProjectDir, normalizePathForComparison } from "@oh-my-pi/pi-utils";
+import { ThinkingLevel } from "jeopi-agent-core";
+import { PASTE_CODE_LOGIN_PROVIDERS } from "jeopi-ai";
+import { getOAuthProviders } from "jeopi-ai/oauth";
+import type { OAuthProvider } from "jeopi-ai/oauth/types";
+import type { Component, OverlayHandle } from "jeopi-tui";
+import { Input, Loader, Spacer, setTuiTight, Text } from "jeopi-tui";
+import { getAgentDbPath, getAgentDir, getProjectDir, normalizePathForComparison } from "jeopi-utils";
 import {
 	type AdvisorConfigScope,
 	discoverAdvisorConfigs,

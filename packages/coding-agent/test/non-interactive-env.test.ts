@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildNonInteractiveEnv } from "@oh-my-pi/pi-coding-agent/exec/non-interactive-env";
+import { buildNonInteractiveEnv } from "jeopi-cli/exec/non-interactive-env";
 
 describe("buildNonInteractiveEnv", () => {
 	it("defaults Windows child-process encoding to UTF-8 when inherited env is unset", () => {

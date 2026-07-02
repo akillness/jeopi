@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { findCommittedPrefixResync } from "@oh-my-pi/pi-tui";
+import { findCommittedPrefixResync } from "jeopi-tui";
 
 // Regression coverage for the committed-prefix resync seam that decides where the
 // engine re-anchors #committedRows after a live block re-lays-out at settle.

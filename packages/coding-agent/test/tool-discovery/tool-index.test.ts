@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { DiscoverableTool } from "@oh-my-pi/pi-coding-agent/tool-discovery/tool-index";
+import { type } from "arktype";
+import type { DiscoverableTool } from "jeopi-cli/tool-discovery/tool-index";
 import {
 	buildDiscoverableToolSearchIndex,
 	collectDiscoverableTools,
@@ -10,8 +11,7 @@ import {
 	searchDiscoverableTools,
 	selectDiscoverableToolNamesByServer,
 	summarizeDiscoverableTools,
-} from "@oh-my-pi/pi-coding-agent/tool-discovery/tool-index";
-import { type } from "arktype";
+} from "jeopi-cli/tool-discovery/tool-index";
 
 // ─── Minimal AgentTool stub ───────────────────────────────────────────────────
 

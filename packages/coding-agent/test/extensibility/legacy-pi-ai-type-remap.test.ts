@@ -3,16 +3,16 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as url from "node:url";
-import { getBundledModel, getBundledModels } from "@oh-my-pi/pi-catalog/models";
+import { getBundledModel, getBundledModels } from "jeopi-catalog/models";
 import {
 	__resetLegacyPiResolutionCache,
 	installLegacyPiSpecifierShim,
 	loadLegacyPiModule,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
-import { Type as TypeBoxShimType } from "@oh-my-pi/pi-coding-agent/extensibility/typebox";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/extensibility/plugins/legacy-pi-compat";
+import { Type as TypeBoxShimType } from "jeopi-cli/extensibility/typebox";
+import { removeWithRetries } from "jeopi-utils";
 
-// pi-ai 15.1.0 removed the runtime `Type` export from `@oh-my-pi/pi-ai`'s
+// pi-ai 15.1.0 removed the runtime `Type` export from `jeopi-ai`'s
 // package root. Legacy extensions (and their aliased-scope variants such as
 // `@earendil-works/pi-ai`) still author parameter schemas as
 // `import { Type } from "@earendil-works/pi-ai"` and then `Type.Object(...)`.
@@ -144,7 +144,7 @@ describe("legacy pi package root remaps (issue #1474)", () => {
 	it("loads @earendil-works/pi-coding-agent root imports when host package resolution is unavailable", async () => {
 		const realResolveSync = Bun.resolveSync.bind(Bun);
 		vi.spyOn(Bun, "resolveSync").mockImplementation((specifier: string, from: string) => {
-			if (specifier === "@oh-my-pi/pi-coding-agent" && from.endsWith(path.join("src", "extensibility", "plugins"))) {
+			if (specifier === "jeopi" && from.endsWith(path.join("src", "extensibility", "plugins"))) {
 				throw new Error("compiled binary host package resolution unavailable");
 			}
 			return realResolveSync(specifier, from);
@@ -224,7 +224,7 @@ describe("legacy pi package root remaps (issue #1474)", () => {
 	it("falls back to legacy-scoped subpath peers for direct plugin imports", async () => {
 		const realResolveSync = Bun.resolveSync.bind(Bun);
 		vi.spyOn(Bun, "resolveSync").mockImplementation((specifier: string, from: string) => {
-			if (specifier === "@oh-my-pi/pi-ai/oauth") {
+			if (specifier === "jeopi-ai/oauth") {
 				throw new Error(`canonical peer unavailable from ${from}`);
 			}
 			return realResolveSync(specifier, from);
@@ -267,7 +267,7 @@ describe("legacy pi package root remaps (issue #1474)", () => {
 		const realResolveSync = Bun.resolveSync.bind(Bun);
 		let canonicalLookupSeen = false;
 		vi.spyOn(Bun, "resolveSync").mockImplementation((specifier: string, from: string) => {
-			if (specifier === "@oh-my-pi/pi-utils") {
+			if (specifier === "jeopi-utils") {
 				canonicalLookupSeen = true;
 			}
 			return realResolveSync(specifier, from);

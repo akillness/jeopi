@@ -1,22 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type {
-	ImageContent,
-	Message,
-	MessageAttribution,
-	ServiceTierByFamily,
-	TextContent,
-	Usage,
-} from "@oh-my-pi/pi-ai";
-import {
-	directoryExists,
-	getBlobsDir,
-	getProjectDir,
-	getSessionsDir,
-	isEnoent,
-	logger,
-	toError,
-} from "@oh-my-pi/pi-utils";
+import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "jeopi-ai";
+import { directoryExists, getBlobsDir, getProjectDir, getSessionsDir, isEnoent, logger, toError } from "jeopi-utils";
 import { ArtifactManager } from "./artifacts";
 import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
 import {

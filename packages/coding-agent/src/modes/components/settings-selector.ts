@@ -1,5 +1,6 @@
-import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Effort } from "@oh-my-pi/pi-ai";
+import type { ThinkingLevel } from "jeopi-agent-core";
+import type { Effort } from "jeopi-ai";
+import type { ShapeTarget } from "jeopi-snapcompact";
 import {
 	type Component,
 	Container,
@@ -24,8 +25,7 @@ import {
 	Text,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import type { ShapeTarget } from "@oh-my-pi/snapcompact";
+} from "jeopi-tui";
 import {
 	getDefault,
 	getType,

@@ -7,8 +7,9 @@
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
-import { EventLoopKeepalive } from "@oh-my-pi/pi-agent-core";
-import type { ImageContent } from "@oh-my-pi/pi-ai";
+import chalk from "chalk";
+import { EventLoopKeepalive } from "jeopi-agent-core";
+import type { ImageContent } from "jeopi-ai";
 import {
 	$env,
 	APP_NAME,
@@ -20,8 +21,7 @@ import {
 	postmortem,
 	setProjectDir,
 	VERSION,
-} from "@oh-my-pi/pi-utils";
-import chalk from "chalk";
+} from "jeopi-utils";
 import { reset as resetCapabilities } from "./capability";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";
 import { applyExtensionFlags, type ExtensionFlagSink } from "./cli/extension-flags";
@@ -103,7 +103,7 @@ async function checkForNewVersion(currentVersion: string): Promise<string | unde
 		return;
 	}
 	try {
-		const response = await fetch("https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/latest");
+		const response = await fetch("https://registry.npmjs.org/jeopi/latest");
 		if (!response.ok) return undefined;
 
 		const data = (await response.json()) as { version?: string };

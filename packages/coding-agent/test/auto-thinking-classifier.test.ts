@@ -1,16 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import { Effort, type Model } from "@oh-my-pi/pi-ai";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import {
-	classifyDifficulty,
-	parseDifficultyBucket,
-	parseDifficultyLevel,
-} from "@oh-my-pi/pi-coding-agent/auto-thinking/classifier";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
+import { ThinkingLevel } from "jeopi-agent-core";
+import { Effort, type Model } from "jeopi-ai";
+import { getBundledModel } from "jeopi-catalog/models";
+import { classifyDifficulty, parseDifficultyBucket, parseDifficultyLevel } from "jeopi-cli/auto-thinking/classifier";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import {
 	AUTO_THINKING,
 	clampAutoThinkingEffort,
@@ -19,10 +15,10 @@ import {
 	parseEffort,
 	parseThinkingLevel,
 	resolveProvisionalAutoLevel,
-} from "@oh-my-pi/pi-coding-agent/thinking";
-import type { TinyMemoryLocalModelKey } from "@oh-my-pi/pi-coding-agent/tiny/models";
-import { tinyModelClient } from "@oh-my-pi/pi-coding-agent/tiny/title-client";
-import { TempDir } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/thinking";
+import type { TinyMemoryLocalModelKey } from "jeopi-cli/tiny/models";
+import { tinyModelClient } from "jeopi-cli/tiny/title-client";
+import { TempDir } from "jeopi-utils";
 
 describe("auto thinking classifier helpers", () => {
 	afterEach(() => {

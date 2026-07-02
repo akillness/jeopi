@@ -1,8 +1,8 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Model } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { isEnoent } from "@oh-my-pi/pi-utils";
+import type { Model } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
+import { isEnoent } from "jeopi-utils";
 
 export async function withEnv(
 	overrides: Record<string, string | undefined>,

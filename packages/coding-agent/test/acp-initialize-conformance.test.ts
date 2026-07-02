@@ -8,14 +8,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentSideConnection, InitializeRequest } from "@agentclientprotocol/sdk";
-import type { Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { AcpAgent } from "@oh-my-pi/pi-coding-agent/modes/acp/acp-agent";
-import { ACP_TERMINAL_AUTH_FLAG, prepareAcpTerminalAuthArgs } from "@oh-my-pi/pi-coding-agent/modes/acp/terminal-auth";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { getConfigRootDir, setAgentDir, VERSION } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { Model } from "jeopi-ai";
+import { buildModel } from "jeopi-catalog/build";
+import { AcpAgent } from "jeopi-cli/modes/acp/acp-agent";
+import { ACP_TERMINAL_AUTH_FLAG, prepareAcpTerminalAuthArgs } from "jeopi-cli/modes/acp/terminal-auth";
+import type { AgentSession } from "jeopi-cli/session/agent-session";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { getConfigRootDir, setAgentDir, VERSION } from "jeopi-utils";
 import { expectAcpStructure } from "./helpers/acp-schema";
 
 const arkInitializeResponse = type({

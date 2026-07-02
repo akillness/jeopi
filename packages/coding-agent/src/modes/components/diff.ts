@@ -1,5 +1,5 @@
-import { DEFAULT_TAB_WIDTH, sanitizeText } from "@oh-my-pi/pi-utils";
 import * as Diff from "diff";
+import { DEFAULT_TAB_WIDTH, sanitizeText } from "jeopi-utils";
 import { getLanguageFromPath, highlightCode, theme } from "../../modes/theme/theme";
 import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../tools/render-utils";
 

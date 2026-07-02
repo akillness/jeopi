@@ -18,8 +18,8 @@
  * if you need those off-host too.
  */
 
-import { createAgentSession, SessionManager, SqlSessionStorage } from "@oh-my-pi/pi-coding-agent";
 import { SQL } from "bun";
+import { createAgentSession, SessionManager, SqlSessionStorage } from "jeopi-cli";
 
 // Pick one — Bun.SQL auto-detects the dialect from the URL scheme.
 //

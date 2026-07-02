@@ -5,9 +5,9 @@
  * a summary of the branch being left so context isn't lost.
  */
 
-import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@oh-my-pi/pi-ai";
-import { preferredDialect } from "@oh-my-pi/pi-catalog/identity";
-import { prompt } from "@oh-my-pi/pi-utils";
+import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "jeopi-ai";
+import { preferredDialect } from "jeopi-catalog/identity";
+import { prompt } from "jeopi-utils";
 import { type AgentTelemetry, instrumentedCompleteSimple } from "../telemetry";
 import type { AgentMessage } from "../types";
 import { estimateTokens } from "./compaction";

@@ -1,6 +1,6 @@
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
-import type { Static, TSchema } from "@oh-my-pi/pi-ai";
-import { Snowflake } from "@oh-my-pi/pi-utils";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "jeopi-agent-core";
+import type { Static, TSchema } from "jeopi-ai";
+import { Snowflake } from "jeopi-utils";
 import { applyToolProxy } from "../../extensibility/tool-proxy";
 import type { Theme } from "../../modes/theme/theme";
 import type {

@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import {
-	classifyGroupedLines,
-	formatGroupedFiles,
-	groupLineIndicesByBlank,
-} from "@oh-my-pi/pi-coding-agent/tools/grouped-file-output";
+import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "jeopi-cli/tools/grouped-file-output";
 
 const REPO_ROOT = path.resolve("repo");
 const OUTSIDE_DIR = path.resolve(path.parse(REPO_ROOT).root, "outside", "dir");

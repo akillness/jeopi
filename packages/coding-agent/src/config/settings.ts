@@ -14,7 +14,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { configureProviderMaxInFlightRequests } from "@oh-my-pi/pi-ai/stream";
+import { JSONC, YAML } from "bun";
+import { configureProviderMaxInFlightRequests } from "jeopi-ai/stream";
 import {
 	getAgentDbPath,
 	getAgentDir,
@@ -24,8 +25,7 @@ import {
 	logger,
 	procmgr,
 	setWorktreesDir,
-} from "@oh-my-pi/pi-utils";
-import { JSONC, YAML } from "bun";
+} from "jeopi-utils";
 import { type Settings as SettingsCapabilityItem, settingsCapability } from "../capability/settings";
 import type { ModelRole } from "../config/model-roles";
 import { loadCapability } from "../discovery";

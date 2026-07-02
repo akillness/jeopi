@@ -5,10 +5,10 @@ import {
 	processInteractionUpdate,
 	type ToolCallState,
 	type UsageState,
-} from "@oh-my-pi/pi-ai/providers/cursor";
-import type { AssistantMessage, AssistantMessageEvent } from "@oh-my-pi/pi-ai/types";
-import { getStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
+} from "jeopi-ai/providers/cursor";
+import type { AssistantMessage, AssistantMessageEvent } from "jeopi-ai/types";
+import { getStreamingPartialJson } from "jeopi-ai/utils/block-symbols";
+import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
 
 interface Harness {
 	output: AssistantMessage;

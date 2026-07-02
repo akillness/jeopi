@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { discoverAgents } from "@oh-my-pi/pi-coding-agent/task/discovery";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { discoverAgents } from "jeopi-cli/task/discovery";
+import { removeWithRetries } from "jeopi-utils";
 
 const OMP_AGENT_MD = [
 	"---",

@@ -6,13 +6,13 @@
  * internals, which massively overcounts.
  */
 import { describe, expect, it } from "bun:test";
-import { arkToWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
+import { type } from "arktype";
+import { arkToWireSchema } from "jeopi-ai/utils/schema";
 import {
 	type ContextBreakdown,
 	estimateToolSchemaTokens,
 	renderContextUsage,
-} from "@oh-my-pi/pi-coding-agent/modes/utils/context-usage";
-import { type } from "arktype";
+} from "jeopi-cli/modes/utils/context-usage";
 
 describe("estimateToolSchemaTokens", () => {
 	it("counts arktype tool schemas by their wire JSON Schema, not arktype internals", () => {

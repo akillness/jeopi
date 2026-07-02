@@ -18,6 +18,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as readline from "node:readline";
+import { $ } from "bun";
+import chalk from "chalk";
 import {
 	type AuthCredential,
 	AuthStorage,
@@ -31,12 +33,10 @@ import {
 	PASTE_CODE_LOGIN_PROVIDERS,
 	PROVIDER_REGISTRY,
 	SqliteAuthCredentialStore,
-} from "@oh-my-pi/pi-ai";
-import { AuthBrokerClient, DEFAULT_AUTH_BROKER_BIND, startAuthBroker } from "@oh-my-pi/pi-ai/auth-broker";
-import { $which, APP_NAME, getAgentDbPath, getConfigRootDir, isEnoent, logger, VERSION } from "@oh-my-pi/pi-utils";
-import { setTransports as setLoggerTransports } from "@oh-my-pi/pi-utils/logger";
-import { $ } from "bun";
-import chalk from "chalk";
+} from "jeopi-ai";
+import { AuthBrokerClient, DEFAULT_AUTH_BROKER_BIND, startAuthBroker } from "jeopi-ai/auth-broker";
+import { $which, APP_NAME, getAgentDbPath, getConfigRootDir, isEnoent, logger, VERSION } from "jeopi-utils";
+import { setTransports as setLoggerTransports } from "jeopi-utils/logger";
 import { resolveAuthBrokerConfig } from "../session/auth-broker-config";
 
 export type AuthBrokerAction = "serve" | "token" | "login" | "logout" | "status" | "import" | "migrate" | "list";

@@ -4,11 +4,11 @@
  * Run with: npx tsx test/streaming-render-debug.ts
  */
 import * as path from "node:path";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { AssistantMessageComponent } from "@oh-my-pi/pi-coding-agent/modes/components/assistant-message";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { ProcessTerminal, TUI } from "@oh-my-pi/pi-tui";
 import { sleep } from "bun";
+import type { AssistantMessage } from "jeopi-ai";
+import { AssistantMessageComponent } from "jeopi-cli/modes/components/assistant-message";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import { ProcessTerminal, TUI } from "jeopi-tui";
 
 // Initialize dark theme with full color support
 Bun.env.COLORTERM = "truecolor";

@@ -20,16 +20,16 @@
       },
     },
     "packages/agent": {
-      "name": "@oh-my-pi/pi-agent-core",
+      "name": "jeopi-agent-core",
       "version": "16.2.13",
       "dependencies": {
-        "@oh-my-pi/pi-ai": "catalog:",
-        "@oh-my-pi/pi-catalog": "catalog:",
-        "@oh-my-pi/pi-natives": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
-        "@oh-my-pi/pi-wire": "catalog:",
-        "@oh-my-pi/snapcompact": "catalog:",
         "@opentelemetry/api": "catalog:",
+        "jeopi-ai": "catalog:",
+        "jeopi-catalog": "catalog:",
+        "jeopi-natives": "catalog:",
+        "jeopi-snapcompact": "catalog:",
+        "jeopi-utils": "catalog:",
+        "jeopi-wire": "catalog:",
       },
       "devDependencies": {
         "@opentelemetry/context-async-hooks": "catalog:",
@@ -38,14 +38,14 @@
       },
     },
     "packages/ai": {
-      "name": "@oh-my-pi/pi-ai",
+      "name": "jeopi-ai",
       "version": "16.2.13",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
-        "@oh-my-pi/pi-catalog": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
-        "@oh-my-pi/pi-wire": "catalog:",
         "arktype": "catalog:",
+        "jeopi-catalog": "catalog:",
+        "jeopi-utils": "catalog:",
+        "jeopi-wire": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -54,40 +54,29 @@
       },
     },
     "packages/catalog": {
-      "name": "@oh-my-pi/pi-catalog",
+      "name": "jeopi-catalog",
       "version": "16.2.13",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
         "arktype": "catalog:",
+        "jeopi-utils": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@oh-my-pi/pi-ai": "catalog:",
         "@types/bun": "catalog:",
+        "jeopi-ai": "catalog:",
       },
     },
     "packages/coding-agent": {
-      "name": "@oh-my-pi/pi-coding-agent",
+      "name": "jeopi-cli",
       "version": "16.2.13",
       "bin": {
-        "omp": "src/cli.ts",
+        "jeopi": "src/cli.ts",
       },
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
         "@babel/parser": "catalog:",
         "@mozilla/readability": "catalog:",
-        "@oh-my-pi/hashline": "catalog:",
-        "@oh-my-pi/omp-stats": "catalog:",
-        "@oh-my-pi/pi-agent-core": "catalog:",
-        "@oh-my-pi/pi-ai": "catalog:",
-        "@oh-my-pi/pi-catalog": "catalog:",
-        "@oh-my-pi/pi-mnemopi": "catalog:",
-        "@oh-my-pi/pi-natives": "catalog:",
-        "@oh-my-pi/pi-tui": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
-        "@oh-my-pi/pi-wire": "catalog:",
-        "@oh-my-pi/snapcompact": "catalog:",
         "@opentelemetry/api": "catalog:",
         "@opentelemetry/context-async-hooks": "catalog:",
         "@opentelemetry/exporter-trace-otlp-proto": "catalog:",
@@ -102,6 +91,17 @@
         "diff": "catalog:",
         "fast-xml-parser": "catalog:",
         "handlebars": "catalog:",
+        "jeopi-agent-core": "catalog:",
+        "jeopi-ai": "catalog:",
+        "jeopi-catalog": "catalog:",
+        "jeopi-hashline": "catalog:",
+        "jeopi-mnemopi": "catalog:",
+        "jeopi-natives": "catalog:",
+        "jeopi-snapcompact": "catalog:",
+        "jeopi-stats": "catalog:",
+        "jeopi-tui": "catalog:",
+        "jeopi-utils": "catalog:",
+        "jeopi-wire": "catalog:",
         "linkedom": "catalog:",
         "lru-cache": "catalog:",
         "mammoth": "catalog:",
@@ -120,10 +120,10 @@
       },
     },
     "packages/collab-web": {
-      "name": "@oh-my-pi/collab-web",
+      "name": "jeopi-collab-web",
       "version": "15.11.7",
       "dependencies": {
-        "@oh-my-pi/pi-wire": "catalog:",
+        "jeopi-wire": "catalog:",
         "lucide-react": "catalog:",
         "marked": "catalog:",
         "react": "catalog:",
@@ -136,7 +136,7 @@
       },
     },
     "packages/hashline": {
-      "name": "@oh-my-pi/hashline",
+      "name": "jeopi-hashline",
       "version": "16.2.13",
       "dependencies": {
         "diff": "catalog:",
@@ -147,15 +147,15 @@
       },
     },
     "packages/mnemopi": {
-      "name": "@oh-my-pi/pi-mnemopi",
+      "name": "jeopi-mnemopi",
       "version": "16.2.13",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
       "dependencies": {
-        "@oh-my-pi/pi-ai": "catalog:",
-        "@oh-my-pi/pi-catalog": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
+        "jeopi-ai": "catalog:",
+        "jeopi-catalog": "catalog:",
+        "jeopi-utils": "catalog:",
         "lru-cache": "catalog:",
       },
       "devDependencies": {
@@ -173,7 +173,7 @@
       ],
     },
     "packages/natives": {
-      "name": "@oh-my-pi/pi-natives",
+      "name": "jeopi-natives",
       "version": "16.2.13",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
@@ -181,31 +181,31 @@
       },
     },
     "packages/snapcompact": {
-      "name": "@oh-my-pi/snapcompact",
+      "name": "jeopi-snapcompact",
       "version": "16.2.13",
       "dependencies": {
-        "@oh-my-pi/pi-ai": "catalog:",
-        "@oh-my-pi/pi-natives": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
-        "@oh-my-pi/pi-wire": "catalog:",
+        "jeopi-ai": "catalog:",
+        "jeopi-natives": "catalog:",
+        "jeopi-utils": "catalog:",
+        "jeopi-wire": "catalog:",
       },
       "devDependencies": {
         "@types/bun": "catalog:",
       },
     },
     "packages/stats": {
-      "name": "@oh-my-pi/omp-stats",
+      "name": "jeopi-stats",
       "version": "16.2.13",
       "bin": {
-        "omp-stats": "./src/index.ts",
+        "jeopi-stats": "./src/index.ts",
       },
       "dependencies": {
-        "@oh-my-pi/pi-ai": "catalog:",
-        "@oh-my-pi/pi-catalog": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
         "@tailwindcss/node": "catalog:",
         "chart.js": "catalog:",
         "date-fns": "catalog:",
+        "jeopi-ai": "catalog:",
+        "jeopi-catalog": "catalog:",
+        "jeopi-utils": "catalog:",
         "lucide-react": "catalog:",
         "react": "catalog:",
         "react-chartjs-2": "catalog:",
@@ -220,23 +220,23 @@
       },
     },
     "packages/swarm-extension": {
-      "name": "@oh-my-pi/swarm-extension",
+      "name": "jeopi-swarm-extension",
       "version": "16.2.13",
       "bin": {
-        "omp-swarm": "src/cli.ts",
+        "jeopi-swarm": "src/cli.ts",
       },
       "dependencies": {
-        "@oh-my-pi/pi-utils": "workspace:*",
+        "jeopi-utils": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.3.14",
       },
       "peerDependencies": {
-        "@oh-my-pi/pi-coding-agent": "^13",
+        "jeopi-cli": "workspace:^",
       },
     },
     "packages/terminal-bench": {
-      "name": "@oh-my-pi/terminal-bench",
+      "name": "jeopi-terminal-bench",
       "version": "0.0.1",
       "bin": {
         "tb2": "src/runner.ts",
@@ -246,11 +246,11 @@
       },
     },
     "packages/tui": {
-      "name": "@oh-my-pi/pi-tui",
+      "name": "jeopi-tui",
       "version": "16.2.13",
       "dependencies": {
-        "@oh-my-pi/pi-natives": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
+        "jeopi-natives": "catalog:",
+        "jeopi-utils": "catalog:",
         "lru-cache": "catalog:",
         "marked": "catalog:",
       },
@@ -260,7 +260,7 @@
       },
     },
     "packages/typescript-edit-benchmark": {
-      "name": "@oh-my-pi/typescript-edit-benchmark",
+      "name": "jeopi-typescript-edit-benchmark",
       "version": "0.0.1",
       "bin": {
         "typescript-edit-benchmark": "src/index.ts",
@@ -270,13 +270,13 @@
         "@babel/parser": "catalog:",
         "@babel/traverse": "catalog:",
         "@babel/types": "catalog:",
-        "@oh-my-pi/hashline": "catalog:",
-        "@oh-my-pi/pi-agent-core": "catalog:",
-        "@oh-my-pi/pi-ai": "catalog:",
-        "@oh-my-pi/pi-coding-agent": "catalog:",
-        "@oh-my-pi/pi-tui": "catalog:",
-        "@oh-my-pi/pi-utils": "catalog:",
         "diff": "catalog:",
+        "jeopi-agent-core": "catalog:",
+        "jeopi-ai": "catalog:",
+        "jeopi-cli": "catalog:",
+        "jeopi-hashline": "catalog:",
+        "jeopi-tui": "catalog:",
+        "jeopi-utils": "catalog:",
         "prettier": "catalog:",
         "regexp-tree": "catalog:",
       },
@@ -287,11 +287,11 @@
       },
     },
     "packages/utils": {
-      "name": "@oh-my-pi/pi-utils",
+      "name": "jeopi-utils",
       "version": "16.2.13",
       "dependencies": {
-        "@oh-my-pi/pi-natives": "catalog:",
         "handlebars": "catalog:",
+        "jeopi-natives": "catalog:",
         "winston": "catalog:",
         "winston-daily-rotate-file": "catalog:",
       },
@@ -300,7 +300,7 @@
       },
     },
     "packages/wire": {
-      "name": "@oh-my-pi/pi-wire",
+      "name": "jeopi-wire",
       "version": "16.2.13",
       "devDependencies": {
         "@types/bun": "catalog:",
@@ -337,18 +337,6 @@
     "@huggingface/transformers": "^4.2.0",
     "@mozilla/readability": "^0.6.0",
     "@napi-rs/cli": "3.7.0",
-    "@oh-my-pi/hashline": "16.2.13",
-    "@oh-my-pi/omp-stats": "16.2.13",
-    "@oh-my-pi/pi-agent-core": "16.2.13",
-    "@oh-my-pi/pi-ai": "16.2.13",
-    "@oh-my-pi/pi-catalog": "16.2.13",
-    "@oh-my-pi/pi-coding-agent": "16.2.13",
-    "@oh-my-pi/pi-mnemopi": "16.2.13",
-    "@oh-my-pi/pi-natives": "16.2.13",
-    "@oh-my-pi/pi-tui": "16.2.13",
-    "@oh-my-pi/pi-utils": "16.2.13",
-    "@oh-my-pi/pi-wire": "16.2.13",
-    "@oh-my-pi/snapcompact": "16.2.13",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "^2.7.1",
     "@opentelemetry/exporter-trace-otlp-proto": "^0.218.0",
@@ -376,6 +364,18 @@
     "fflate": "0.8.3",
     "ghostty-web": "^0.4.0",
     "handlebars": "^4.7.9",
+    "jeopi-agent-core": "16.2.13",
+    "jeopi-ai": "16.2.13",
+    "jeopi-catalog": "16.2.13",
+    "jeopi-cli": "16.2.13",
+    "jeopi-hashline": "16.2.13",
+    "jeopi-mnemopi": "16.2.13",
+    "jeopi-natives": "16.2.13",
+    "jeopi-snapcompact": "16.2.13",
+    "jeopi-stats": "16.2.13",
+    "jeopi-tui": "16.2.13",
+    "jeopi-utils": "16.2.13",
+    "jeopi-wire": "16.2.13",
     "linkedom": "^0.18.12",
     "lint-staged": "^17.0.7",
     "lru-cache": "11.5.1",
@@ -731,38 +731,6 @@
     "@octokit/rest": ["@octokit/rest@22.0.1", "", { "dependencies": { "@octokit/core": "^7.0.6", "@octokit/plugin-paginate-rest": "^14.0.0", "@octokit/plugin-request-log": "^6.0.0", "@octokit/plugin-rest-endpoint-methods": "^17.0.0" } }, "sha512-Jzbhzl3CEexhnivb1iQ0KJ7s5vvjMWcmRtq5aUsKmKDrRW6z3r84ngmiFKFvpZjpiU/9/S6ITPFRpn5s/3uQJw=="],
 
     "@octokit/types": ["@octokit/types@16.0.0", "", { "dependencies": { "@octokit/openapi-types": "^27.0.0" } }, "sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg=="],
-
-    "@oh-my-pi/collab-web": ["@oh-my-pi/collab-web@workspace:packages/collab-web"],
-
-    "@oh-my-pi/hashline": ["@oh-my-pi/hashline@workspace:packages/hashline"],
-
-    "@oh-my-pi/omp-stats": ["@oh-my-pi/omp-stats@workspace:packages/stats"],
-
-    "@oh-my-pi/pi-agent-core": ["@oh-my-pi/pi-agent-core@workspace:packages/agent"],
-
-    "@oh-my-pi/pi-ai": ["@oh-my-pi/pi-ai@workspace:packages/ai"],
-
-    "@oh-my-pi/pi-catalog": ["@oh-my-pi/pi-catalog@workspace:packages/catalog"],
-
-    "@oh-my-pi/pi-coding-agent": ["@oh-my-pi/pi-coding-agent@workspace:packages/coding-agent"],
-
-    "@oh-my-pi/pi-mnemopi": ["@oh-my-pi/pi-mnemopi@workspace:packages/mnemopi"],
-
-    "@oh-my-pi/pi-natives": ["@oh-my-pi/pi-natives@workspace:packages/natives"],
-
-    "@oh-my-pi/pi-tui": ["@oh-my-pi/pi-tui@workspace:packages/tui"],
-
-    "@oh-my-pi/pi-utils": ["@oh-my-pi/pi-utils@workspace:packages/utils"],
-
-    "@oh-my-pi/pi-wire": ["@oh-my-pi/pi-wire@workspace:packages/wire"],
-
-    "@oh-my-pi/snapcompact": ["@oh-my-pi/snapcompact@workspace:packages/snapcompact"],
-
-    "@oh-my-pi/swarm-extension": ["@oh-my-pi/swarm-extension@workspace:packages/swarm-extension"],
-
-    "@oh-my-pi/terminal-bench": ["@oh-my-pi/terminal-bench@workspace:packages/terminal-bench"],
-
-    "@oh-my-pi/typescript-edit-benchmark": ["@oh-my-pi/typescript-edit-benchmark@workspace:packages/typescript-edit-benchmark"],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
 
@@ -1141,6 +1109,38 @@
     "is-what": ["is-what@4.1.16", "", {}, "sha512-ZhMwEosbFJkA0YhFnNDgTM4ZxDRsS6HqTo7qsZM08fehyRYIYa0yHu5R6mgo1n/8MgaPBXiPimPD77baVFYg+A=="],
 
     "isarray": ["isarray@1.0.0", "", {}, "sha512-VLghIWNM6ELQzo7zwmcg0NmTVyWKYjvIeM83yjp0wRDTmUnrM678fQbcKBo6n2CJEF0szoG//ytg+TKla89ALQ=="],
+
+    "jeopi-agent-core": ["jeopi-agent-core@workspace:packages/agent"],
+
+    "jeopi-ai": ["jeopi-ai@workspace:packages/ai"],
+
+    "jeopi-catalog": ["jeopi-catalog@workspace:packages/catalog"],
+
+    "jeopi-cli": ["jeopi-cli@workspace:packages/coding-agent"],
+
+    "jeopi-collab-web": ["jeopi-collab-web@workspace:packages/collab-web"],
+
+    "jeopi-hashline": ["jeopi-hashline@workspace:packages/hashline"],
+
+    "jeopi-mnemopi": ["jeopi-mnemopi@workspace:packages/mnemopi"],
+
+    "jeopi-natives": ["jeopi-natives@workspace:packages/natives"],
+
+    "jeopi-snapcompact": ["jeopi-snapcompact@workspace:packages/snapcompact"],
+
+    "jeopi-stats": ["jeopi-stats@workspace:packages/stats"],
+
+    "jeopi-swarm-extension": ["jeopi-swarm-extension@workspace:packages/swarm-extension"],
+
+    "jeopi-terminal-bench": ["jeopi-terminal-bench@workspace:packages/terminal-bench"],
+
+    "jeopi-tui": ["jeopi-tui@workspace:packages/tui"],
+
+    "jeopi-typescript-edit-benchmark": ["jeopi-typescript-edit-benchmark@workspace:packages/typescript-edit-benchmark"],
+
+    "jeopi-utils": ["jeopi-utils@workspace:packages/utils"],
+
+    "jeopi-wire": ["jeopi-wire@workspace:packages/wire"],
 
     "jiti": ["jiti@2.7.0", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ=="],
 

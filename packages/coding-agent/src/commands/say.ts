@@ -7,9 +7,9 @@
  */
 import * as os from "node:os";
 import * as path from "node:path";
-import { getProjectDir, Snowflake } from "@oh-my-pi/pi-utils";
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
 import chalk from "chalk";
+import { getProjectDir, Snowflake } from "jeopi-utils";
+import { Args, Command, Flags } from "jeopi-utils/cli";
 import { Settings, settings } from "../config/settings";
 import { playAudioFile, removeTempFile } from "../tts/player";
 import { shutdownTtsClient, ttsClient } from "../tts/tts-client";

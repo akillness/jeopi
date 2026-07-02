@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AssistantMessage, Model } from "@oh-my-pi/pi-ai";
-import * as ai from "@oh-my-pi/pi-ai";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { startMemoryStartupTask } from "@oh-my-pi/pi-coding-agent/memories";
+import type { AssistantMessage, Model } from "jeopi-ai";
+import * as ai from "jeopi-ai";
+import { Settings } from "jeopi-cli/config/settings";
+import { startMemoryStartupTask } from "jeopi-cli/memories";
 import {
 	claimStage1Jobs,
 	clearMemoryData,
@@ -15,8 +15,8 @@ import {
 	openMemoryDb,
 	tryClaimGlobalPhase2Job,
 	upsertThreads,
-} from "@oh-my-pi/pi-coding-agent/memories/storage";
-import { getAgentDbPath, TempDir } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/memories/storage";
+import { getAgentDbPath, TempDir } from "jeopi-utils";
 
 const GLOBAL_KIND = "memory_consolidate_global";
 const PROJECT_CWD = "/repo";

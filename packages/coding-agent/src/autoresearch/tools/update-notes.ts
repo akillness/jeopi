@@ -1,5 +1,5 @@
-import { Text } from "@oh-my-pi/pi-tui";
 import { type } from "arktype";
+import { Text } from "jeopi-tui";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";

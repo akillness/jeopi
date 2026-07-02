@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import type { AuthStorage, FetchImpl } from "@oh-my-pi/pi-ai";
-import { AuthStorage as CodingAuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { searchAnthropic } from "@oh-my-pi/pi-coding-agent/web/search/providers/anthropic";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import type { AuthStorage, FetchImpl } from "jeopi-ai";
+import { AuthStorage as CodingAuthStorage } from "jeopi-cli/session/auth-storage";
+import { searchAnthropic } from "jeopi-cli/web/search/providers/anthropic";
+import { TempDir } from "jeopi-utils";
 
 function makeCaptureFetch(): { fetch: FetchImpl; body: () => Record<string, unknown> | undefined } {
 	let captured: Record<string, unknown> | undefined;

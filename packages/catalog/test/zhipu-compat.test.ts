@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { buildOpenAICompat } from "@oh-my-pi/pi-catalog/compat/openai";
-import { zhipuCodingPlanModelManagerOptions } from "@oh-my-pi/pi-catalog/provider-models/openai-compat";
-import type { FetchImpl, ModelSpec } from "@oh-my-pi/pi-catalog/types";
+import { buildOpenAICompat } from "jeopi-catalog/compat/openai";
+import { zhipuCodingPlanModelManagerOptions } from "jeopi-catalog/provider-models/openai-compat";
+import type { FetchImpl, ModelSpec } from "jeopi-catalog/types";
 
 /**
  * Resolver-branch coverage for the `isZhipu` path added by the

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeSchemaForGoogle, toolWireSchema } from "@oh-my-pi/pi-ai";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { createTools, HIDDEN_TOOLS, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+import { normalizeSchemaForGoogle, toolWireSchema } from "jeopi-ai";
+import { Settings } from "jeopi-cli/config/settings";
+import { createTools, HIDDEN_TOOLS, type ToolSession } from "jeopi-cli/tools";
 
 /**
  * Problematic JSON Schema features that cause issues with various providers.

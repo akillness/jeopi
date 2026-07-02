@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { logger } from "@oh-my-pi/pi-utils";
+import { logger } from "jeopi-utils";
 
 import type { BashResult } from "./bash-executor";
 

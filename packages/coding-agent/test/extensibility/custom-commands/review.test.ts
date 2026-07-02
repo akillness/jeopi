@@ -2,15 +2,15 @@ import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ReviewCommand } from "@oh-my-pi/pi-coding-agent/extensibility/custom-commands/bundled/review";
-import type { CustomCommandAPI } from "@oh-my-pi/pi-coding-agent/extensibility/custom-commands/types";
-import type { HookCommandContext } from "@oh-my-pi/pi-coding-agent/extensibility/hooks/types";
-import type { SessionEntry } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-import type { PrDiffPayload, ViewLookupResult } from "@oh-my-pi/pi-coding-agent/tools/gh";
-import * as gh from "@oh-my-pi/pi-coding-agent/tools/gh";
-import * as git from "@oh-my-pi/pi-coding-agent/utils/git";
-import * as jj from "@oh-my-pi/pi-coding-agent/utils/jj";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { ReviewCommand } from "jeopi-cli/extensibility/custom-commands/bundled/review";
+import type { CustomCommandAPI } from "jeopi-cli/extensibility/custom-commands/types";
+import type { HookCommandContext } from "jeopi-cli/extensibility/hooks/types";
+import type { SessionEntry } from "jeopi-cli/session/session-entries";
+import type { PrDiffPayload, ViewLookupResult } from "jeopi-cli/tools/gh";
+import * as gh from "jeopi-cli/tools/gh";
+import * as git from "jeopi-cli/utils/git";
+import * as jj from "jeopi-cli/utils/jj";
+import { removeWithRetries } from "jeopi-utils";
 
 const SAMPLE_JJ_DIFF = `diff --git a/src/workspace.ts b/src/workspace.ts
 --- a/src/workspace.ts

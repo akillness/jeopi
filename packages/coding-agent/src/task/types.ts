@@ -1,7 +1,7 @@
-import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Usage } from "@oh-my-pi/pi-ai";
-import { $env } from "@oh-my-pi/pi-utils";
 import { type BaseType, type } from "arktype";
+import type { ThinkingLevel } from "jeopi-agent-core";
+import type { Usage } from "jeopi-ai";
+import { $env } from "jeopi-utils";
 import type { AgentSessionEvent } from "../session/agent-session";
 import type { NestedRepoPatch } from "./worktree";
 

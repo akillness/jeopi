@@ -1,4 +1,4 @@
-import { $env } from "@oh-my-pi/pi-utils";
+import { $env } from "jeopi-utils";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {

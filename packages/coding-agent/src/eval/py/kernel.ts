@@ -10,8 +10,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, isBunTestRuntime, logger, Snowflake } from "@oh-my-pi/pi-utils";
 import { $ } from "bun";
+import { $flag, isBunTestRuntime, logger, Snowflake } from "jeopi-utils";
 import { Settings } from "../../config/settings";
 import { BaseKernel, getRemainingTimeMs, type KernelStartOptions } from "../kernel-base";
 import { PYTHON_PRELUDE } from "./prelude";

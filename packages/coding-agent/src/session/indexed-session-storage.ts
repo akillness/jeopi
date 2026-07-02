@@ -1,4 +1,4 @@
-import { toError } from "@oh-my-pi/pi-utils";
+import { toError } from "jeopi-utils";
 import type { SessionStorage, SessionStorageStat, SessionStorageWriter } from "./session-storage";
 import {
 	overlayTitleSlotContent,

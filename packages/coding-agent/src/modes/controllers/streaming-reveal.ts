@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { getSegmenter } from "@oh-my-pi/pi-tui";
+import type { AssistantMessage } from "jeopi-ai";
+import { getSegmenter } from "jeopi-tui";
 import { LRUCache } from "lru-cache/raw";
 import { formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
 import type { AssistantMessageComponent } from "../components/assistant-message";

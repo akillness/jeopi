@@ -1,18 +1,18 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import { type Api, Effort, type Model } from "@oh-my-pi/pi-ai";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { type CreateAgentSessionResult, createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { getRestorableSessionModels } from "@oh-my-pi/pi-coding-agent/session/session-context";
-import { EPHEMERAL_MODEL_CHANGE_ROLE } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { AUTO_THINKING } from "@oh-my-pi/pi-coding-agent/thinking";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { Agent } from "jeopi-agent-core";
+import { type Api, Effort, type Model } from "jeopi-ai";
+import { getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { type CreateAgentSessionResult, createAgentSession } from "jeopi-cli/sdk";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { getRestorableSessionModels } from "jeopi-cli/session/session-context";
+import { EPHEMERAL_MODEL_CHANGE_ROLE } from "jeopi-cli/session/session-entries";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { AUTO_THINKING } from "jeopi-cli/thinking";
+import { TempDir } from "jeopi-utils";
 
 describe("AgentSession model persistence", () => {
 	let tempDir: TempDir;

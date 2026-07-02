@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { SettingsSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/settings-selector";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { resetSettingsForTest, Settings, settings } from "jeopi-cli/config/settings";
+import { SettingsSelectorComponent } from "jeopi-cli/modes/components/settings-selector";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

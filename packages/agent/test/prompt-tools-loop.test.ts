@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { agentLoop } from "@oh-my-pi/pi-agent-core/agent-loop";
-import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@oh-my-pi/pi-agent-core/types";
-import type { AssistantMessage, Context, Message, TextContent, ToolResultMessage } from "@oh-my-pi/pi-ai";
-import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
 import { type } from "arktype";
+import { agentLoop } from "jeopi-agent-core/agent-loop";
+import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "jeopi-agent-core/types";
+import type { AssistantMessage, Context, Message, TextContent, ToolResultMessage } from "jeopi-ai";
+import { createMockModel } from "jeopi-ai/providers/mock";
 import { createUserMessage } from "./helpers";
 
 function identityConverter(messages: AgentMessage[]): Message[] {

@@ -1,8 +1,8 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
-import { instrumentedCompleteSimple, resolveTelemetry } from "@oh-my-pi/pi-agent-core";
-import { type Api, completeSimple, type ImageContent, type Model, type ToolExample } from "@oh-my-pi/pi-ai";
-import { prompt } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "jeopi-agent-core";
+import { instrumentedCompleteSimple, resolveTelemetry } from "jeopi-agent-core";
+import { type Api, completeSimple, type ImageContent, type Model, type ToolExample } from "jeopi-ai";
+import { prompt } from "jeopi-utils";
 import { extractTextContent } from "../commit/utils";
 
 import { expandRoleAlias, getModelMatchPreferences, resolveModelFromString } from "../config/model-resolver";

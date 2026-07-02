@@ -1,18 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentMessage } from "@oh-my-pi/pi-agent-core";
-import { estimateTokens } from "@oh-my-pi/pi-agent-core/compaction/compaction";
-import type { AssistantMessage, Message, Model } from "@oh-my-pi/pi-ai";
-import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { StatusLineComponent } from "@oh-my-pi/pi-coding-agent/modes/components/status-line";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { computeContextBreakdown } from "@oh-my-pi/pi-coding-agent/modes/utils/context-usage";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { Agent, type AgentMessage } from "jeopi-agent-core";
+import { estimateTokens } from "jeopi-agent-core/compaction/compaction";
+import type { AssistantMessage, Message, Model } from "jeopi-ai";
+import { createMockModel } from "jeopi-ai/providers/mock";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { StatusLineComponent } from "jeopi-cli/modes/components/status-line";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import { computeContextBreakdown } from "jeopi-cli/modes/utils/context-usage";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { TempDir } from "jeopi-utils";
 
 describe("Context usage consolidation", () => {
 	let sharedDir: TempDir;

@@ -7,7 +7,7 @@ import {
 	installRuntimeModuleResolver,
 	isCompiledBinary,
 	resolveRuntimeModule,
-} from "@oh-my-pi/pi-utils";
+} from "jeopi-utils";
 import packageJson from "../../package.json" with { type: "json" };
 
 /**

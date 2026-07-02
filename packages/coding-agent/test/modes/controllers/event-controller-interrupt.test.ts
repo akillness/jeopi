@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { EventController } from "@oh-my-pi/pi-coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { EventController } from "jeopi-cli/modes/controllers/event-controller";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import type { InteractiveModeContext } from "jeopi-cli/modes/types";
+import type { AgentSessionEvent } from "jeopi-cli/session/agent-session";
 
 function createContext() {
 	const setWorkingMessage = vi.fn();

@@ -1,16 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import {
-	disposeAllKernelSessions,
-	disposeKernelSessionsByOwner,
-	executePython,
-} from "@oh-my-pi/pi-coding-agent/eval/py/executor";
+import { disposeAllKernelSessions, disposeKernelSessionsByOwner, executePython } from "jeopi-cli/eval/py/executor";
 import type {
 	KernelExecuteResult,
 	KernelShutdownResult,
 	PythonKernel as PythonKernelInstance,
-} from "@oh-my-pi/pi-coding-agent/eval/py/kernel";
-import * as pythonKernel from "@oh-my-pi/pi-coding-agent/eval/py/kernel";
-import { PythonKernel } from "@oh-my-pi/pi-coding-agent/eval/py/kernel";
+} from "jeopi-cli/eval/py/kernel";
+import * as pythonKernel from "jeopi-cli/eval/py/kernel";
+import { PythonKernel } from "jeopi-cli/eval/py/kernel";
 
 const OK_RESULT: KernelExecuteResult = {
 	status: "ok",

@@ -4,16 +4,17 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import chalk from "chalk";
 import {
 	type Agent,
 	type AgentMessage,
 	type AgentToolResult,
 	EventLoopKeepalive,
 	ThinkingLevel,
-} from "@oh-my-pi/pi-agent-core";
-import type { CompactionOutcome } from "@oh-my-pi/pi-agent-core/compaction";
-import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@oh-my-pi/pi-ai";
-import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
+} from "jeopi-agent-core";
+import type { CompactionOutcome } from "jeopi-agent-core/compaction";
+import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "jeopi-ai";
+import { modelsAreEqual } from "jeopi-catalog/models";
 import type {
 	Component,
 	EditorTheme,
@@ -21,7 +22,7 @@ import type {
 	NativeScrollbackLiveRegion,
 	OverlayHandle,
 	SlashCommand,
-} from "@oh-my-pi/pi-tui";
+} from "jeopi-tui";
 import {
 	Container,
 	clearRenderCache,
@@ -35,8 +36,8 @@ import {
 	Text,
 	TUI,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import { isInsideTerminalMultiplexer } from "@oh-my-pi/pi-tui/terminal-capabilities";
+} from "jeopi-tui";
+import { isInsideTerminalMultiplexer } from "jeopi-tui/terminal-capabilities";
 import {
 	APP_NAME,
 	adjustHsv,
@@ -48,8 +49,7 @@ import {
 	postmortem,
 	prompt,
 	setProjectDir,
-} from "@oh-my-pi/pi-utils";
-import chalk from "chalk";
+} from "jeopi-utils";
 import { reset as resetCapabilities } from "../capability";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";

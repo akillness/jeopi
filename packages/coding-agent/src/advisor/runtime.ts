@@ -1,7 +1,7 @@
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import { estimateTokens } from "@oh-my-pi/pi-agent-core/compaction";
-import type { AssistantMessage, ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { logger } from "@oh-my-pi/pi-utils";
+import type { AgentMessage } from "jeopi-agent-core";
+import { estimateTokens } from "jeopi-agent-core/compaction";
+import type { AssistantMessage, ImageContent, TextContent } from "jeopi-ai";
+import { logger } from "jeopi-utils";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import { formatSessionHistoryMarkdown, PRIMARY_CONTEXT_CUSTOM_TYPES } from "../session/session-history-format";
 

@@ -2,18 +2,18 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:te
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { type } from "arktype";
+import { getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
 import {
 	type CreateAgentSessionOptions,
 	createAgentSession,
 	discoverAuthStorage,
 	type ExtensionFactory,
-} from "@oh-my-pi/pi-coding-agent/sdk";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
-import { type } from "arktype";
+} from "jeopi-cli/sdk";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 
 const toolActivationExtension: ExtensionFactory = pi => {
 	pi.registerTool({

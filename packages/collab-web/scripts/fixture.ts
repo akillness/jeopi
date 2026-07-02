@@ -17,7 +17,7 @@ import type {
 	ToolResultMessage,
 	WireModel,
 	WireUsage,
-} from "@oh-my-pi/pi-wire";
+} from "jeopi-wire";
 
 export const HOST_DISPLAY_NAME = "kai";
 

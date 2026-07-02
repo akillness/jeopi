@@ -1,24 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import type { Api, AssistantMessage, Model, ThinkingContent } from "@oh-my-pi/pi-ai";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ExtensionRuntime, loadExtensionFromFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
-import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
+import { Agent } from "jeopi-agent-core";
+import type { Api, AssistantMessage, Model, ThinkingContent } from "jeopi-ai";
+import { getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { ExtensionRuntime, loadExtensionFromFactory } from "jeopi-cli/extensibility/extensions/loader";
+import { ExtensionRunner } from "jeopi-cli/extensibility/extensions/runner";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import {
 	type CustomMessage,
 	convertToLlm,
 	INTERRUPTED_THINKING_MESSAGE_TYPE,
 	USER_INTERRUPT_LABEL,
-} from "@oh-my-pi/pi-coding-agent/session/messages";
-import type { SessionEntry } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
-import { TempDir } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/session/messages";
+import type { SessionEntry } from "jeopi-cli/session/session-entries";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { EventBus } from "jeopi-cli/utils/event-bus";
+import { TempDir } from "jeopi-utils";
 
 const REASONING_TEXT = "I have partly reasoned through the implementation and should preserve this.";
 const VISIBLE_TEXT = "visible interrupted text";

@@ -10,13 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { AgentHubRemote } from "@oh-my-pi/pi-coding-agent/modes/components/agent-hub";
-import { AgentTranscriptViewer } from "@oh-my-pi/pi-coding-agent/modes/components/agent-transcript-viewer";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import { CURRENT_SESSION_VERSION } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import type { AgentHubRemote } from "jeopi-cli/modes/components/agent-hub";
+import { AgentTranscriptViewer } from "jeopi-cli/modes/components/agent-transcript-viewer";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import { AgentRegistry } from "jeopi-cli/registry/agent-registry";
+import { CURRENT_SESSION_VERSION } from "jeopi-cli/session/session-entries";
+import { removeSyncWithRetries } from "jeopi-utils";
 
 const TS = new Date().toISOString();
 

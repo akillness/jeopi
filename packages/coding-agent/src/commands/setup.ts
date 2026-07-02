@@ -1,8 +1,8 @@
 /**
  * Run onboarding setup or install dependencies for optional features.
  */
-import { APP_NAME } from "@oh-my-pi/pi-utils";
-import { Args, Command, Flags, renderCommandHelp } from "@oh-my-pi/pi-utils/cli";
+import { APP_NAME } from "jeopi-utils";
+import { Args, Command, Flags, renderCommandHelp } from "jeopi-utils/cli";
 import { parseArgs } from "../cli/args";
 import { runSetupCommand, type SetupCommandArgs, type SetupComponent } from "../cli/setup-cli";
 import { runRootCommand } from "../main";

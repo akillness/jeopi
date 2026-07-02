@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, $which, logger } from "@oh-my-pi/pi-utils";
 import { TOML } from "bun";
+import { $flag, $which, logger } from "jeopi-utils";
 
 /**
  * lspmux integration for LSP server multiplexing.

@@ -1,21 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentMessage, type AgentTool } from "@oh-my-pi/pi-agent-core";
-import * as compactionModule from "@oh-my-pi/pi-agent-core/compaction";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ExtensionRuntime, loadExtensionFromFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
-import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
-import type { GoalModeState } from "@oh-my-pi/pi-coding-agent/goals/state";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { convertToLlm } from "@oh-my-pi/pi-coding-agent/session/messages";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
-import { TempDir } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import { Agent, type AgentMessage, type AgentTool } from "jeopi-agent-core";
+import * as compactionModule from "jeopi-agent-core/compaction";
+import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
+import { getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { ExtensionRuntime, loadExtensionFromFactory } from "jeopi-cli/extensibility/extensions/loader";
+import { ExtensionRunner } from "jeopi-cli/extensibility/extensions/runner";
+import type { GoalModeState } from "jeopi-cli/goals/state";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { convertToLlm } from "jeopi-cli/session/messages";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { EventBus } from "jeopi-cli/utils/event-bus";
+import { TempDir } from "jeopi-utils";
 
 function activeGoalState(): GoalModeState {
 	const now = Date.now();

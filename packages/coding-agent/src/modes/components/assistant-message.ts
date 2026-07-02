@@ -1,7 +1,7 @@
-import type { AssistantMessage, ImageContent } from "@oh-my-pi/pi-ai";
-import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TERMINAL, Text } from "@oh-my-pi/pi-tui";
-import { formatNumber } from "@oh-my-pi/pi-utils";
 import chalk from "chalk";
+import type { AssistantMessage, ImageContent } from "jeopi-ai";
+import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TERMINAL, Text } from "jeopi-tui";
+import { formatNumber } from "jeopi-utils";
 import type { AssistantThinkingRenderer } from "../../extensibility/extensions/types";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";
 import { resolveAbortLabel, shouldRenderAbortReason } from "../../session/messages";

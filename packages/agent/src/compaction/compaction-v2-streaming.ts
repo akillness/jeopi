@@ -7,21 +7,16 @@
  * compaction item as replacement history.
  */
 
-import type { Api, FetchImpl, Model } from "@oh-my-pi/pi-ai";
-import { isTransientStatus, ProviderHttpError } from "@oh-my-pi/pi-ai/error";
+import type { Api, FetchImpl, Model } from "jeopi-ai";
+import { isTransientStatus, ProviderHttpError } from "jeopi-ai/error";
 import {
 	getOpenAIResponsesPromptCacheKey,
 	getOpenAIResponsesRoutingSessionId,
 	parseAzureDeploymentNameMap,
 	resolveOpenAIRequestSetup,
-} from "@oh-my-pi/pi-ai/providers/openai-shared";
-import {
-	CODEX_BASE_URL,
-	getCodexAccountId,
-	OPENAI_HEADER_VALUES,
-	OPENAI_HEADERS,
-} from "@oh-my-pi/pi-catalog/wire/codex";
-import { $env, logger } from "@oh-my-pi/pi-utils";
+} from "jeopi-ai/providers/openai-shared";
+import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "jeopi-catalog/wire/codex";
+import { $env, logger } from "jeopi-utils";
 
 // ============================================================================
 // Types & Configuration

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { EvalStatusEvent, EvalToolDetails } from "@oh-my-pi/pi-coding-agent/eval/types";
-import { getThemeByName, setThemeInstance, type Theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { evalToolRenderer } from "@oh-my-pi/pi-coding-agent/tools/eval";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import type { EvalStatusEvent, EvalToolDetails } from "jeopi-cli/eval/types";
+import { getThemeByName, setThemeInstance, type Theme } from "jeopi-cli/modes/theme/theme";
+import { evalToolRenderer } from "jeopi-cli/tools/eval";
 
 /**
  * Defends the contract that `agent()` calls inside an eval cell surface as a

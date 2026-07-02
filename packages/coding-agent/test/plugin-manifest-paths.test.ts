@@ -2,12 +2,9 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	resolvePluginExtensionPaths,
-	resolvePluginToolPaths,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader";
-import type { InstalledPlugin, PluginManifest } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/types";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
+import { resolvePluginExtensionPaths, resolvePluginToolPaths } from "jeopi-cli/extensibility/plugins/loader";
+import type { InstalledPlugin, PluginManifest } from "jeopi-cli/extensibility/plugins/types";
+import { removeSyncWithRetries } from "jeopi-utils";
 
 function makePlugin(pluginPath: string, manifest: PluginManifest): InstalledPlugin {
 	return {

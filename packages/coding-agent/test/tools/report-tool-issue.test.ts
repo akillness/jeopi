@@ -1,12 +1,8 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import {
-	__resetAutoQaFlushStateForTests,
-	flushGrievances,
-	isAutoQaEnabled,
-} from "@oh-my-pi/pi-coding-agent/tools/report-tool-issue";
-import * as piUtils from "@oh-my-pi/pi-utils";
+import { Settings } from "jeopi-cli/config/settings";
+import { __resetAutoQaFlushStateForTests, flushGrievances, isAutoQaEnabled } from "jeopi-cli/tools/report-tool-issue";
+import * as piUtils from "jeopi-utils";
 import { mockFetch } from "../helpers/fetch-mock";
 
 function openTempDb(): Database {

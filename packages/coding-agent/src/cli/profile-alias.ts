@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { APP_NAME, normalizeProfileName } from "@oh-my-pi/pi-utils/dirs";
+import { APP_NAME, normalizeProfileName } from "jeopi-utils/dirs";
 
 export type ProfileAliasShell = "bash" | "zsh" | "fish" | "powershell" | "pwsh";
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { AuthStorage, FetchImpl } from "@oh-my-pi/pi-ai";
-import { searchDuckDuckGo } from "@oh-my-pi/pi-coding-agent/web/search/providers/duckduckgo";
-import { SearchProviderError } from "@oh-my-pi/pi-coding-agent/web/search/types";
+import type { AuthStorage, FetchImpl } from "jeopi-ai";
+import { searchDuckDuckGo } from "jeopi-cli/web/search/providers/duckduckgo";
+import { SearchProviderError } from "jeopi-cli/web/search/types";
 import { formatSearchProviderFailures } from "../../src/web/search/provider";
 
 const fakeAuthStorage = {

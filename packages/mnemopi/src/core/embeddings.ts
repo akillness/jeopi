@@ -1,16 +1,9 @@
 import { mkdirSync } from "node:fs";
-import { type ApiKey, getOpenRouterHeaders, withAuth } from "@oh-my-pi/pi-ai";
-import { ProviderHttpError } from "@oh-my-pi/pi-ai/error";
-import { hostMatchesUrl } from "@oh-my-pi/pi-catalog/hosts";
-import {
-	$env,
-	$flag,
-	extractHttpStatusFromError,
-	fetchWithRetry,
-	getFastembedCacheDir,
-	logger,
-} from "@oh-my-pi/pi-utils";
 import type { EmbeddingModel } from "fastembed";
+import { type ApiKey, getOpenRouterHeaders, withAuth } from "jeopi-ai";
+import { ProviderHttpError } from "jeopi-ai/error";
+import { hostMatchesUrl } from "jeopi-catalog/hosts";
+import { $env, $flag, extractHttpStatusFromError, fetchWithRetry, getFastembedCacheDir, logger } from "jeopi-utils";
 import { LRUCache } from "lru-cache/raw";
 import { ensureFastembedModelSidecars } from "./fastembed-model-cache";
 import { loadFastembed } from "./fastembed-runtime";

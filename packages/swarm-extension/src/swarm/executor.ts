@@ -5,15 +5,8 @@
  * Each agent runs in the swarm workspace with its task instructions as the user prompt.
  */
 import * as path from "node:path";
-import type {
-	AgentDefinition,
-	AgentProgress,
-	AgentSource,
-	ModelRegistry,
-	Settings,
-	SingleResult,
-} from "@oh-my-pi/pi-coding-agent";
-import { runSubprocess } from "@oh-my-pi/pi-coding-agent";
+import type { AgentDefinition, AgentProgress, AgentSource, ModelRegistry, Settings, SingleResult } from "jeopi-cli";
+import { runSubprocess } from "jeopi-cli";
 import type { SwarmAgent } from "./schema";
 import type { StateTracker } from "./state";
 

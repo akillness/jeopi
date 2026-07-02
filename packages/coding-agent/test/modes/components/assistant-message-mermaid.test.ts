@@ -1,12 +1,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { AssistantThinkingRenderer } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { AssistantMessageComponent } from "@oh-my-pi/pi-coding-agent/modes/components/assistant-message";
-import { clearMermaidCache } from "@oh-my-pi/pi-coding-agent/modes/theme/mermaid-cache";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { ImageProtocol, setTerminalImageProtocol, TERMINAL, Text } from "@oh-my-pi/pi-tui";
+import type { AssistantMessage } from "jeopi-ai";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import type { AssistantThinkingRenderer } from "jeopi-cli/extensibility/extensions";
+import { AssistantMessageComponent } from "jeopi-cli/modes/components/assistant-message";
+import { clearMermaidCache } from "jeopi-cli/modes/theme/mermaid-cache";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import { ImageProtocol, setTerminalImageProtocol, TERMINAL, Text } from "jeopi-tui";
 
 const originalImageProtocol = TERMINAL.imageProtocol;
 

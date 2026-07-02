@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { SessionSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/session-selector";
-import { initTheme, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { SessionInfo, SessionStatus } from "@oh-my-pi/pi-coding-agent/session/session-listing";
+import { SessionSelectorComponent } from "jeopi-cli/modes/components/session-selector";
+import { initTheme, theme } from "jeopi-cli/modes/theme/theme";
+import type { SessionInfo, SessionStatus } from "jeopi-cli/session/session-listing";
 
 beforeAll(async () => {
 	await initTheme();

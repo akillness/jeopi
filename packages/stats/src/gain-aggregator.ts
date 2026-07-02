@@ -8,7 +8,7 @@
  */
 
 import * as path from "node:path";
-import { getStatsDbPath, isEnoent, logger } from "@oh-my-pi/pi-utils";
+import { getStatsDbPath, isEnoent, logger } from "jeopi-utils";
 import { getTimeRangeConfig } from "./aggregator";
 import { initDb } from "./db";
 import type { GainDashboardStats, GainSourceTotals, GainTimeSeriesPoint } from "./shared-types";

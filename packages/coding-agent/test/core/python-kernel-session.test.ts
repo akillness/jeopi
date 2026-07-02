@@ -1,12 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { disposeAllKernelSessions, executePython } from "@oh-my-pi/pi-coding-agent/eval/py/executor";
-import type {
-	KernelExecuteOptions,
-	KernelExecuteResult,
-	KernelShutdownResult,
-} from "@oh-my-pi/pi-coding-agent/eval/py/kernel";
-import { PythonKernel } from "@oh-my-pi/pi-coding-agent/eval/py/kernel";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { disposeAllKernelSessions, executePython } from "jeopi-cli/eval/py/executor";
+import type { KernelExecuteOptions, KernelExecuteResult, KernelShutdownResult } from "jeopi-cli/eval/py/kernel";
+import { PythonKernel } from "jeopi-cli/eval/py/kernel";
+import { TempDir } from "jeopi-utils";
 
 class FakeKernel {
 	executeCalls = 0;

@@ -1,5 +1,5 @@
-import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core/types";
 import { type } from "arktype";
+import type { AgentTool, AgentToolResult } from "jeopi-agent-core/types";
 
 export interface CalculateResult extends AgentToolResult<undefined> {
 	content: Array<{ type: "text"; text: string }>;

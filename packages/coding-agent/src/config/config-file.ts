@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir, isEnoent, logger } from "@oh-my-pi/pi-utils";
 import type { Type } from "arktype";
 import { JSONC, YAML } from "bun";
+import { getAgentDir, isEnoent, logger } from "jeopi-utils";
 
 /** Minimal subset of the AJV ConfigSchemaError shape this module actually relies on. */
 interface ConfigSchemaError {

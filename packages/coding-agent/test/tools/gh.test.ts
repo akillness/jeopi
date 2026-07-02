@@ -2,18 +2,18 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:te
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+import { toolWireSchema } from "jeopi-ai/utils/schema";
+import { Settings } from "jeopi-cli/config/settings";
+import type { ToolSession } from "jeopi-cli/tools";
 import {
 	buildSearchDateQualifier,
 	GithubTool,
 	parsePrUnifiedDiff,
 	parseSearchDateBound,
 	resolveDefaultRepoMemoized,
-} from "@oh-my-pi/pi-coding-agent/tools/gh";
-import * as git from "@oh-my-pi/pi-coding-agent/utils/git";
-import { getAgentDir, hashPath, removeWithRetries, setAgentDir } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/tools/gh";
+import * as git from "jeopi-cli/utils/git";
+import { getAgentDir, hashPath, removeWithRetries, setAgentDir } from "jeopi-utils";
 
 // Isolate every `git` invocation in this file from the developer's host
 // configuration. The fixture spawns dozens of git subprocesses against tiny

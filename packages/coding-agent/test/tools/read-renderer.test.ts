@@ -1,11 +1,11 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import * as url from "node:url";
-import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ToolExecutionComponent } from "@oh-my-pi/pi-coding-agent/modes/components/tool-execution";
-import { theme as activeTheme, getThemeByName, initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { readToolRenderer } from "@oh-my-pi/pi-coding-agent/tools/read";
-import type { TUI } from "@oh-my-pi/pi-tui";
+import { resetSettingsForTest, Settings, settings } from "jeopi-cli/config/settings";
+import { ToolExecutionComponent } from "jeopi-cli/modes/components/tool-execution";
+import { theme as activeTheme, getThemeByName, initTheme } from "jeopi-cli/modes/theme/theme";
+import { readToolRenderer } from "jeopi-cli/tools/read";
+import type { TUI } from "jeopi-tui";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);

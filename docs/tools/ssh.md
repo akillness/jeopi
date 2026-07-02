@@ -85,7 +85,7 @@ Failure behavior:
 - Subprocesses / native bindings
   - Requires `ssh` on `PATH`; spawns it for connection checks, master startup, probing, and command execution.
   - May call `sshfs`, `mountpoint`, `fusermount`/`fusermount3`, or `umount`.
-  - Sanitizes streamed text with `@oh-my-pi/pi-natives` text sanitization.
+  - Sanitizes streamed text with `jeopi-natives` text sanitization.
 - Session state (transcript, memory, jobs, checkpoints, registries)
   - Uses session artifact allocation when available.
   - Registers postmortem cleanup hooks for SSH master connections and sshfs mounts.

@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
-import type { ClipboardImage } from "@oh-my-pi/pi-natives";
-import * as native from "@oh-my-pi/pi-natives";
-import { logger } from "@oh-my-pi/pi-utils";
+import type { ClipboardImage } from "jeopi-natives";
+import * as native from "jeopi-natives";
+import { logger } from "jeopi-utils";
 
 function hasDisplay(): boolean {
 	return process.platform !== "linux" || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);

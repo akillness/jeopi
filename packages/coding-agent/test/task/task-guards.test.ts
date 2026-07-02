@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { LoadExtensionsResult } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
-import type { CreateAgentSessionResult } from "@oh-my-pi/pi-coding-agent/sdk";
-import * as sdkModule from "@oh-my-pi/pi-coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { formatResultOutputFallback } from "@oh-my-pi/pi-coding-agent/task";
-import { runSubprocess } from "@oh-my-pi/pi-coding-agent/task/executor";
-import type { AgentDefinition } from "@oh-my-pi/pi-coding-agent/task/types";
-import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
+import type { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import type { LoadExtensionsResult } from "jeopi-cli/extensibility/extensions/types";
+import type { CreateAgentSessionResult } from "jeopi-cli/sdk";
+import * as sdkModule from "jeopi-cli/sdk";
+import type { AgentSession, AgentSessionEvent } from "jeopi-cli/session/agent-session";
+import { formatResultOutputFallback } from "jeopi-cli/task";
+import { runSubprocess } from "jeopi-cli/task/executor";
+import type { AgentDefinition } from "jeopi-cli/task/types";
+import { EventBus } from "jeopi-cli/utils/event-bus";
 
 /**
  * Contract: runaway-subagent guards.

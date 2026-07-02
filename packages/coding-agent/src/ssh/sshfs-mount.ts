@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, getRemoteDir, postmortem } from "@oh-my-pi/pi-utils";
 import { $ } from "bun";
+import { $which, getRemoteDir, postmortem } from "jeopi-utils";
 import {
 	getControlDir,
 	getControlPathTemplate,

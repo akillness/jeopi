@@ -1,3 +1,4 @@
+import { type } from "arktype";
 import type {
 	AgentIdentity,
 	AgentTelemetryConfig,
@@ -5,9 +6,8 @@ import type {
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
-} from "@oh-my-pi/pi-agent-core";
-import { escapeXmlAttribute, escapeXmlText } from "@oh-my-pi/pi-utils";
-import { type } from "arktype";
+} from "jeopi-agent-core";
+import { escapeXmlAttribute, escapeXmlText } from "jeopi-utils";
 import adviseDescription from "../prompts/advisor/advise-tool.md" with { type: "text" };
 
 const adviseSchema = type({

@@ -7,9 +7,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { isEnoent } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { AgentToolResult } from "jeopi-agent-core";
+import { isEnoent } from "jeopi-utils";
 import {
 	type FileDiagnosticsResult,
 	flushLspWritethroughBatch,

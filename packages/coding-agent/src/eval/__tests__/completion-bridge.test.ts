@@ -1,10 +1,10 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import type { Api, AssistantMessage, Model } from "@oh-my-pi/pi-ai";
-import * as ai from "@oh-my-pi/pi-ai";
-import { Effort } from "@oh-my-pi/pi-ai";
-import { TempDir } from "@oh-my-pi/pi-utils";
 import { $ } from "bun";
+import type { Api, AssistantMessage, Model } from "jeopi-ai";
+import * as ai from "jeopi-ai";
+import { Effort } from "jeopi-ai";
+import { TempDir } from "jeopi-utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
 import type { ToolSession } from "../../tools";

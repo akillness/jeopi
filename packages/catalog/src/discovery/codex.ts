@@ -1,5 +1,5 @@
-import type { FetchImpl } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { FetchImpl } from "jeopi-utils";
 import type { ModelSpec } from "../types";
 import { discoveryFetch, isRecord } from "../utils";
 import { CODEX_BASE_URL, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "../wire/codex";

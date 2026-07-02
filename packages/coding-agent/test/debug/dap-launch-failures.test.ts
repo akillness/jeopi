@@ -2,19 +2,14 @@ import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import * as dapModule from "@oh-my-pi/pi-coding-agent/dap";
-import { DapClient } from "@oh-my-pi/pi-coding-agent/dap/client";
-import { DapSessionManager } from "@oh-my-pi/pi-coding-agent/dap/session";
-import type {
-	DapCapabilities,
-	DapClientState,
-	DapEventMessage,
-	DapResolvedAdapter,
-} from "@oh-my-pi/pi-coding-agent/dap/types";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { DebugTool } from "@oh-my-pi/pi-coding-agent/tools/debug";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { Settings } from "jeopi-cli/config/settings";
+import * as dapModule from "jeopi-cli/dap";
+import { DapClient } from "jeopi-cli/dap/client";
+import { DapSessionManager } from "jeopi-cli/dap/session";
+import type { DapCapabilities, DapClientState, DapEventMessage, DapResolvedAdapter } from "jeopi-cli/dap/types";
+import type { ToolSession } from "jeopi-cli/tools";
+import { DebugTool } from "jeopi-cli/tools/debug";
+import { removeWithRetries } from "jeopi-utils";
 
 const TEST_ADAPTER: DapResolvedAdapter = {
 	name: "lldb-dap",

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { parseArgs } from "@oh-my-pi/pi-coding-agent/cli/args";
-import { applyExtensionFlags, type ExtensionFlagSink } from "@oh-my-pi/pi-coding-agent/cli/extension-flags";
-import { buildInitialMessage } from "@oh-my-pi/pi-coding-agent/cli/initial-message";
-import { ExtensionRuntime, loadExtensionFromFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
-import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
-import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
+import { parseArgs } from "jeopi-cli/cli/args";
+import { applyExtensionFlags, type ExtensionFlagSink } from "jeopi-cli/cli/extension-flags";
+import { buildInitialMessage } from "jeopi-cli/cli/initial-message";
+import { ExtensionRuntime, loadExtensionFromFactory } from "jeopi-cli/extensibility/extensions/loader";
+import { ExtensionRunner } from "jeopi-cli/extensibility/extensions/runner";
+import { EventBus } from "jeopi-cli/utils/event-bus";
 
 // Regression coverage for extension-registered flags leaking into the initial
 // prompt. The CLI parses argv twice: once at startup (before extensions load,

@@ -1,7 +1,7 @@
-import type { InMemorySnapshotStore } from "@oh-my-pi/hashline";
-import type { AgentTelemetryConfig, AgentTool } from "@oh-my-pi/pi-agent-core";
-import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@oh-my-pi/pi-ai";
-import { logger } from "@oh-my-pi/pi-utils";
+import type { AgentTelemetryConfig, AgentTool } from "jeopi-agent-core";
+import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "jeopi-ai";
+import type { InMemorySnapshotStore } from "jeopi-hashline";
+import { logger } from "jeopi-utils";
 import type { AsyncJobManager } from "../async/job-manager";
 import type { Rule } from "../capability/rule";
 import type { PromptTemplate } from "../config/prompt-templates";

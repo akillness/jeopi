@@ -1,4 +1,5 @@
-import type { ResolvedThinkingLevel } from "@oh-my-pi/pi-agent-core";
+import chalk from "chalk";
+import type { ResolvedThinkingLevel } from "jeopi-agent-core";
 import type {
 	Api,
 	ApiKeyResolver,
@@ -12,12 +13,11 @@ import type {
 	ServiceTier,
 	ServiceTierByFamily,
 	SimpleStreamOptions,
-} from "@oh-my-pi/pi-ai";
-import { resolveModelServiceTier, streamSimple } from "@oh-my-pi/pi-ai";
-import { buildModelProviderPriorityRank } from "@oh-my-pi/pi-catalog/identity";
-import { replaceTabs, truncateToWidth } from "@oh-my-pi/pi-tui";
-import { formatDuration, getProjectDir } from "@oh-my-pi/pi-utils";
-import chalk from "chalk";
+} from "jeopi-ai";
+import { resolveModelServiceTier, streamSimple } from "jeopi-ai";
+import { buildModelProviderPriorityRank } from "jeopi-catalog/identity";
+import { replaceTabs, truncateToWidth } from "jeopi-tui";
+import { formatDuration, getProjectDir } from "jeopi-utils";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import { ModelRegistry } from "../config/model-registry";
 import {

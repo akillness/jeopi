@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { MCPAuthorizationLinkPrompt } from "@oh-my-pi/pi-coding-agent/modes/controllers/mcp-command-controller";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { resetSettingsForTest, Settings, settings } from "jeopi-cli/config/settings";
+import { MCPAuthorizationLinkPrompt } from "jeopi-cli/modes/controllers/mcp-command-controller";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
 
 const OSC = "\x1b]";
 const BEL = "\x07";

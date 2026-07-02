@@ -12,10 +12,10 @@
  * This file pins the wire output for the canonical scenarios.
  */
 import { describe, expect, it } from "bun:test";
-import { renderDemotedThinking } from "@oh-my-pi/pi-ai/dialect";
-import { convertMessages } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import type { AssistantMessage, Message, Model, ModelSpec, UserMessage } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import { renderDemotedThinking } from "jeopi-ai/dialect";
+import { convertMessages } from "jeopi-ai/providers/openai-completions";
+import type { AssistantMessage, Message, Model, ModelSpec, UserMessage } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);

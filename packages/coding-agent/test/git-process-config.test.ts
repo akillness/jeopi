@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import * as git from "@oh-my-pi/pi-coding-agent/utils/git";
 import type { Subprocess } from "bun";
+import * as git from "jeopi-cli/utils/git";
 
 type SpawnOptions = Bun.SpawnOptions.SpawnOptions<
 	Bun.SpawnOptions.Writable,

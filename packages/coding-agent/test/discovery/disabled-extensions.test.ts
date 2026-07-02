@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type ContextFile, contextFileCapability } from "@oh-my-pi/pi-coding-agent/capability/context-file";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { initializeWithSettings, loadCapability } from "@oh-my-pi/pi-coding-agent/discovery";
-import { __resetDirsFromEnvForTests, removeWithRetries, setAgentDir } from "@oh-my-pi/pi-utils";
+import { type ContextFile, contextFileCapability } from "jeopi-cli/capability/context-file";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { initializeWithSettings, loadCapability } from "jeopi-cli/discovery";
+import { __resetDirsFromEnvForTests, removeWithRetries, setAgentDir } from "jeopi-utils";
 
 function restoreEnvValue(key: string, value: string | undefined): void {
 	if (value === undefined) {

@@ -1,18 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import {
-	type Dialect,
-	getDialectDefinition,
-	type InbandScanEvent,
-	ThinkingInbandScanner,
-} from "@oh-my-pi/pi-ai/dialect";
-import { streamGoogleGeminiCli } from "@oh-my-pi/pi-ai/providers/google-gemini-cli";
-import { streamOpenAICompletions } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import { stream } from "@oh-my-pi/pi-ai/stream";
-import type { Context, FetchImpl, Model, TextContent, ThinkingContent, Tool, ToolCall } from "@oh-my-pi/pi-ai/types";
-import { getStreamMarkupHealingPattern, StreamMarkupHealing } from "@oh-my-pi/pi-ai/utils/stream-markup-healing";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
+import { type Dialect, getDialectDefinition, type InbandScanEvent, ThinkingInbandScanner } from "jeopi-ai/dialect";
+import { streamGoogleGeminiCli } from "jeopi-ai/providers/google-gemini-cli";
+import { streamOpenAICompletions } from "jeopi-ai/providers/openai-completions";
+import { stream } from "jeopi-ai/stream";
+import type { Context, FetchImpl, Model, TextContent, ThinkingContent, Tool, ToolCall } from "jeopi-ai/types";
+import { getStreamMarkupHealingPattern, StreamMarkupHealing } from "jeopi-ai/utils/stream-markup-healing";
+import { buildModel } from "jeopi-catalog/build";
+import { getBundledModel } from "jeopi-catalog/models";
+import { INTENT_FIELD } from "jeopi-wire";
 
 interface SseToolCallDelta {
 	index: number;

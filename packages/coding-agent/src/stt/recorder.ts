@@ -1,8 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, logger, Snowflake } from "@oh-my-pi/pi-utils";
 import { $, type Subprocess } from "bun";
+import { $which, logger, Snowflake } from "jeopi-utils";
 import { ensureTool, getToolPath } from "../utils/tools-manager";
 import { decodePcmS16LE } from "./wav";
 

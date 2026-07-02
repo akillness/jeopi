@@ -1,4 +1,4 @@
-import { $env, logger } from "@oh-my-pi/pi-utils";
+import { $env, logger } from "jeopi-utils";
 import { settings } from "../config/settings";
 import {
 	createUnavailableWorker,

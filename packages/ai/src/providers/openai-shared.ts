@@ -1,8 +1,8 @@
-import type { Effort } from "@oh-my-pi/pi-catalog/effort";
-import { toFirepassWireModelId, toFireworksWireModelId } from "@oh-my-pi/pi-catalog/fireworks-model-id";
-import { isGlm52ReasoningEffortModelId } from "@oh-my-pi/pi-catalog/identity";
-import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
-import { calculateCost } from "@oh-my-pi/pi-catalog/models";
+import type { Effort } from "jeopi-catalog/effort";
+import { toFirepassWireModelId, toFireworksWireModelId } from "jeopi-catalog/fireworks-model-id";
+import { isGlm52ReasoningEffortModelId } from "jeopi-catalog/identity";
+import { getSupportedEfforts } from "jeopi-catalog/model-thinking";
+import { calculateCost } from "jeopi-catalog/models";
 import type {
 	OpenAICompat,
 	OpenAIReasoningDisableMode,
@@ -12,14 +12,14 @@ import type {
 	ResolvedOpenAIResponsesCompat,
 	ResolvedOpenAISharedCompat,
 	VercelGatewayRouting,
-} from "@oh-my-pi/pi-catalog/types";
+} from "jeopi-catalog/types";
 import {
 	COREWEAVE_PROJECT_HEADER,
 	coreWeaveProjectHeaders,
 	hasCoreWeaveProjectHeader,
 	removeBlankCoreWeaveProjectHeaders,
-} from "@oh-my-pi/pi-catalog/wire/coreweave";
-import { parseGitHubCopilotApiKey } from "@oh-my-pi/pi-catalog/wire/github-copilot";
+} from "jeopi-catalog/wire/coreweave";
+import { parseGitHubCopilotApiKey } from "jeopi-catalog/wire/github-copilot";
 import {
 	$env,
 	extractHttpStatusFromError,
@@ -27,7 +27,7 @@ import {
 	parseStreamingJson,
 	parseStreamingJsonThrottled,
 	structuredCloneJSON,
-} from "@oh-my-pi/pi-utils";
+} from "jeopi-utils";
 import * as AIError from "../error";
 import {
 	type Api,

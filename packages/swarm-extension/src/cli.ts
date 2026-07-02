@@ -7,9 +7,9 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { discoverAuthStorage } from "@oh-my-pi/pi-coding-agent";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { discoverAuthStorage } from "jeopi-cli";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
 import { buildDependencyGraph, buildExecutionWaves, detectCycles } from "./swarm/dag";
 import { PipelineController } from "./swarm/pipeline";
 import { renderSwarmProgress } from "./swarm/render";

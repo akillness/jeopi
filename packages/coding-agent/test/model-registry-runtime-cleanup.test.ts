@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type AssistantMessageEventStream, clearCustomApis, getCustomApi } from "@oh-my-pi/pi-ai";
-import { ModelRegistry, type ProviderConfigInput } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
+import { type AssistantMessageEventStream, clearCustomApis, getCustomApi } from "jeopi-ai";
+import { ModelRegistry, type ProviderConfigInput } from "jeopi-cli/config/model-registry";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 
 describe("ModelRegistry runtime source cleanup", () => {
 	let tempDir: string;

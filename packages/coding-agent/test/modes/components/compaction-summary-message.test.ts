@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
 import {
 	createHandoffSummaryMessageComponent,
 	HandoffSummaryMessageComponent,
-} from "@oh-my-pi/pi-coding-agent/modes/components/compaction-summary-message";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { CustomMessage } from "@oh-my-pi/pi-coding-agent/session/messages";
+} from "jeopi-cli/modes/components/compaction-summary-message";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import type { CustomMessage } from "jeopi-cli/session/messages";
 
 beforeAll(async () => {
 	resetSettingsForTest();

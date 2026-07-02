@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseSSE, redactUrlForLog } from "@oh-my-pi/pi-coding-agent/mcp/json-rpc";
+import { parseSSE, redactUrlForLog } from "jeopi-cli/mcp/json-rpc";
 
 describe("redactUrlForLog", () => {
 	it("redacts credential-bearing query params but keeps the rest", () => {

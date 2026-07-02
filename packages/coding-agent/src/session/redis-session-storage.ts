@@ -1,4 +1,4 @@
-import { logger, toError } from "@oh-my-pi/pi-utils";
+import { logger, toError } from "jeopi-utils";
 import {
 	IndexedSessionStorage,
 	type SessionStorageBackend,

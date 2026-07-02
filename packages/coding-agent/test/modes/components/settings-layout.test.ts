@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
 import {
 	SETTING_TABS,
 	SETTINGS_SCHEMA,
 	type SettingPath,
 	type SettingTab,
 	TAB_GROUPS,
-} from "@oh-my-pi/pi-coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@oh-my-pi/pi-coding-agent/modes/components/settings-defs";
+} from "jeopi-cli/config/settings-schema";
+import { getSettingsForTab } from "jeopi-cli/modes/components/settings-defs";
 
 interface UiShape {
 	tab: SettingTab;

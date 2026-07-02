@@ -44,10 +44,10 @@
  * re-attached to the compaction summary message on every context rebuild.
  */
 
-import type { Api, ImageContent, Message, TextContent } from "@oh-my-pi/pi-ai";
-import { renderSnapcompactPng, snapcompactSupportedChars } from "@oh-my-pi/pi-natives";
-import { formatGroupedPaths, prompt } from "@oh-my-pi/pi-utils";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
+import type { Api, ImageContent, Message, TextContent } from "jeopi-ai";
+import { renderSnapcompactPng, snapcompactSupportedChars } from "jeopi-natives";
+import { formatGroupedPaths, prompt } from "jeopi-utils";
+import { INTENT_FIELD } from "jeopi-wire";
 import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
 import snapcompactSummaryPrompt from "./prompts/snapcompact-summary.md" with { type: "text" };
 

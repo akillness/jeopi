@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
-import { zip } from "@oh-my-pi/pi-coding-agent/utils/zip";
-import * as scrapers from "@oh-my-pi/pi-coding-agent/web/scrapers/types";
-import * as scraperUtils from "@oh-my-pi/pi-coding-agent/web/scrapers/utils";
-import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
+import type { ImageContent, TextContent } from "jeopi-ai";
+import { Settings } from "jeopi-cli/config/settings";
+import type { ToolSession } from "jeopi-cli/tools";
+import { ReadTool } from "jeopi-cli/tools/read";
+import { zip } from "jeopi-cli/utils/zip";
+import * as scrapers from "jeopi-cli/web/scrapers/types";
+import * as scraperUtils from "jeopi-cli/web/scrapers/utils";
+import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 
 function makeSession(testDir: string): ToolSession {
 	const sessionFile = path.join(testDir, "session.jsonl");

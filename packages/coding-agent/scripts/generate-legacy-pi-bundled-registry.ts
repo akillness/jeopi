@@ -37,7 +37,10 @@ const CHECK_FLAG = "--check";
 
 interface BundledPackage {
 	readonly dir: string;
+	/** Canonical legacy registry key scope+name, e.g. `@oh-my-pi/pi-ai`. */
 	readonly name: string;
+	/** Installed (renamed) package name the generated file imports, e.g. `jeopi-ai`. */
+	readonly pkgName: string;
 	/** Identifier prefix for generated namespace imports (`PiAi`, `PiCodingAgent`, …). */
 	readonly identifier: string;
 	/** Root import — the shim path for surfaces that wrap the bundled namespace, `null` otherwise. */
@@ -45,10 +48,17 @@ interface BundledPackage {
 }
 
 const PACKAGES: readonly BundledPackage[] = [
-	{ dir: "packages/agent", name: "@oh-my-pi/pi-agent-core", identifier: "PiAgentCore", rootShim: null },
+	{
+		dir: "packages/agent",
+		name: "@oh-my-pi/pi-agent-core",
+		pkgName: "jeopi-agent-core",
+		identifier: "PiAgentCore",
+		rootShim: null,
+	},
 	{
 		dir: "packages/ai",
 		name: "@oh-my-pi/pi-ai",
+		pkgName: "jeopi-ai",
 		identifier: "PiAi",
 		// pi-ai 15.1.0 dropped the runtime `Type` builder from the package root;
 		// the shim re-attaches it for extensions that still import `Type` from
@@ -59,15 +69,22 @@ const PACKAGES: readonly BundledPackage[] = [
 	{
 		dir: "packages/coding-agent",
 		name: "@oh-my-pi/pi-coding-agent",
+		pkgName: "jeopi-cli",
 		identifier: "PiCodingAgent",
 		// pi-coding-agent root carries legacy helpers (`defineTool`,
 		// `createCodingTools`, …) the canonical entry never exposed; the shim
 		// re-exports the canonical surface plus those helpers.
 		rootShim: "../legacy-pi-coding-agent-shim",
 	},
-	{ dir: "packages/natives", name: "@oh-my-pi/pi-natives", identifier: "PiNatives", rootShim: null },
-	{ dir: "packages/tui", name: "@oh-my-pi/pi-tui", identifier: "PiTui", rootShim: null },
-	{ dir: "packages/utils", name: "@oh-my-pi/pi-utils", identifier: "PiUtils", rootShim: null },
+	{
+		dir: "packages/natives",
+		name: "@oh-my-pi/pi-natives",
+		pkgName: "jeopi-natives",
+		identifier: "PiNatives",
+		rootShim: null,
+	},
+	{ dir: "packages/tui", name: "@oh-my-pi/pi-tui", pkgName: "jeopi-tui", identifier: "PiTui", rootShim: null },
+	{ dir: "packages/utils", name: "@oh-my-pi/pi-utils", pkgName: "jeopi-utils", identifier: "PiUtils", rootShim: null },
 ];
 
 // `typebox` is published under an upstream alias; legacy extensions import the
@@ -175,19 +192,19 @@ async function collectEntries(): Promise<RegistryEntry[]> {
 	for (const pkg of PACKAGES) {
 		const manifestPath = path.join(repoRoot, pkg.dir, "package.json");
 		const manifest = (await Bun.file(manifestPath).json()) as { name?: string; exports?: Record<string, unknown> };
-		if (manifest.name !== pkg.name) {
+		if (manifest.name !== pkg.pkgName) {
 			throw new Error(
-				`generate-legacy-pi-bundled-registry: package.json at ${manifestPath} declares "${manifest.name}", expected "${pkg.name}"`,
+				`generate-legacy-pi-bundled-registry: package.json at ${manifestPath} declares "${manifest.name}", expected "${pkg.pkgName}"`,
 			);
 		}
 		const exportsField = manifest.exports ?? {};
-		// Root: shim if one is declared, otherwise the canonical package.
-		pushEntry(pkg.name, `bundled${pkg.identifier}`, pkg.rootShim ?? pkg.name);
+		// Root: shim if one is declared, otherwise the installed (renamed) package.
+		pushEntry(pkg.name, `bundled${pkg.identifier}`, pkg.rootShim ?? pkg.pkgName);
 		// Pass 1: every non-wildcard subpath export becomes its own registry key.
 		for (const exportKey in exportsField) {
 			if (!exportKey.startsWith("./") || exportKey === "." || exportKey.includes("*")) continue;
 			const subpath = exportKey.slice(2);
-			pushEntry(`${pkg.name}/${subpath}`, bindingForSubpath(pkg.identifier, subpath), `${pkg.name}/${subpath}`);
+			pushEntry(`${pkg.name}/${subpath}`, bindingForSubpath(pkg.identifier, subpath), `${pkg.pkgName}/${subpath}`);
 		}
 		// Pass 2: expand wildcard exports against the source tree so plugins can
 		// import concrete subpath targets — e.g. `@(scope)/pi-ai/oauth/anthropic`
@@ -230,7 +247,7 @@ async function collectEntries(): Promise<RegistryEntry[]> {
 					if (basename.includes("/")) continue;
 					const subpath = `${pattern.exportPrefix}${basename}${pattern.exportSuffix}`;
 					const key = `${pkg.name}/${subpath}`;
-					pushEntry(key, bindingForSubpath(pkg.identifier, subpath), key);
+					pushEntry(key, bindingForSubpath(pkg.identifier, subpath), `${pkg.pkgName}/${subpath}`);
 				}
 			} catch (err) {
 				// Missing source dir means the wildcard is declared in

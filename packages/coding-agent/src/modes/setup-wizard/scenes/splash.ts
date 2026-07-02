@@ -1,4 +1,4 @@
-import { padding, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
+import { padding, truncateToWidth, visibleWidth } from "jeopi-tui";
 import { gradientEscape, gradientLogo, JEOPI_LOGO, type ShineConfig } from "../../components/welcome";
 import { theme } from "../../theme/theme";
 

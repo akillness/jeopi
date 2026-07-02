@@ -1,6 +1,6 @@
-import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { logger, untilAborted } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { AgentTool, AgentToolResult } from "jeopi-agent-core";
+import { logger, untilAborted } from "jeopi-utils";
 import { ensureBankExists } from "../hindsight/bank";
 import reflectDescription from "../prompts/tools/reflect.md" with { type: "text" };
 import type { ToolSession } from ".";

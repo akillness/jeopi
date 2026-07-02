@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { SettingPath } from "@oh-my-pi/pi-coding-agent/config/settings-schema";
-import { IrcBus, type IrcMessage } from "@oh-my-pi/pi-coding-agent/irc/bus";
-import { AgentLifecycleManager } from "@oh-my-pi/pi-coding-agent/registry/agent-lifecycle";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import { AgentSession, type AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import type { CustomMessage } from "@oh-my-pi/pi-coding-agent/session/messages";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { IrcTool } from "@oh-my-pi/pi-coding-agent/tools/irc";
+import { Agent } from "jeopi-agent-core";
+import { Settings } from "jeopi-cli/config/settings";
+import type { SettingPath } from "jeopi-cli/config/settings-schema";
+import { IrcBus, type IrcMessage } from "jeopi-cli/irc/bus";
+import { AgentLifecycleManager } from "jeopi-cli/registry/agent-lifecycle";
+import { AgentRegistry } from "jeopi-cli/registry/agent-registry";
+import { AgentSession, type AgentSessionEvent } from "jeopi-cli/session/agent-session";
+import type { CustomMessage } from "jeopi-cli/session/messages";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import type { ToolSession } from "jeopi-cli/tools";
+import { IrcTool } from "jeopi-cli/tools/irc";
 
 interface FakeSession {
 	session: AgentSession;

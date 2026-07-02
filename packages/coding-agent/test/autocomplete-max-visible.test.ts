@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { SelectorController } from "@oh-my-pi/pi-coding-agent/modes/controllers/selector-controller";
-import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
-import { getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
 import { YAML } from "bun";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { SelectorController } from "jeopi-cli/modes/controllers/selector-controller";
+import { AgentStorage } from "jeopi-cli/session/agent-storage";
+import { getProjectAgentDir, TempDir } from "jeopi-utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 describe("autocompleteMaxVisible setting", () => {

@@ -3,16 +3,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { writeModelCache } from "@oh-my-pi/pi-catalog/model-cache";
-import type { ModelRegistry, ProviderDiscoveryState } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { ModelRegistry as ModelRegistryImpl } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ModelSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/model-selector";
-import { getThemeByName, setThemeInstance } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import type { TUI } from "@oh-my-pi/pi-tui";
-import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
+import { buildModel } from "jeopi-catalog/build";
+import { writeModelCache } from "jeopi-catalog/model-cache";
+import type { ModelRegistry, ProviderDiscoveryState } from "jeopi-cli/config/model-registry";
+import { ModelRegistry as ModelRegistryImpl } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { ModelSelectorComponent } from "jeopi-cli/modes/components/model-selector";
+import { getThemeByName, setThemeInstance } from "jeopi-cli/modes/theme/theme";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import type { TUI } from "jeopi-tui";
+import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 
 function normalizeRenderedText(text: string): string {
 	return stripVTControlCharacters(text).replace(/\s+/g, " ").trim();

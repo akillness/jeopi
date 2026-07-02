@@ -1,4 +1,4 @@
-import { tryParseJson } from "@oh-my-pi/pi-utils";
+import { tryParseJson } from "jeopi-utils";
 import { buildResult, loadPage, type RenderResult, type SpecialHandler } from "./types";
 
 interface RfcMetadata {

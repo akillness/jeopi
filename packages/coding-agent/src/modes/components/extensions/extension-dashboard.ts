@@ -23,8 +23,8 @@ import {
 	TabBar,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import { getMCPConfigPath, logger } from "@oh-my-pi/pi-utils";
+} from "jeopi-tui";
+import { getMCPConfigPath, logger } from "jeopi-utils";
 import { Settings } from "../../../config/settings";
 import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import { getTabBarTheme } from "../../../modes/shared";

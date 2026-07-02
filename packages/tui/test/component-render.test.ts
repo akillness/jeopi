@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type Component, Container, type NativeScrollbackLiveRegion, TUI } from "@oh-my-pi/pi-tui";
+import { type Component, Container, type NativeScrollbackLiveRegion, TUI } from "jeopi-tui";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 

@@ -1,9 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
-import { type AutocompleteItem, Spacer } from "@oh-my-pi/pi-tui";
-import { APP_NAME, getProjectDir, setProjectDir } from "@oh-my-pi/pi-utils";
+import { getOAuthProviders } from "jeopi-ai/oauth";
+import { type AutocompleteItem, Spacer } from "jeopi-tui";
+import { APP_NAME, getProjectDir, setProjectDir } from "jeopi-utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";

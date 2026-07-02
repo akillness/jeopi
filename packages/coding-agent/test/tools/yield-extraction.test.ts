@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import "@oh-my-pi/pi-coding-agent/tools/yield";
-import { subprocessToolRegistry } from "@oh-my-pi/pi-coding-agent/task/subprocess-tool-registry";
+import "jeopi/tools/yield";
+import { subprocessToolRegistry } from "jeopi-cli/task/subprocess-tool-registry";
 
 describe("yield subprocess extraction", () => {
 	const handler = subprocessToolRegistry.getHandler("yield");

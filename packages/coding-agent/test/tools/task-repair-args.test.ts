@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { repairDoubleEncodedJsonString, repairTaskParams } from "@oh-my-pi/pi-coding-agent/task/repair-args";
-import type { TaskParams } from "@oh-my-pi/pi-coding-agent/task/types";
+import { repairDoubleEncodedJsonString, repairTaskParams } from "jeopi-cli/task/repair-args";
+import type { TaskParams } from "jeopi-cli/task/types";
 
 describe("repairDoubleEncodedJsonString", () => {
 	it("decodes a uniformly double-encoded prose value", () => {

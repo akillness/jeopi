@@ -1,9 +1,9 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
-import type { Usage } from "@oh-my-pi/pi-ai";
-import type { GeneratedProvider } from "@oh-my-pi/pi-catalog/models";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { getConfigRootDir, getStatsDbPath } from "@oh-my-pi/pi-utils";
+import type { Usage } from "jeopi-ai";
+import type { GeneratedProvider } from "jeopi-catalog/models";
+import { getBundledModel } from "jeopi-catalog/models";
+import { getConfigRootDir, getStatsDbPath } from "jeopi-utils";
 import { classifyAgentType } from "./parser";
 import type {
 	AgentType,
@@ -338,7 +338,7 @@ export function setFileOffset(sessionFile: string, offset: number, lastModified:
  * Insert message stats into the database.
  *
  * Forked / branched sessions (see `SessionManager.fork()` and
- * `createBranchedSession()` in `@oh-my-pi/pi-coding-agent`) deep-copy a parent
+ * `createBranchedSession()` in `jeopi`) deep-copy a parent
  * session's entries into a new JSONL — same `entry_id`, `timestamp`, `model`,
  * `provider`, token counts, and `responseId`. The `UNIQUE(session_file,
  * entry_id)` constraint alone keys each row by file, so without the guard

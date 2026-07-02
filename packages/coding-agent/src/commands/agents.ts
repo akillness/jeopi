@@ -1,8 +1,8 @@
 /**
  * Manage bundled task agents.
  */
-import { APP_NAME } from "@oh-my-pi/pi-utils";
-import { Args, Command, Flags, renderCommandHelp } from "@oh-my-pi/pi-utils/cli";
+import { APP_NAME } from "jeopi-utils";
+import { Args, Command, Flags, renderCommandHelp } from "jeopi-utils/cli";
 import { type AgentsAction, type AgentsCommandArgs, runAgentsCommand } from "../cli/agents-cli";
 import { initTheme } from "../modes/theme/theme";
 

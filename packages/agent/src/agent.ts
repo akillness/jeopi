@@ -21,12 +21,12 @@ import {
 	type ThinkingBudgets,
 	type ToolChoice,
 	type ToolResultMessage,
-} from "@oh-my-pi/pi-ai";
-import type { Dialect } from "@oh-my-pi/pi-ai/dialect";
-import type { HarmonyAuditEvent } from "@oh-my-pi/pi-ai/utils/harmony-leak";
-import { preferredDialect } from "@oh-my-pi/pi-catalog/identity";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { logger } from "@oh-my-pi/pi-utils";
+} from "jeopi-ai";
+import type { Dialect } from "jeopi-ai/dialect";
+import type { HarmonyAuditEvent } from "jeopi-ai/utils/harmony-leak";
+import { preferredDialect } from "jeopi-catalog/identity";
+import { getBundledModel } from "jeopi-catalog/models";
+import { logger } from "jeopi-utils";
 import {
 	abortReasonText,
 	agentLoop,

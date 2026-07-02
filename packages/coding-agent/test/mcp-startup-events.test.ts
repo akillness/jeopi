@@ -5,7 +5,7 @@ import {
 	formatMCPConnectionStatusMessage,
 	isMcpConnectionStatusEvent,
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
-} from "@oh-my-pi/pi-coding-agent/mcp/startup-events";
+} from "jeopi-cli/mcp/startup-events";
 
 // Cross-module contract guard.
 //

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { isContextOverflow } from "@oh-my-pi/pi-ai/error";
+import type { AssistantMessage } from "jeopi-ai";
+import { isContextOverflow } from "jeopi-ai/error";
 
 function createErrorMessage(errorMessage: string): AssistantMessage {
 	return {

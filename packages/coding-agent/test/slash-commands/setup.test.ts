@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import {
-	BUILTIN_SLASH_COMMAND_DEFS,
-	executeBuiltinSlashCommand,
-} from "@oh-my-pi/pi-coding-agent/slash-commands/builtin-registry";
+import type { InteractiveModeContext } from "jeopi-cli/modes/types";
+import { BUILTIN_SLASH_COMMAND_DEFS, executeBuiltinSlashCommand } from "jeopi-cli/slash-commands/builtin-registry";
 
 function createRuntime() {
 	const showProviderSetup = vi.fn(async () => {});

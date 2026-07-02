@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeTools } from "@oh-my-pi/pi-agent-core/agent-loop";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core/types";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import { type } from "arktype";
+import { normalizeTools } from "jeopi-agent-core/agent-loop";
+import type { AgentTool } from "jeopi-agent-core/types";
+import { INTENT_FIELD } from "jeopi-wire";
 
 const toolSchema = type({
 	path: type("string").describe("where to read"),

@@ -1,4 +1,4 @@
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { Args, Command, Flags } from "jeopi-utils/cli";
 import { runTinyModelsCommand, type TinyModelsAction, type TinyModelsCommandArgs } from "../cli/tiny-models-cli";
 
 const ACTIONS: TinyModelsAction[] = ["download", "list"];

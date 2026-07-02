@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AgentLifecycleManager } from "@oh-my-pi/pi-coding-agent/registry/agent-lifecycle";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import { buildSpecializationAdvisory, TaskTool } from "@oh-my-pi/pi-coding-agent/task";
-import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
-import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
-import type { AgentDefinition, SingleResult, TaskItem, TaskParams } from "@oh-my-pi/pi-coding-agent/task/types";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+import { Settings } from "jeopi-cli/config/settings";
+import { AgentLifecycleManager } from "jeopi-cli/registry/agent-lifecycle";
+import { AgentRegistry } from "jeopi-cli/registry/agent-registry";
+import { buildSpecializationAdvisory, TaskTool } from "jeopi-cli/task";
+import * as discoveryModule from "jeopi-cli/task/discovery";
+import * as executorModule from "jeopi-cli/task/executor";
+import type { AgentDefinition, SingleResult, TaskItem, TaskParams } from "jeopi-cli/task/types";
+import type { ToolSession } from "jeopi-cli/tools";
 
 // Contract: the task tool appends an advisory (never a rejection) steering the
 // spawner toward tailored specialists when it spawns generic role-less workers

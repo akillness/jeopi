@@ -11,10 +11,10 @@
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
-import { AuthStorage, SqliteAuthCredentialStore } from "@oh-my-pi/pi-ai";
-import { MCPManager } from "@oh-my-pi/pi-coding-agent/mcp/manager";
-import * as oauthFlow from "@oh-my-pi/pi-coding-agent/mcp/oauth-flow";
-import type { MCPServerConfig } from "@oh-my-pi/pi-coding-agent/mcp/types";
+import { AuthStorage, SqliteAuthCredentialStore } from "jeopi-ai";
+import { MCPManager } from "jeopi-cli/mcp/manager";
+import * as oauthFlow from "jeopi-cli/mcp/oauth-flow";
+import type { MCPServerConfig } from "jeopi-cli/mcp/types";
 
 const CREDENTIAL_ID = "mcp_oauth_test_1908";
 const TOKEN_URL = "https://example.com/oauth/token";

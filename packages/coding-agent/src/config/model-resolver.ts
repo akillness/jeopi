@@ -15,19 +15,19 @@
  *   CLI flags, scope globs — onto that pipeline.
  */
 
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Api, Effort, KnownProvider, Model, ModelSpec } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { modelMatchesHost } from "@oh-my-pi/pi-catalog/hosts";
-import { buildModelProviderPriorityRank } from "@oh-my-pi/pi-catalog/identity";
-import { stripThinkingVariantToken } from "@oh-my-pi/pi-catalog/identity/family";
-import { clampThinkingLevelForModel } from "@oh-my-pi/pi-catalog/model-thinking";
-import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
-import { DEFAULT_MODEL_PER_PROVIDER } from "@oh-my-pi/pi-catalog/provider-models";
-import { resolveBareVariantAlias, resolveVariantAlias } from "@oh-my-pi/pi-catalog/variant-collapse";
-import { fuzzyMatch } from "@oh-my-pi/pi-tui";
-import { APP_NAME, logger } from "@oh-my-pi/pi-utils";
 import chalk from "chalk";
+import { ThinkingLevel } from "jeopi-agent-core";
+import type { Api, Effort, KnownProvider, Model, ModelSpec } from "jeopi-ai";
+import { buildModel } from "jeopi-catalog/build";
+import { modelMatchesHost } from "jeopi-catalog/hosts";
+import { buildModelProviderPriorityRank } from "jeopi-catalog/identity";
+import { stripThinkingVariantToken } from "jeopi-catalog/identity/family";
+import { clampThinkingLevelForModel } from "jeopi-catalog/model-thinking";
+import { modelsAreEqual } from "jeopi-catalog/models";
+import { DEFAULT_MODEL_PER_PROVIDER } from "jeopi-catalog/provider-models";
+import { resolveBareVariantAlias, resolveVariantAlias } from "jeopi-catalog/variant-collapse";
+import { fuzzyMatch } from "jeopi-tui";
+import { APP_NAME, logger } from "jeopi-utils";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import {
 	AUTO_THINKING,

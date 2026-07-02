@@ -18,17 +18,17 @@
  *     follow-up stays queued for the next explicit resume rather than auto-running.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { Agent, type AgentMessage } from "@oh-my-pi/pi-agent-core";
-import { createMockModel, type MockModel, type MockResponse } from "@oh-my-pi/pi-ai/providers/mock";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { IrcMessage } from "@oh-my-pi/pi-coding-agent/irc/bus";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { USER_INTERRUPT_LABEL } from "@oh-my-pi/pi-coding-agent/session/messages";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { Snowflake, TempDir } from "@oh-my-pi/pi-utils";
+import { Agent, type AgentMessage } from "jeopi-agent-core";
+import { createMockModel, type MockModel, type MockResponse } from "jeopi-ai/providers/mock";
+import { getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import type { IrcMessage } from "jeopi-cli/irc/bus";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { USER_INTERRUPT_LABEL } from "jeopi-cli/session/messages";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { Snowflake, TempDir } from "jeopi-utils";
 
 const ADVISOR_TYPE = "advisor";
 

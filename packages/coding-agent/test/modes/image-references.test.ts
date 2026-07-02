@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	type PlaceholderKind,
-	renderPlaceholders,
-	shiftImageMarkers,
-} from "@oh-my-pi/pi-coding-agent/modes/image-references";
+import { type PlaceholderKind, renderPlaceholders, shiftImageMarkers } from "jeopi-cli/modes/image-references";
 
 function capture(text: string): {
 	out: string;

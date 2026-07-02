@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { streamGoogle } from "@oh-my-pi/pi-ai/providers/google";
-import { __resetVertexTokenCache } from "@oh-my-pi/pi-ai/providers/google-auth";
-import { streamGoogleVertex } from "@oh-my-pi/pi-ai/providers/google-vertex";
-import { streamSimple } from "@oh-my-pi/pi-ai/stream";
-import type { AssistantMessage, Context, FetchImpl, Model, Tool, Usage } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import { streamGoogle } from "jeopi-ai/providers/google";
+import { __resetVertexTokenCache } from "jeopi-ai/providers/google-auth";
+import { streamGoogleVertex } from "jeopi-ai/providers/google-vertex";
+import { streamSimple } from "jeopi-ai/stream";
+import type { AssistantMessage, Context, FetchImpl, Model, Tool, Usage } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
 
 function googleModel(baseUrl = "https://generativelanguage.googleapis.com/v1beta"): Model<"google-generative-ai"> {
 	return buildModel({

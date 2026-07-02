@@ -2,16 +2,16 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { RenderResultOptions } from "@oh-my-pi/pi-coding-agent/extensibility/custom-tools/types";
-import { getThemeByName, initTheme, type Theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import type { RenderResultOptions } from "jeopi-cli/extensibility/custom-tools/types";
+import { getThemeByName, initTheme, type Theme } from "jeopi-cli/modes/theme/theme";
 import {
 	expandDelimitedPathEntries,
 	parseFindPattern,
 	resolveToolSearchScope,
 	splitDelimitedPathEntry,
-} from "@oh-my-pi/pi-coding-agent/tools/path-utils";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/tools/path-utils";
+import type { Component } from "jeopi-tui";
+import { removeWithRetries } from "jeopi-utils";
 import { globToolRenderer } from "../../src/tools/glob";
 
 let uiTheme: Theme;

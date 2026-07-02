@@ -15,9 +15,9 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core";
-import { Container, Ellipsis, matchesKey, type OverlayHandle, type TUI } from "@oh-my-pi/pi-tui";
-import { formatAge, getProjectDir, logger } from "@oh-my-pi/pi-utils";
+import type { AgentTool } from "jeopi-agent-core";
+import { Container, Ellipsis, matchesKey, type OverlayHandle, type TUI } from "jeopi-tui";
+import { formatAge, getProjectDir, logger } from "jeopi-utils";
 import { ADVISOR_TRANSCRIPT_FILENAME, isAdvisorTranscriptName } from "../../advisor";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";

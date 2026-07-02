@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import type { Context, Model, ModelSpec, Tool } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { type } from "arktype";
+import { streamOpenAICompletions } from "jeopi-ai/providers/openai-completions";
+import type { Context, Model, ModelSpec, Tool } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
+import { getBundledModel } from "jeopi-catalog/models";
 
 const echoTool: Tool = {
 	name: "echo",

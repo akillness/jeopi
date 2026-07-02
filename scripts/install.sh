@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-# OMP Coding Agent Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh | sh
+# jeopi Coding Agent Installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/akillness/jeopi/jeopi/scripts/install.sh | sh
 #
 # Options:
 #   --source       Install via bun (installs bun if needed)
@@ -10,8 +10,8 @@ set -e
 #   --ref <ref>    Install specific tag/commit/branch
 #   -r <ref>       Shorthand for --ref
 
-REPO="can1357/oh-my-pi"
-PACKAGE="@oh-my-pi/pi-coding-agent"
+REPO="akillness/jeopi"
+PACKAGE="jeopi"
 INSTALL_DIR="${PI_INSTALL_DIR:-$HOME/.local/bin}"
 MIN_BUN_VERSION="1.3.14"
 

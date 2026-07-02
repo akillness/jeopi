@@ -1,6 +1,6 @@
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import { coerceServiceTierByFamily, type ProviderPayload, type ServiceTierByFamily } from "@oh-my-pi/pi-ai";
-import * as snapcompact from "@oh-my-pi/snapcompact";
+import type { AgentMessage } from "jeopi-agent-core";
+import { coerceServiceTierByFamily, type ProviderPayload, type ServiceTierByFamily } from "jeopi-ai";
+import * as snapcompact from "jeopi-snapcompact";
 import { createBranchSummaryMessage, createCompactionSummaryMessage, createCustomMessage } from "./messages";
 import { type CompactionEntry, EPHEMERAL_MODEL_CHANGE_ROLE, type SessionEntry } from "./session-entries";
 

@@ -1,9 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { ImageContent } from "@oh-my-pi/pi-ai";
-import { type AutocompleteProvider, matchesKey, type SlashCommand } from "@oh-my-pi/pi-tui";
-import { $env, isEnoent, logger, sanitizeText } from "@oh-my-pi/pi-utils";
+import { ThinkingLevel } from "jeopi-agent-core";
+import type { ImageContent } from "jeopi-ai";
+import { type AutocompleteProvider, matchesKey, type SlashCommand } from "jeopi-tui";
+import { $env, isEnoent, logger, sanitizeText } from "jeopi-utils";
 import { isSettingsInitialized, settings } from "../../config/settings";
 import { resolveLocalRoot } from "../../internal-urls";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";

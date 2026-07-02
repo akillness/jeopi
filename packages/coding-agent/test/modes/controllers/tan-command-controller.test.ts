@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import type { AssistantMessage, Model } from "@oh-my-pi/pi-ai";
-import type { AsyncJobRegisterOptions } from "@oh-my-pi/pi-coding-agent/async/job-manager";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { TanCommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/tan-command-controller";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { AgentRegistry, MAIN_AGENT_ID } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import type { CreateAgentSessionResult } from "@oh-my-pi/pi-coding-agent/sdk";
-import * as sdkModule from "@oh-my-pi/pi-coding-agent/sdk";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import type { AssistantMessage, Model } from "jeopi-ai";
+import type { AsyncJobRegisterOptions } from "jeopi-cli/async/job-manager";
+import { Settings } from "jeopi-cli/config/settings";
+import { TanCommandController } from "jeopi-cli/modes/controllers/tan-command-controller";
+import type { InteractiveModeContext } from "jeopi-cli/modes/types";
+import { AgentRegistry, MAIN_AGENT_ID } from "jeopi-cli/registry/agent-registry";
+import type { CreateAgentSessionResult } from "jeopi-cli/sdk";
+import * as sdkModule from "jeopi-cli/sdk";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { TempDir } from "jeopi-utils";
 
 interface CapturedJobRunContext {
 	jobId: string;

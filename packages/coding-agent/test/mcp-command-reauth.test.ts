@@ -3,12 +3,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bu
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, SqliteAuthCredentialStore } from "@oh-my-pi/pi-ai";
-import * as mcpClient from "@oh-my-pi/pi-coding-agent/mcp/client";
-import * as oauthFlow from "@oh-my-pi/pi-coding-agent/mcp/oauth-flow";
-import type { MCPServerConfig } from "@oh-my-pi/pi-coding-agent/mcp/types";
-import { MCPCommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/mcp-command-controller";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { AuthStorage, SqliteAuthCredentialStore } from "jeopi-ai";
+import * as mcpClient from "jeopi-cli/mcp/client";
+import * as oauthFlow from "jeopi-cli/mcp/oauth-flow";
+import type { MCPServerConfig } from "jeopi-cli/mcp/types";
+import { MCPCommandController } from "jeopi-cli/modes/controllers/mcp-command-controller";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
 import {
 	getConfigRootDir,
 	getMCPConfigPath,
@@ -16,7 +16,7 @@ import {
 	removeWithRetries,
 	setAgentDir,
 	setProjectDir,
-} from "@oh-my-pi/pi-utils";
+} from "jeopi-utils";
 
 const RAW_SERVER_URL = `https://\${MCP_HOST}/mcp`;
 const EXPANDED_SERVER_URL = "https://mcp.example.com/mcp";

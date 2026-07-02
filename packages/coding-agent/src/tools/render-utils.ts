@@ -7,19 +7,19 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ToolCallContext } from "@oh-my-pi/pi-agent-core";
-import type { Ellipsis } from "@oh-my-pi/pi-natives";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { getKeybindings, replaceTabs, truncateToWidth } from "@oh-my-pi/pi-tui";
-import { pluralize } from "@oh-my-pi/pi-utils";
+import type { ToolCallContext } from "jeopi-agent-core";
+import type { Ellipsis } from "jeopi-natives";
+import type { Component } from "jeopi-tui";
+import { getKeybindings, replaceTabs, truncateToWidth } from "jeopi-tui";
+import { pluralize } from "jeopi-utils";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 import { settings } from "../config/settings";
 import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 
-export { Ellipsis } from "@oh-my-pi/pi-natives";
-export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@oh-my-pi/pi-tui";
+export { Ellipsis } from "jeopi-natives";
+export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "jeopi-tui";
 
 // =============================================================================
 // Standardized Display Constants
@@ -132,7 +132,7 @@ export function getDomain(url: string): string {
 // Formatting Utilities
 // =============================================================================
 
-export { formatAge, formatBytes, formatCount, formatDuration, pluralize } from "@oh-my-pi/pi-utils";
+export { formatAge, formatBytes, formatCount, formatDuration, pluralize } from "jeopi-utils";
 
 // =============================================================================
 // Theme Helper Utilities

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { parseArgs } from "@oh-my-pi/pi-coding-agent/cli/args";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { runRootCommand } from "@oh-my-pi/pi-coding-agent/main";
-import type { CreateAgentSessionOptions } from "@oh-my-pi/pi-coding-agent/sdk";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { parseArgs } from "jeopi-cli/cli/args";
+import { Settings } from "jeopi-cli/config/settings";
+import { runRootCommand } from "jeopi-cli/main";
+import type { CreateAgentSessionOptions } from "jeopi-cli/sdk";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { TempDir } from "jeopi-utils";
 
 describe("parseArgs — --max-time flag", () => {
 	it("parses --max-time seconds as maxTime", () => {

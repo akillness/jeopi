@@ -1,8 +1,8 @@
 import { initTheme } from "../src/modes/theme/theme";
 import { truncateToVisualLines } from "../src/modes/components/visual-truncate";
 import { WelcomeComponent } from "../src/modes/components/welcome";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { Editor } from "@oh-my-pi/pi-tui";
+import type { AssistantMessage } from "jeopi-ai";
+import { Editor } from "jeopi-tui";
 import { AssistantMessageComponent } from "../src/modes/components/assistant-message";
 import { TranscriptContainer } from "../src/modes/components/transcript-container";
 import { Settings } from "../src/config/settings";

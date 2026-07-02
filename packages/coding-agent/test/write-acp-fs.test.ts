@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { resolveLocalUrlToPath } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import type { PlanModeState } from "@oh-my-pi/pi-coding-agent/plan-mode/state";
-import type { ClientBridge } from "@oh-my-pi/pi-coding-agent/session/client-bridge";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { WriteTool } from "@oh-my-pi/pi-coding-agent/tools/write";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import type { AgentToolResult } from "jeopi-agent-core";
+import { Settings } from "jeopi-cli/config/settings";
+import { resolveLocalUrlToPath } from "jeopi-cli/internal-urls";
+import type { PlanModeState } from "jeopi-cli/plan-mode/state";
+import type { ClientBridge } from "jeopi-cli/session/client-bridge";
+import type { ToolSession } from "jeopi-cli/tools";
+import { WriteTool } from "jeopi-cli/tools/write";
+import { removeWithRetries } from "jeopi-utils";
 
 const FILE_CONTENT = "bridge write content\n";
 

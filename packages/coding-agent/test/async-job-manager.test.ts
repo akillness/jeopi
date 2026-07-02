@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async/job-manager";
+import { AsyncJobManager } from "jeopi-cli/async/job-manager";
 
 describe("AsyncJobManager", () => {
 	test("forwards progress updates and delivers completion", async () => {

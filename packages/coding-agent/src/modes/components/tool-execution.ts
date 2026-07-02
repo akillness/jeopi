@@ -1,5 +1,5 @@
-import type { SnapshotStore } from "@oh-my-pi/hashline";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core";
+import type { AgentTool } from "jeopi-agent-core";
+import type { SnapshotStore } from "jeopi-hashline";
 import {
 	Box,
 	type Component,
@@ -13,8 +13,8 @@ import {
 	TERMINAL,
 	Text,
 	type TUI,
-} from "@oh-my-pi/pi-tui";
-import { getProjectDir, logger, sanitizeText } from "@oh-my-pi/pi-utils";
+} from "jeopi-tui";
+import { getProjectDir, logger, sanitizeText } from "jeopi-utils";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../edit";
 import type { Theme } from "../../modes/theme/theme";
 import { getThemeEpoch, theme } from "../../modes/theme/theme";

@@ -8,9 +8,9 @@
 
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { disposeAllKernelSessions, executePythonWithKernel } from "@oh-my-pi/pi-coding-agent/eval/py/executor";
-import { PythonKernel } from "@oh-my-pi/pi-coding-agent/eval/py/kernel";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { disposeAllKernelSessions, executePythonWithKernel } from "jeopi-cli/eval/py/executor";
+import { PythonKernel } from "jeopi-cli/eval/py/kernel";
+import { TempDir } from "jeopi-utils";
 
 const SHOULD_RUN = Bun.env.PI_PYTHON_INTEGRATION === "1";
 

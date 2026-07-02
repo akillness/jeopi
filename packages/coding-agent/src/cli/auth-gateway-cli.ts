@@ -15,6 +15,7 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import chalk from "chalk";
 import {
 	type Api,
 	AuthStorage,
@@ -23,12 +24,11 @@ import {
 	type CredentialCompletionResult,
 	completeSimple,
 	type Model,
-} from "@oh-my-pi/pi-ai";
-import { AuthBrokerClient, RemoteAuthCredentialStore, type SnapshotResponse } from "@oh-my-pi/pi-ai/auth-broker";
-import { DEFAULT_AUTH_GATEWAY_BIND, startAuthGateway } from "@oh-my-pi/pi-ai/auth-gateway";
-import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@oh-my-pi/pi-catalog/models";
-import { getConfigRootDir, isEnoent, VERSION } from "@oh-my-pi/pi-utils";
-import chalk from "chalk";
+} from "jeopi-ai";
+import { AuthBrokerClient, RemoteAuthCredentialStore, type SnapshotResponse } from "jeopi-ai/auth-broker";
+import { DEFAULT_AUTH_GATEWAY_BIND, startAuthGateway } from "jeopi-ai/auth-gateway";
+import { type GeneratedProvider, getBundledModels, getBundledProviders } from "jeopi-catalog/models";
+import { getConfigRootDir, isEnoent, VERSION } from "jeopi-utils";
 import { type AuthBrokerClientConfig, resolveAuthBrokerConfig } from "../session/auth-broker-config";
 
 export type AuthGatewayAction = "serve" | "token" | "status" | "check";

@@ -40,9 +40,9 @@ import {
 	type SetSessionModeResponse,
 	type Usage,
 } from "@agentclientprotocol/sdk";
-import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import type { AssistantMessage, Model } from "@oh-my-pi/pi-ai";
-import { getBlobsDir, isEnoent, logger, VERSION } from "@oh-my-pi/pi-utils";
+import type { AgentToolResult } from "jeopi-agent-core";
+import type { AssistantMessage, Model } from "jeopi-ai";
+import { getBlobsDir, isEnoent, logger, VERSION } from "jeopi-utils";
 import { disableProvider, enableProvider, reset as resetCapabilities } from "../../capability";
 import { Settings } from "../../config/settings";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";

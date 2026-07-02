@@ -1,8 +1,9 @@
 /**
  * CLI argument parsing and help display
  */
-import { APP_NAME, CONFIG_DIR_NAME, logger } from "@oh-my-pi/pi-utils";
+
 import chalk from "chalk";
+import { APP_NAME, CONFIG_DIR_NAME, logger } from "jeopi-utils";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
 import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/builtin-names";
 import {
@@ -83,7 +84,7 @@ export interface Args {
 /**
  * Runtime dependencies the data-driven setters need. Constructed once at
  * module load and passed to every {@link STRING_SETTERS} call so the
- * setter table itself can stay free of `@oh-my-pi/pi-utils` runtime imports
+ * setter table itself can stay free of `jeopi-utils` runtime imports
  * (which would otherwise trip the profile bootstrap's env-init ordering).
  */
 const PARSE_DEPS: ParseDeps = {

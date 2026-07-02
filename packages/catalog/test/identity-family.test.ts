@@ -13,7 +13,7 @@ import {
 	modelFamilyToken,
 	supportsAdaptiveThinkingDisplay,
 	supportsMidConversationSystemMessages,
-} from "@oh-my-pi/pi-catalog/identity";
+} from "jeopi-catalog/identity";
 
 describe("isKimiModelId", () => {
 	test("matches Kimi namespace and delimiter forms", () => {

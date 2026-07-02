@@ -1,13 +1,13 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { KeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings";
-import type { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ModelSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/model-selector";
-import { SessionSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/session-selector";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { SessionInfo } from "@oh-my-pi/pi-coding-agent/session/session-listing";
-import { setKeybindings, type TUI } from "@oh-my-pi/pi-tui";
+import { getBundledModel } from "jeopi-catalog/models";
+import { KeybindingsManager } from "jeopi-cli/config/keybindings";
+import type { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { ModelSelectorComponent } from "jeopi-cli/modes/components/model-selector";
+import { SessionSelectorComponent } from "jeopi-cli/modes/components/session-selector";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import type { SessionInfo } from "jeopi-cli/session/session-listing";
+import { setKeybindings, type TUI } from "jeopi-tui";
 
 beforeAll(() => {
 	initTheme();

@@ -3,9 +3,9 @@ import type {
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionMessageParam,
 	ChatCompletionToolMessageParam,
-} from "@oh-my-pi/pi-ai/providers/openai-chat-wire";
-import { convertMessages } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import { transformMessages } from "@oh-my-pi/pi-ai/providers/transform-messages";
+} from "jeopi-ai/providers/openai-chat-wire";
+import { convertMessages } from "jeopi-ai/providers/openai-completions";
+import { transformMessages } from "jeopi-ai/providers/transform-messages";
 import type {
 	Api,
 	AssistantMessage,
@@ -16,8 +16,8 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 	UserMessage,
-} from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+} from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
 
 /**
  * Regression test for: "each tool_use must have a single result. Found multiple tool_result blocks with id"

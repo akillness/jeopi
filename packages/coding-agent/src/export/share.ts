@@ -19,11 +19,11 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage, AgentState } from "@oh-my-pi/pi-agent-core";
-import type { AssistantMessage, ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { $which, logger } from "@oh-my-pi/pi-utils";
-import { DEFAULT_SHARE_URL } from "@oh-my-pi/pi-wire";
 import { $ } from "bun";
+import type { AgentMessage, AgentState } from "jeopi-agent-core";
+import type { AssistantMessage, ImageContent, TextContent } from "jeopi-ai";
+import { $which, logger } from "jeopi-utils";
+import { DEFAULT_SHARE_URL } from "jeopi-wire";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import type { SessionEntry, SessionHeader } from "../session/session-entries";
 import type { SessionManager } from "../session/session-manager";

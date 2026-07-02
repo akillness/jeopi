@@ -6,8 +6,8 @@ import {
 	getPriorityPremiumRequests,
 	resolveModelServiceTier,
 	type ServiceTierByFamily,
-} from "@oh-my-pi/pi-ai";
-import { getSessionsDir, isEnoent } from "@oh-my-pi/pi-utils";
+} from "jeopi-ai";
+import { getSessionsDir, isEnoent } from "jeopi-utils";
 import type {
 	AgentType,
 	MessageStats,

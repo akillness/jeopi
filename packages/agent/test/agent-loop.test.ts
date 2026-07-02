@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { agentLoop, agentLoopContinue, agentLoopDetailed } from "@oh-my-pi/pi-agent-core/agent-loop";
+import { type } from "arktype";
+import { agentLoop, agentLoopContinue, agentLoopDetailed } from "jeopi-agent-core/agent-loop";
 import type {
 	AgentContext,
 	AgentEvent,
@@ -8,12 +9,11 @@ import type {
 	AgentTool,
 	AgentToolContext,
 	ToolCallContext,
-} from "@oh-my-pi/pi-agent-core/types";
-import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "@oh-my-pi/pi-ai";
-import { createMockModel, type MockResponse } from "@oh-my-pi/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
-import { type } from "arktype";
+} from "jeopi-agent-core/types";
+import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "jeopi-ai";
+import { createMockModel, type MockResponse } from "jeopi-ai/providers/mock";
+import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
+import { INTENT_FIELD } from "jeopi-wire";
 import { createAssistantMessage, createUserMessage } from "./helpers";
 
 // Simple identity converter for tests - just passes through standard messages

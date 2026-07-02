@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { KeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings";
-import { matchesAppFollowUp } from "@oh-my-pi/pi-coding-agent/modes/utils/keybinding-matchers";
-import { setKeybindings } from "@oh-my-pi/pi-tui";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
 import { YAML } from "bun";
+import { KeybindingsManager } from "jeopi-cli/config/keybindings";
+import { matchesAppFollowUp } from "jeopi-cli/modes/utils/keybinding-matchers";
+import { setKeybindings } from "jeopi-tui";
+import { removeWithRetries } from "jeopi-utils";
 
 function ctrl(key: string): string {
 	return String.fromCharCode(key.toLowerCase().charCodeAt(0) & 31);

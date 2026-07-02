@@ -7,14 +7,16 @@
  * - Register commands, keyboard shortcuts, and CLI flags
  * - Interact with the user via UI primitives
  */
+
+import type { Type as arktype } from "arktype";
 import type {
 	AgentMessage,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ThinkingLevel,
 	ToolApproval,
-} from "@oh-my-pi/pi-agent-core";
-import type { CompactionResult } from "@oh-my-pi/pi-agent-core/compaction";
+} from "jeopi-agent-core";
+import type { CompactionResult } from "jeopi-agent-core/compaction";
 import type {
 	Api,
 	AssistantMessageEvent,
@@ -28,11 +30,10 @@ import type {
 	Static,
 	TextContent,
 	TSchema,
-} from "@oh-my-pi/pi-ai";
-import type { OAuthCredentials, OAuthLoginCallbacks } from "@oh-my-pi/pi-ai/oauth/types";
-import type { AutocompleteItem, Component, EditorTheme, KeyId, TUI } from "@oh-my-pi/pi-tui";
-import type { logger as PiLogger } from "@oh-my-pi/pi-utils";
-import type { Type as arktype } from "arktype";
+} from "jeopi-ai";
+import type { OAuthCredentials, OAuthLoginCallbacks } from "jeopi-ai/oauth/types";
+import type { AutocompleteItem, Component, EditorTheme, KeyId, TUI } from "jeopi-tui";
+import type { logger as PiLogger } from "jeopi-utils";
 import type * as zod from "zod/v4";
 import type { KeybindingsManager } from "../../config/keybindings";
 import type { ModelRegistry } from "../../config/model-registry";

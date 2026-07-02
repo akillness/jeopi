@@ -6,8 +6,8 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir, getProjectDir, isEnoent, logger } from "@oh-my-pi/pi-utils";
 import * as arktype from "arktype";
+import { getAgentDir, getProjectDir, isEnoent, logger } from "jeopi-utils";
 import * as zodModule from "zod/v4";
 import { getConfigDirs } from "../../config";
 import { execCommand } from "../../exec/exec";

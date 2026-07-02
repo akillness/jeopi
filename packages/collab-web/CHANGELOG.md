@@ -147,7 +147,7 @@
 
 - Changed relay socket behavior to retry transient disconnections with exponential backoff while treating terminal relay-close conditions and decryption failures as non-retriable
 - Changed subagent transcript decoding to handle streamed JSONL payload chunks incrementally by preserving carry-over data across chunks
-- Replaced the vendored collab wire type mirror with shared `@oh-my-pi/pi-wire` protocol contracts.
+- Replaced the vendored collab wire type mirror with shared `jeopi-wire` protocol contracts.
 
 ### Security
 

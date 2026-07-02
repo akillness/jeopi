@@ -7,9 +7,9 @@
  * form at request time.
  */
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import type { Context, FetchImpl, Model } from "@oh-my-pi/pi-ai/types";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+import { streamOpenAICompletions } from "jeopi-ai/providers/openai-completions";
+import type { Context, FetchImpl, Model } from "jeopi-ai/types";
+import { getBundledModel } from "jeopi-catalog/models";
 
 function sseResponse(events: unknown[]): Response {
 	const payload = `${events.map(e => `data: ${typeof e === "string" ? e : JSON.stringify(e)}`).join("\n\n")}\n\n`;

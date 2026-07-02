@@ -6,7 +6,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getPluginsDir, getPluginsLockfile, isEnoent } from "@oh-my-pi/pi-utils";
+import { getPluginsDir, getPluginsLockfile, isEnoent } from "jeopi-utils";
 import { getConfigDirPaths } from "../../config";
 import { resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import { installLegacyPiSpecifierShim } from "./legacy-pi-compat";

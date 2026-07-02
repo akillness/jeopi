@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { JSONC, YAML } from "bun";
 import {
 	type Keybinding,
 	type KeybindingDefinitions,
@@ -8,9 +9,8 @@ import {
 	setKeybindings,
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
-} from "@oh-my-pi/pi-tui";
-import { getAgentDir, isEnoent, logger } from "@oh-my-pi/pi-utils";
-import { JSONC, YAML } from "bun";
+} from "jeopi-tui";
+import { getAgentDir, isEnoent, logger } from "jeopi-utils";
 
 /**
  * Application-level keybindings (coding agent specific).
@@ -57,7 +57,7 @@ interface AppKeybindings {
 
 export type AppKeybinding = keyof AppKeybindings;
 
-declare module "@oh-my-pi/pi-tui" {
+declare module "jeopi-tui" {
 	interface Keybindings extends AppKeybindings {}
 }
 

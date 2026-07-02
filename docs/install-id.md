@@ -4,7 +4,7 @@ A persistent per-install UUID that identifies a single oh-my-pi installation acr
 
 ## API
 
-Exported from `@oh-my-pi/pi-utils` (`packages/utils/src/dirs.ts`):
+Exported from `jeopi-utils` (`packages/utils/src/dirs.ts`):
 
 | Symbol                                  | Purpose                                                                                                                           |
 | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |

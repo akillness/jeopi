@@ -1,5 +1,5 @@
-import { logger, Snowflake } from "@oh-my-pi/pi-utils";
 import type { Subprocess } from "bun";
+import { logger, Snowflake } from "jeopi-utils";
 import { type KernelDisplayOutput, renderKernelDisplay } from "./py/display";
 
 export type KernelRuntimeEnv = Record<string, string | null>;

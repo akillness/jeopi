@@ -1,4 +1,4 @@
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { Args, Command, Flags } from "jeopi-utils/cli";
 import { runDryBalanceCommand } from "../cli/dry-balance-cli";
 
 export default class DryBalance extends Command {

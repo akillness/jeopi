@@ -1,5 +1,7 @@
-import type { AgentToolContext } from "@oh-my-pi/pi-agent-core";
-import { type PtyRunResult, PtySession } from "@oh-my-pi/pi-natives";
+import type * as XtermModule from "@xterm/headless";
+import type { Terminal as XtermTerminalType } from "@xterm/headless";
+import type { AgentToolContext } from "jeopi-agent-core";
+import { type PtyRunResult, PtySession } from "jeopi-natives";
 import {
 	type Component,
 	extractPrintableText,
@@ -9,10 +11,8 @@ import {
 	parseKittySequence,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import { sanitizeText } from "@oh-my-pi/pi-utils";
-import type * as XtermModule from "@xterm/headless";
-import type { Terminal as XtermTerminalType } from "@xterm/headless";
+} from "jeopi-tui";
+import { sanitizeText } from "jeopi-utils";
 import { Settings } from "../config/settings";
 import type { Theme } from "../modes/theme/theme";
 import { OutputSink, type OutputSummary } from "../session/streaming-output";

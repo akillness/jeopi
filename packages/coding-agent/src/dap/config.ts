@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isRecord, logger } from "@oh-my-pi/pi-utils";
 import { YAML } from "bun";
+import { isRecord, logger } from "jeopi-utils";
 import { getConfigDirPaths } from "../config";
 import { getPreloadedPluginRoots } from "../discovery/helpers";
 import { hasRootMarkers, resolveCommand } from "../lsp/config";

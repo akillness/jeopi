@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import type { Skill } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
-import { resolveLocalUrlToPath } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import { expandInternalUrls, expandSkillUrls } from "@oh-my-pi/pi-coding-agent/tools/bash-skill-urls";
-import { ToolError } from "@oh-my-pi/pi-coding-agent/tools/tool-errors";
+import type { Skill } from "jeopi-cli/extensibility/skills";
+import { resolveLocalUrlToPath } from "jeopi-cli/internal-urls";
+import { expandInternalUrls, expandSkillUrls } from "jeopi-cli/tools/bash-skill-urls";
+import { ToolError } from "jeopi-cli/tools/tool-errors";
 
 function shellEscape(p: string): string {
 	return `'${p.replace(/'/g, "'\\''")}'`;

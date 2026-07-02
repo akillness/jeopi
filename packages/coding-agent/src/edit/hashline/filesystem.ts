@@ -18,8 +18,8 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { Filesystem, NotFoundError, type PreflightWriteOptions, type WriteResult } from "@oh-my-pi/hashline";
-import { isEnoent } from "@oh-my-pi/pi-utils";
+import { Filesystem, NotFoundError, type PreflightWriteOptions, type WriteResult } from "jeopi-hashline";
+import { isEnoent } from "jeopi-utils";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
 import { routeWriteThroughBridge } from "../../tools/acp-bridge";

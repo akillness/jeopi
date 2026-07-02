@@ -1,11 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import {
-	getThemeByName,
-	getThemeEpoch,
-	setTheme,
-	setThemeInstance,
-	type Theme,
-} from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { getThemeByName, getThemeEpoch, setTheme, setThemeInstance, type Theme } from "jeopi-cli/modes/theme/theme";
 
 /**
  * Contract: every change to the *active* theme bumps the theme epoch — including

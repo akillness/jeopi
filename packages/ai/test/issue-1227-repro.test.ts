@@ -16,11 +16,11 @@
  * requires when tool history is present.
  */
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import type { AssistantMessage, Context, Model, ModelSpec, Tool } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { type } from "arktype";
+import { streamOpenAICompletions } from "jeopi-ai/providers/openai-completions";
+import type { AssistantMessage, Context, Model, ModelSpec, Tool } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
+import { getBundledModel } from "jeopi-catalog/models";
 
 function abortedSignal(): AbortSignal {
 	const controller = new AbortController();

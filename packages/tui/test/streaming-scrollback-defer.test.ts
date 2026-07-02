@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-	type Component,
-	type NativeScrollbackCommittedRows,
-	type NativeScrollbackLiveRegion,
-	TUI,
-} from "@oh-my-pi/pi-tui";
+import { type Component, type NativeScrollbackCommittedRows, type NativeScrollbackLiveRegion, TUI } from "jeopi-tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 class LineList implements Component {

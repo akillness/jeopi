@@ -16,7 +16,8 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import { YAML } from "bun";
+import type { AgentMessage } from "jeopi-agent-core";
 import {
 	type Component,
 	Container,
@@ -32,9 +33,8 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@oh-my-pi/pi-tui";
-import { isEnoent, prompt } from "@oh-my-pi/pi-utils";
-import { YAML } from "bun";
+} from "jeopi-tui";
+import { isEnoent, prompt } from "jeopi-utils";
 import { getConfigDirs } from "../../config";
 import type { ModelRegistry } from "../../config/model-registry";
 import {

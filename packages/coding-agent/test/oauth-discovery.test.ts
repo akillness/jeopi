@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	analyzeAuthError,
-	discoverOAuthEndpoints,
-	extractMcpAuthServerUrl,
-} from "@oh-my-pi/pi-coding-agent/mcp/oauth-discovery";
+import { analyzeAuthError, discoverOAuthEndpoints, extractMcpAuthServerUrl } from "jeopi-cli/mcp/oauth-discovery";
 import { type FetchInput, mockFetch } from "./helpers/fetch-mock";
 
 describe("mcp oauth discovery", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { UsageLimit, UsageReport } from "@oh-my-pi/pi-ai/usage";
-import { parseClaudeRateLimitHeaders } from "@oh-my-pi/pi-ai/usage/claude";
+import type { UsageLimit, UsageReport } from "jeopi-ai/usage";
+import { parseClaudeRateLimitHeaders } from "jeopi-ai/usage/claude";
 
 const NOW = 1_780_400_000_000;
 

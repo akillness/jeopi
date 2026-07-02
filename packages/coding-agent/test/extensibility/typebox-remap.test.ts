@@ -2,12 +2,9 @@ import { afterAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	installLegacyPiSpecifierShim,
-	loadLegacyPiModule,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
-import { Type as TypeBoxShimType } from "@oh-my-pi/pi-coding-agent/extensibility/typebox";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "jeopi-cli/extensibility/plugins/legacy-pi-compat";
+import { Type as TypeBoxShimType } from "jeopi-cli/extensibility/typebox";
+import { removeWithRetries } from "jeopi-utils";
 
 // The remap installs a Bun.plugin onResolve hook plus an explicit
 // rewrite branch inside `rewriteBareImportsForLegacyExtension` that

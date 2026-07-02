@@ -8,10 +8,10 @@
  * previous `<parameter>`-per-key JSON Schema dump dropped entirely.
  */
 import { describe, expect, it } from "bun:test";
-import type { Model, Usage } from "@oh-my-pi/pi-ai";
-import { formatSessionDumpText } from "@oh-my-pi/pi-coding-agent/session/session-dump-format";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import { type } from "arktype";
+import type { Model, Usage } from "jeopi-ai";
+import { formatSessionDumpText } from "jeopi-cli/session/session-dump-format";
+import { INTENT_FIELD } from "jeopi-wire";
 
 const ZERO_USAGE: Usage = {
 	input: 0,

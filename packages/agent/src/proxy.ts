@@ -12,15 +12,15 @@ import {
 	type SimpleStreamOptions,
 	type StopReason,
 	type ToolCall,
-} from "@oh-my-pi/pi-ai";
+} from "jeopi-ai";
 import {
 	clearStreamingPartialJson,
 	kStreamingPartialJson,
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
-} from "@oh-my-pi/pi-ai/utils/block-symbols";
-import { calculateCost } from "@oh-my-pi/pi-catalog/models";
-import { parseStreamingJson, readSseJson } from "@oh-my-pi/pi-utils";
+} from "jeopi-ai/utils/block-symbols";
+import { calculateCost } from "jeopi-catalog/models";
+import { parseStreamingJson, readSseJson } from "jeopi-utils";
 
 // Event stream adapter for proxy SSE events
 export class ProxyMessageEventStream extends EventStream<AssistantMessageEvent, AssistantMessage> {

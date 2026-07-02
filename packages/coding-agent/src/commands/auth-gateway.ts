@@ -1,8 +1,8 @@
 /**
  * `jeopi auth-gateway` — run a forward proxy that injects auth from the broker.
  */
-import { APP_NAME } from "@oh-my-pi/pi-utils";
-import { Args, Command, Flags, renderCommandHelp } from "@oh-my-pi/pi-utils/cli";
+import { APP_NAME } from "jeopi-utils";
+import { Args, Command, Flags, renderCommandHelp } from "jeopi-utils/cli";
 import {
 	AUTH_GATEWAY_ACTIONS,
 	type AuthGatewayAction,

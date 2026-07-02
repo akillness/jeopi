@@ -11,10 +11,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import { type ResolvedThinkingLevel, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import { Effort, THINKING_EFFORTS } from "@oh-my-pi/pi-ai";
-import { padding, visibleWidth } from "@oh-my-pi/pi-tui";
-import { postmortem, TempDir } from "@oh-my-pi/pi-utils";
+import { type ResolvedThinkingLevel, ThinkingLevel } from "jeopi-agent-core";
+import { Effort, THINKING_EFFORTS } from "jeopi-ai";
+import { padding, visibleWidth } from "jeopi-tui";
+import { postmortem, TempDir } from "jeopi-utils";
 import { generateJsonReport, generateReport } from "./report";
 import {
 	type BenchmarkConfig,

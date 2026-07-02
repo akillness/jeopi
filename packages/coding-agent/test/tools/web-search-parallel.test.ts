@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { AuthStorage, FetchImpl } from "@oh-my-pi/pi-ai";
-import type { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
-import { searchWithParallel } from "@oh-my-pi/pi-coding-agent/web/parallel";
-import { searchParallel } from "@oh-my-pi/pi-coding-agent/web/search/providers/parallel";
+import type { AuthStorage, FetchImpl } from "jeopi-ai";
+import type { AgentStorage } from "jeopi-cli/session/agent-storage";
+import { searchWithParallel } from "jeopi-cli/web/parallel";
+import { searchParallel } from "jeopi-cli/web/search/providers/parallel";
 
 describe("Parallel web search", () => {
 	const fakeStorage = {

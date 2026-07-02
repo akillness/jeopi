@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { createAutoresearchExtension } from "@oh-my-pi/pi-coding-agent/autoresearch";
+import { createAutoresearchExtension } from "jeopi-cli/autoresearch";
 import {
 	buildExperimentState,
 	computeConfidence,
@@ -7,16 +7,12 @@ import {
 	findBaselineRunNumber,
 	findBestKeptMetric,
 	reconstructControlState,
-} from "@oh-my-pi/pi-coding-agent/autoresearch/state";
-import { AutoresearchStorage, closeAllAutoresearchStorages } from "@oh-my-pi/pi-coding-agent/autoresearch/storage";
-import type { ExperimentResult } from "@oh-my-pi/pi-coding-agent/autoresearch/types";
-import type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-	RegisteredCommand,
-} from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import * as git from "@oh-my-pi/pi-coding-agent/utils/git";
-import { TempDir } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/autoresearch/state";
+import { AutoresearchStorage, closeAllAutoresearchStorages } from "jeopi-cli/autoresearch/storage";
+import type { ExperimentResult } from "jeopi-cli/autoresearch/types";
+import type { ExtensionAPI, ExtensionCommandContext, RegisteredCommand } from "jeopi-cli/extensibility/extensions";
+import * as git from "jeopi-cli/utils/git";
+import { TempDir } from "jeopi-utils";
 
 afterEach(() => {
 	vi.restoreAllMocks();

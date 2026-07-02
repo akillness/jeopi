@@ -43,12 +43,12 @@ Upstream uses different package scopes. Replace them consistently.
 
 - Replace old scopes with the local scope used here.
 - Examples (adjust to match the actual packages you are porting):
-  - `@mariozechner/pi-coding-agent` → `@oh-my-pi/pi-coding-agent`
-  - `@mariozechner/pi-agent-core` → `@oh-my-pi/pi-agent-core`
-  - `@mariozechner/pi-tui` → `@oh-my-pi/pi-tui`
-  - `@mariozechner/pi-ai` → `@oh-my-pi/pi-ai`
-  - `@mariozechner/pi-utils` → `@oh-my-pi/pi-utils`
-- Some upstream packages publish under the `@earendil-works/*` scope instead of `@mariozechner/*`. Map it the same way (`@earendil-works/pi-coding-agent` → `@oh-my-pi/pi-coding-agent`, and so on).
+  - `@mariozechner/pi-coding-agent` → `jeopi`
+  - `@mariozechner/pi-agent-core` → `jeopi-agent-core`
+  - `@mariozechner/pi-tui` → `jeopi-tui`
+  - `@mariozechner/pi-ai` → `jeopi-ai`
+  - `@mariozechner/pi-utils` → `jeopi-utils`
+- Some upstream packages publish under the `@earendil-works/*` scope instead of `@mariozechner/*`. Map it the same way (`@earendil-works/pi-coding-agent` → `jeopi`, and so on).
 - The bare `typebox` package is not an `@oh-my-pi/*` scope; do not rewrite it as one. See the Extensions divergence in section 15 for how tool-parameter schemas map.
 
 ## 4) Use Bun APIs where they improve on Node
@@ -129,7 +129,7 @@ Treat `package.json` as a contract. Merge intentionally.
 - Do not introduce `any` unless required.
 - Avoid dynamic imports unless they are required for optional dependencies, startup cost, or runtime-only modules; prefer top-level imports otherwise.
 - Never build prompts in code; prompts are static `.md` files rendered with Handlebars.
-- In `packages/coding-agent`, use `logger` from `@oh-my-pi/pi-utils` for internal/runtime logging; CLI command files may use `console.*` for intentional user-facing output.
+- In `packages/coding-agent`, use `logger` from `jeopi-utils` for internal/runtime logging; CLI command files may use `console.*` for intentional user-facing output.
 - Use `Promise.withResolvers()` instead of `new Promise((resolve, reject) => ...)`.
 - Prefer ES `#` private fields for new encapsulated state. Constructor parameter properties already exist in current code and are acceptable; do not churn unrelated access modifiers while porting.
 - Prefer existing helpers and utilities over new ad-hoc code.
@@ -139,7 +139,7 @@ Treat `package.json` as a contract. Merge intentionally.
   - Heavy Node APIs should not be introduced casually; current source still uses selected Node APIs (`node:crypto`, `node:readline`, synchronous `node:fs`, and `child_process`) where they fit provider, CLI, or process-control semantics.
   - Lightweight Node APIs (`os.homedir`, `os.tmpdir`, `fs.mkdtempSync`, `path.*`) are kept.
   - CLI shebangs use `bun` (not `node`, not `tsx`).
-  - TypeScript packages generally use source files directly; `@oh-my-pi/pi-natives` exports generated native bindings from `packages/natives/native`.
+  - TypeScript packages generally use source files directly; `jeopi-natives` exports generated native bindings from `packages/natives/native`.
   - CI workflows run Bun for install/check/test.
 
 ## 8) Remove old compatibility layers
@@ -330,7 +330,7 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 
 | Upstream                                           | Our Fork                                                  | Reason                                        |
 | -------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------- |
-| `clipboard.ts` + `clipboard-image.ts` (tool files) | `src/utils/clipboard.ts` backed by `@oh-my-pi/pi-natives` | Native implementation with a small TS wrapper |
+| `clipboard.ts` + `clipboard-image.ts` (tool files) | `src/utils/clipboard.ts` backed by `jeopi-natives` | Native implementation with a small TS wrapper |
 
 ### Test Framework
 
@@ -361,7 +361,7 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 | `jiti` for TypeScript loading                                    | Native Bun `import()`                                                                              |
 | `pkg.pi` manifest field                                          | `pkg.omp` preferred; fallback to `pkg.pi` remains                                                  |
 | `StringEnum` from `pi-ai`                                        | `Type.Enum` from the `pi.typebox` shim (or author the schema with `pi.zod`); `pi-ai` no longer exports `StringEnum` |
-| `formatSize` from `pi-coding-agent`                              | `formatBytes` from `@oh-my-pi/pi-utils`                                                            |
+| `formatSize` from `pi-coding-agent`                              | `formatBytes` from `jeopi-utils`                                                            |
 | `DefaultResourceLoader` / `DefaultPackageManager` / `SettingsManager` / `createEventBus` | Capability-based discovery (`loadCapability(...)`) plus the `Settings` singleton and `EventBus` |
 
 ### Skip These Upstream Features
@@ -369,7 +369,7 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 When porting, **skip** these files/features entirely:
 
 - `footer-data-provider.ts` — we use StatusLineComponent
-- `clipboard-image.ts` — image clipboard support is exposed through `src/utils/clipboard.ts` backed by `@oh-my-pi/pi-natives`
+- `clipboard-image.ts` — image clipboard support is exposed through `src/utils/clipboard.ts` backed by `jeopi-natives`
 - GitHub workflow files — we have our own CI
 - `models.generated.ts` — auto-generated, regenerate locally (as models.json instead)
 

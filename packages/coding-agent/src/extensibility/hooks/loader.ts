@@ -2,8 +2,8 @@
  * Hook loader - loads TypeScript hook modules using native Bun import.
  */
 import * as path from "node:path";
-import { logger } from "@oh-my-pi/pi-utils";
 import * as arktype from "arktype";
+import { logger } from "jeopi-utils";
 import * as zodModule from "zod/v4";
 import { hookCapability } from "../../capability/hook";
 import type { Hook } from "../../discovery";

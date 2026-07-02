@@ -4,9 +4,9 @@
  * Handles `jeopi grep` subcommand for testing grep tool on Windows.
  */
 import * as path from "node:path";
-import { GrepOutputMode, grep } from "@oh-my-pi/pi-natives";
-import { APP_NAME } from "@oh-my-pi/pi-utils";
 import chalk from "chalk";
+import { GrepOutputMode, grep } from "jeopi-natives";
+import { APP_NAME } from "jeopi-utils";
 
 export interface GrepCommandArgs {
 	pattern: string;

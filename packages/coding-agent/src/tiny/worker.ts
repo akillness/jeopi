@@ -5,7 +5,7 @@ import type {
 	TextGenerationStringOutput,
 	StoppingCriteria as TransformersStoppingCriteria,
 } from "@huggingface/transformers";
-import { getTinyModelsCacheDir, prompt } from "@oh-my-pi/pi-utils";
+import { getTinyModelsCacheDir, prompt } from "jeopi-utils";
 import tinyTitleSystemPrompt from "../prompts/system/tiny-title-system.md" with { type: "text" };
 import {
 	errorMessage,

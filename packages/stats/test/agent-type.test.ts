@@ -2,11 +2,11 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getOverviewStats } from "@oh-my-pi/omp-stats/aggregator";
-import { getStatsByAgentType, initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
-import { classifyAgentType } from "@oh-my-pi/omp-stats/parser";
-import type { AgentType, MessageStats } from "@oh-my-pi/omp-stats/types";
-import { getConfigRootDir, getSessionsDir, getStatsDbPath } from "@oh-my-pi/pi-utils";
+import { getOverviewStats } from "jeopi-stats/aggregator";
+import { getStatsByAgentType, initDb, insertMessageStats } from "jeopi-stats/db";
+import { classifyAgentType } from "jeopi-stats/parser";
+import type { AgentType, MessageStats } from "jeopi-stats/types";
+import { getConfigRootDir, getSessionsDir, getStatsDbPath } from "jeopi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 installStatsTestIsolation("@pi-stats-agent-type-");

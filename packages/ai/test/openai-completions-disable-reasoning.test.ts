@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import type { Context, FetchImpl, Model, ModelSpec } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { Effort } from "@oh-my-pi/pi-catalog/effort";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+import { streamOpenAICompletions } from "jeopi-ai/providers/openai-completions";
+import type { Context, FetchImpl, Model, ModelSpec } from "jeopi-ai/types";
+import { buildModel } from "jeopi-catalog/build";
+import { Effort } from "jeopi-catalog/effort";
+import { getBundledModel } from "jeopi-catalog/models";
 
 const testContext: Context = {
 	messages: [{ role: "user", content: "hello", timestamp: 0 }],

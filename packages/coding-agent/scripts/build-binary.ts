@@ -52,7 +52,7 @@ async function main(): Promise<void> {
 		await runCommand(["bun", "--cwd=../stats", "run", "gen:stats"]);
 		await runCommand(["bun", "run", "gen:docs"]);
 		// `legacy-pi-bundled-registry.ts` static-imports
-		// `@oh-my-pi/pi-coding-agent/export/html` (one of pi-coding-agent's
+		// `jeopi/export/html` (one of pi-coding-agent's
 		// named subpath exports, see scripts/generate-legacy-pi-bundled-registry.ts),
 		// whose source pulls in `tool-views.generated.js`. The root
 		// `package.json` "prepare" lifecycle hook builds that file on

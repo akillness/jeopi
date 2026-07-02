@@ -4,9 +4,9 @@ import {
 	buildSampleImage,
 	encodeRgbPng,
 	ProtocolProbeComponent,
-} from "@oh-my-pi/pi-coding-agent/debug/protocol-probe";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { getImageDimensions, ImageBudget, ImageProtocol, TERMINAL } from "@oh-my-pi/pi-tui";
+} from "jeopi-cli/debug/protocol-probe";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import { getImageDimensions, ImageBudget, ImageProtocol, TERMINAL } from "jeopi-tui";
 
 beforeAll(async () => {
 	// buildLargeTextLines styles the OSC 66 span through the global theme singleton.

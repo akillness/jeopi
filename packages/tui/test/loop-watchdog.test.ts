@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
-import { LoopWatchdog } from "@oh-my-pi/pi-tui/loop-watchdog";
-import { currentLoopPhase, logger, popLoopPhase, pushLoopPhase, takeRecentLoopPhase } from "@oh-my-pi/pi-utils";
+import { LoopWatchdog } from "jeopi-tui/loop-watchdog";
+import { currentLoopPhase, logger, popLoopPhase, pushLoopPhase, takeRecentLoopPhase } from "jeopi-utils";
 
 /**
  * Contract: LoopWatchdog turns event-loop lag into exactly one

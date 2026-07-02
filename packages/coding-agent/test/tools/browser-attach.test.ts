@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { pickElectronTarget } from "@oh-my-pi/pi-coding-agent/tools/browser/attach";
-import { normalizeConnectedCdpUrl } from "@oh-my-pi/pi-coding-agent/tools/browser/registry";
+import { pickElectronTarget } from "jeopi-cli/tools/browser/attach";
+import { normalizeConnectedCdpUrl } from "jeopi-cli/tools/browser/registry";
 import type { Browser, Page, Target } from "puppeteer-core";
 
 interface FakePageOptions {

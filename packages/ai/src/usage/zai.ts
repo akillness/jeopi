@@ -1,4 +1,4 @@
-import { toNumber } from "@oh-my-pi/pi-catalog/utils";
+import { toNumber } from "jeopi-catalog/utils";
 import type {
 	UsageAmount,
 	UsageFetchContext,

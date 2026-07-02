@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { SessionFocusController } from "@oh-my-pi/pi-coding-agent/modes/controllers/session-focus-controller";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { AgentLifecycleManager } from "@oh-my-pi/pi-coding-agent/registry/agent-lifecycle";
-import { AgentRegistry, MAIN_AGENT_ID } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import type { AgentSession, AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import { SessionFocusController } from "jeopi-cli/modes/controllers/session-focus-controller";
+import type { InteractiveModeContext } from "jeopi-cli/modes/types";
+import { AgentLifecycleManager } from "jeopi-cli/registry/agent-lifecycle";
+import { AgentRegistry, MAIN_AGENT_ID } from "jeopi-cli/registry/agent-registry";
+import type { AgentSession, AgentSessionEvent } from "jeopi-cli/session/agent-session";
 
 interface SessionStub {
 	session: AgentSession;

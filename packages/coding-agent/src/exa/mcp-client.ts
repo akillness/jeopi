@@ -1,5 +1,5 @@
-import type { TSchema } from "@oh-my-pi/pi-ai";
-import { $env, logger } from "@oh-my-pi/pi-utils";
+import type { TSchema } from "jeopi-ai";
+import { $env, logger } from "jeopi-utils";
 import type { CustomTool, CustomToolResult } from "../extensibility/custom-tools/types";
 import { type CallMcpOptions, callMCP } from "../mcp/json-rpc";
 import type { ExaSearchResponse, MCPCallResponse, MCPTool, MCPToolsResponse, MCPToolWrapperConfig } from "./types";

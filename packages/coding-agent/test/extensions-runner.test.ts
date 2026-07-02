@@ -5,19 +5,19 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentMessage, AgentTool } from "@oh-my-pi/pi-agent-core";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { discoverAndLoadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
+import type { AgentMessage, AgentTool } from "jeopi-agent-core";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { discoverAndLoadExtensions } from "jeopi-cli/extensibility/extensions/loader";
 import {
 	EXTENSION_HANDLER_TIMEOUT_MS,
 	ExtensionRunner,
 	testSetExtensionHandlerTimeoutMs,
-} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
-import { ExtensionToolWrapper } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/wrapper";
-import { Type } from "@oh-my-pi/pi-coding-agent/extensibility/typebox";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { getProjectAgentDir, logger, TempDir } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/extensibility/extensions/runner";
+import { ExtensionToolWrapper } from "jeopi-cli/extensibility/extensions/wrapper";
+import { Type } from "jeopi-cli/extensibility/typebox";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { getProjectAgentDir, logger, TempDir } from "jeopi-utils";
 
 describe("ExtensionRunner", () => {
 	let tempDir: TempDir;

@@ -3,10 +3,10 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { readTerminalBreadcrumbEntry } from "@oh-my-pi/pi-coding-agent/session/session-paths";
-import { getTerminalId } from "@oh-my-pi/pi-tui";
-import { getConfigRootDir, getTerminalSessionsDir, setAgentDir } from "@oh-my-pi/pi-utils";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { readTerminalBreadcrumbEntry } from "jeopi-cli/session/session-paths";
+import { getTerminalId } from "jeopi-tui";
+import { getConfigRootDir, getTerminalSessionsDir, setAgentDir } from "jeopi-utils";
 
 import { makeAssistantMessage } from "./helpers";
 

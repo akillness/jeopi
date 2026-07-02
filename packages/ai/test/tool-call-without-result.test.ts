@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { complete } from "@oh-my-pi/pi-ai/stream";
-import type { Api, Context, Model, OptionsForApi, Tool } from "@oh-my-pi/pi-ai/types";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { type } from "arktype";
+import { complete } from "jeopi-ai/stream";
+import type { Api, Context, Model, OptionsForApi, Tool } from "jeopi-ai/types";
+import { getBundledModel } from "jeopi-catalog/models";
 import { e2eApiKey, resolveApiKey } from "./oauth";
 
 // Resolve OAuth tokens at module level (async, runs before tests)

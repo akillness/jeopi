@@ -1,4 +1,4 @@
-import { parseStreamingJson, parseStreamingJsonThrottled, STREAMING_JSON_PARSE_MIN_GROWTH } from "@oh-my-pi/pi-utils";
+import { parseStreamingJson, parseStreamingJsonThrottled, STREAMING_JSON_PARSE_MIN_GROWTH } from "jeopi-utils";
 import { nextStep, STREAMING_REVEAL_FRAME_MS } from "./streaming-reveal";
 
 /** Minimal component surface the reveal pushes frames into. */

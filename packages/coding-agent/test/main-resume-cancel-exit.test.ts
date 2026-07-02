@@ -12,11 +12,11 @@
  */
 import { describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { parseArgs } from "@oh-my-pi/pi-coding-agent/cli/args";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { runRootCommand } from "@oh-my-pi/pi-coding-agent/main";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { parseArgs } from "jeopi-cli/cli/args";
+import { Settings } from "jeopi-cli/config/settings";
+import { runRootCommand } from "jeopi-cli/main";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import { TempDir } from "jeopi-utils";
 
 class ProcessExitSignal extends Error {
 	constructor(readonly code: number) {

@@ -7,6 +7,8 @@
  * credentials produced no usage report are listed too, so the output
  * always covers the full credential pool.
  */
+
+import chalk from "chalk";
 import {
 	type AuthStorage,
 	resolveUsedFraction,
@@ -14,9 +16,8 @@ import {
 	type UsageLimit,
 	type UsageReport,
 	type UsageUnit,
-} from "@oh-my-pi/pi-ai";
-import { formatDuration, formatNumber, sanitizeText } from "@oh-my-pi/pi-utils";
-import chalk from "chalk";
+} from "jeopi-ai";
+import { formatDuration, formatNumber, sanitizeText } from "jeopi-utils";
 import { ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
 

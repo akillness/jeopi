@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { claudeCodeVersion } from "@oh-my-pi/pi-ai/providers/anthropic";
-import type { UsageFetchContext } from "@oh-my-pi/pi-ai/usage";
-import { claudeUsageProvider } from "@oh-my-pi/pi-ai/usage/claude";
+import { claudeCodeVersion } from "jeopi-ai/providers/anthropic";
+import type { UsageFetchContext } from "jeopi-ai/usage";
+import { claudeUsageProvider } from "jeopi-ai/usage/claude";
 
 function getHeaderCaseInsensitive(
 	headers: Headers | Record<string, string | ReadonlyArray<string>> | string[][] | undefined,

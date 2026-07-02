@@ -2,16 +2,15 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
+import { type } from "arktype";
 import type {
 	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
-} from "@oh-my-pi/pi-agent-core";
-
-import { getWorktreeDir, hashPath, isEnoent, prompt, untilAborted } from "@oh-my-pi/pi-utils";
-import { type } from "arktype";
+} from "jeopi-agent-core";
+import { getWorktreeDir, hashPath, isEnoent, prompt, untilAborted } from "jeopi-utils";
 import type { Settings } from "../config/settings";
 import githubDescription from "../prompts/tools/github.md" with { type: "text" };
 import * as git from "../utils/git";

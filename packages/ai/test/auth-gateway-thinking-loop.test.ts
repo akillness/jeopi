@@ -3,11 +3,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { clearCustomApis } from "@oh-my-pi/pi-ai/api-registry";
-import { startAuthGateway } from "@oh-my-pi/pi-ai/auth-gateway";
-import { AuthStorage } from "@oh-my-pi/pi-ai/auth-storage";
-import { createMockModel, registerMockApi } from "@oh-my-pi/pi-ai/providers/mock";
-import { THINKING_LOOP_ERROR_MARKER } from "@oh-my-pi/pi-ai/utils/thinking-loop";
+import { clearCustomApis } from "jeopi-ai/api-registry";
+import { startAuthGateway } from "jeopi-ai/auth-gateway";
+import { AuthStorage } from "jeopi-ai/auth-storage";
+import { createMockModel, registerMockApi } from "jeopi-ai/providers/mock";
+import { THINKING_LOOP_ERROR_MARKER } from "jeopi-ai/utils/thinking-loop";
 
 /** A degenerate near-duplicate reasoning loop (the gemini-3.5-flash shape). */
 function loopThinking(): string {

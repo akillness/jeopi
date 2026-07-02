@@ -4,8 +4,8 @@
  * Handles `jeopi ssh <command>` subcommands for SSH host configuration management.
  */
 
-import { getSSHConfigPath } from "@oh-my-pi/pi-utils";
 import chalk from "chalk";
+import { getSSHConfigPath } from "jeopi-utils";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../ssh/config-writer";
 
 // =============================================================================

@@ -1,16 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { TaskTool, taskSchema } from "@oh-my-pi/pi-coding-agent/task";
-import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
-import {
-	getTaskSchema,
-	oneLineLabel,
-	ROLE_INPUT_MAX,
-	resolveSubagentDisplayName,
-} from "@oh-my-pi/pi-coding-agent/task/types";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { prompt } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import { Settings } from "jeopi-cli/config/settings";
+import { TaskTool, taskSchema } from "jeopi-cli/task";
+import * as discoveryModule from "jeopi-cli/task/discovery";
+import { getTaskSchema, oneLineLabel, ROLE_INPUT_MAX, resolveSubagentDisplayName } from "jeopi-cli/task/types";
+import type { ToolSession } from "jeopi-cli/tools";
+import { prompt } from "jeopi-utils";
 import subagentSystemPromptTemplate from "../../src/prompts/system/subagent-system-prompt.md" with { type: "text" };
 
 // Contract: a per-spawn `role` gives a subagent a tailored identity. The role

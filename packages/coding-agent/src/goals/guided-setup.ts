@@ -1,6 +1,6 @@
-import { instrumentedCompleteSimple, resolveTelemetry } from "@oh-my-pi/pi-agent-core";
-import type { Tool } from "@oh-my-pi/pi-ai";
-import { prompt } from "@oh-my-pi/pi-utils";
+import { instrumentedCompleteSimple, resolveTelemetry } from "jeopi-agent-core";
+import type { Tool } from "jeopi-ai";
+import { prompt } from "jeopi-utils";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
 import guidedGoalInterviewPrompt from "../prompts/goals/guided-goal-interview.md" with { type: "text" };
 import guidedGoalSystemPrompt from "../prompts/goals/guided-goal-system.md" with { type: "text" };

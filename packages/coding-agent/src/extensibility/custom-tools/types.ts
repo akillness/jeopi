@@ -4,18 +4,19 @@
  * Custom tools are TypeScript modules that define additional tools for the agent.
  * They can provide custom rendering for tool calls and results in the TUI.
  */
+
+import type { type as ArkType } from "arktype";
 import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolApproval,
 	ToolApprovalDecision,
 	ToolTier,
-} from "@oh-my-pi/pi-agent-core";
-import type { CompactionResult } from "@oh-my-pi/pi-agent-core/compaction";
-import type { FetchImpl, Model, Static, TSchema } from "@oh-my-pi/pi-ai";
-import type { Component } from "@oh-my-pi/pi-tui";
-import type { logger as PiLogger } from "@oh-my-pi/pi-utils";
-import type { type as ArkType } from "arktype";
+} from "jeopi-agent-core";
+import type { CompactionResult } from "jeopi-agent-core/compaction";
+import type { FetchImpl, Model, Static, TSchema } from "jeopi-ai";
+import type { Component } from "jeopi-tui";
+import type { logger as PiLogger } from "jeopi-utils";
 import type * as zod from "zod/v4";
 import type { Rule } from "../../capability/rule";
 import type { ModelRegistry } from "../../config/model-registry";

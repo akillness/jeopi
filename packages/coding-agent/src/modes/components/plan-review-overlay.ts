@@ -27,7 +27,7 @@ import {
 	ScrollView,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
+} from "jeopi-tui";
 import { getMarkdownTheme, theme } from "../theme/theme";
 import {
 	matchesAppExternalEditor,

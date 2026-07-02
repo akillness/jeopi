@@ -8,13 +8,13 @@
  * sibling SQLite store and never POSTs the broker sentinel to a Google token
  * endpoint.
  */
-import { type AuthStorage, type FetchImpl, type OAuthAccess, withOAuthAccess } from "@oh-my-pi/pi-ai";
+import { type AuthStorage, type FetchImpl, type OAuthAccess, withOAuthAccess } from "jeopi-ai";
 import {
 	ANTIGRAVITY_SYSTEM_INSTRUCTION,
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
-} from "@oh-my-pi/pi-catalog/wire/gemini-headers";
-import { fetchWithRetry } from "@oh-my-pi/pi-utils";
+} from "jeopi-catalog/wire/gemini-headers";
+import { fetchWithRetry } from "jeopi-utils";
 
 import type { SearchCitation, SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";

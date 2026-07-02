@@ -3,8 +3,8 @@
  */
 import * as path from "node:path";
 
-import { type Api, type AssistantMessage, completeSimple, type Model, type Tool } from "@oh-my-pi/pi-ai";
-import { isTerminalHeadless, logger, prompt } from "@oh-my-pi/pi-utils";
+import { type Api, type AssistantMessage, completeSimple, type Model, type Tool } from "jeopi-ai";
+import { isTerminalHeadless, logger, prompt } from "jeopi-utils";
 import type { ModelRegistry } from "../config/model-registry";
 
 import { resolveRoleSelection } from "../config/model-resolver";

@@ -2,12 +2,8 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	type InMemorySnapshotStore as FileReadCache,
-	formatHashlineHeader,
-	MismatchError as HashlineMismatchError,
-} from "@oh-my-pi/hashline";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { type Type, type } from "arktype";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
 import {
 	canonicalSnapshotKey,
 	type ExecuteHashlineSingleOptions,
@@ -15,11 +11,15 @@ import {
 	getFileSnapshotStore as getFileReadCache,
 	HashlineFilesystem,
 	hashlineEditParamsSchema,
-} from "@oh-my-pi/pi-coding-agent/edit";
-import { resolveLocalUrlToPath } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
-import { type Type, type } from "arktype";
+} from "jeopi-cli/edit";
+import { resolveLocalUrlToPath } from "jeopi-cli/internal-urls";
+import type { ToolSession } from "jeopi-cli/tools";
+import {
+	type InMemorySnapshotStore as FileReadCache,
+	formatHashlineHeader,
+	MismatchError as HashlineMismatchError,
+} from "jeopi-hashline";
+import { removeWithRetries } from "jeopi-utils";
 
 beforeAll(async () => {
 	resetSettingsForTest();

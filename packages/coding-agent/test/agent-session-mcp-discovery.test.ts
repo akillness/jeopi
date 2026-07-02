@@ -2,22 +2,16 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	Agent,
-	type AgentTool,
-	type AgentToolContext,
-	type AgentToolResult,
-	ThinkingLevel,
-} from "@oh-my-pi/pi-agent-core";
-import { Effort, type Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { CustomTool } from "@oh-my-pi/pi-coding-agent/extensibility/custom-tools/types";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import type { OutputMeta } from "@oh-my-pi/pi-coding-agent/tools/output-meta";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import { Agent, type AgentTool, type AgentToolContext, type AgentToolResult, ThinkingLevel } from "jeopi-agent-core";
+import { Effort, type Model } from "jeopi-ai";
+import { buildModel } from "jeopi-catalog/build";
+import { Settings } from "jeopi-cli/config/settings";
+import type { CustomTool } from "jeopi-cli/extensibility/custom-tools/types";
+import { AgentSession } from "jeopi-cli/session/agent-session";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import type { OutputMeta } from "jeopi-cli/tools/output-meta";
+import { removeSyncWithRetries } from "jeopi-utils";
 
 function createModel(): Model<"openai-responses"> {
 	return buildModel({

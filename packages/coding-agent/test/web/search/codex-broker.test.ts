@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { AuthStorage } from "@oh-my-pi/pi-ai";
-import type { FetchImpl } from "@oh-my-pi/pi-ai/types";
-import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
-import type { SearchParams } from "@oh-my-pi/pi-coding-agent/web/search/providers/base";
-import { searchCodex } from "@oh-my-pi/pi-coding-agent/web/search/providers/codex";
+import type { AuthStorage } from "jeopi-ai";
+import type { FetchImpl } from "jeopi-ai/types";
+import { AgentStorage } from "jeopi-cli/session/agent-storage";
+import type { SearchParams } from "jeopi-cli/web/search/providers/base";
+import { searchCodex } from "jeopi-cli/web/search/providers/codex";
 
 function makeSseResponse(): string {
 	return [

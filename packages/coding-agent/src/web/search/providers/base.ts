@@ -1,4 +1,4 @@
-import type { AuthStorage, FetchImpl } from "@oh-my-pi/pi-ai";
+import type { AuthStorage, FetchImpl } from "jeopi-ai";
 import type { SearchProviderId, SearchResponse } from "../types";
 
 /**

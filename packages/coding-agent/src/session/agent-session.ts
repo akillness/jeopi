@@ -18,9 +18,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { isPromise } from "node:util/types";
-
-import type { InMemorySnapshotStore } from "@oh-my-pi/hashline";
-import { Patch } from "@oh-my-pi/hashline";
 import {
 	type AfterToolCallContext,
 	type AfterToolCallResult,
@@ -39,7 +36,7 @@ import {
 	type StreamFn,
 	ThinkingLevel,
 	type ToolChoiceDirective,
-} from "@oh-my-pi/pi-agent-core";
+} from "jeopi-agent-core";
 import {
 	AGGRESSIVE_SHAKE_CONFIG,
 	AUTO_HANDOFF_THRESHOLD_FOCUS,
@@ -70,14 +67,14 @@ import {
 	type SummaryOptions,
 	shouldCompact,
 	shouldUseOpenAiRemoteCompaction,
-} from "@oh-my-pi/pi-agent-core/compaction";
+} from "jeopi-agent-core/compaction";
 import {
 	DEFAULT_PRUNE_CONFIG,
 	pruneSupersededToolResults,
 	pruneToolOutputs,
 	readToolSupersedeKey,
-} from "@oh-my-pi/pi-agent-core/compaction/pruning";
-import type { ProtectedToolMatcher } from "@oh-my-pi/pi-agent-core/compaction/tool-protection";
+} from "jeopi-agent-core/compaction/pruning";
+import type { ProtectedToolMatcher } from "jeopi-agent-core/compaction/tool-protection";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -100,7 +97,7 @@ import type {
 	ToolChoice,
 	Usage,
 	UsageReport,
-} from "@oh-my-pi/pi-ai";
+} from "jeopi-ai";
 import {
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
@@ -111,15 +108,18 @@ import {
 	resolveModelServiceTier,
 	serviceTierFamily,
 	streamSimple,
-} from "@oh-my-pi/pi-ai";
-import * as AIError from "@oh-my-pi/pi-ai/error";
-import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
-import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@oh-my-pi/pi-ai/utils/thinking-loop";
-import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "@oh-my-pi/pi-ai/utils/tool-call-loop-guard";
-import { isFireworksFastModelId, toFireworksBaseModelId } from "@oh-my-pi/pi-catalog/fireworks-model-id";
-import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
-import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
-import { MacOSPowerAssertion } from "@oh-my-pi/pi-natives";
+} from "jeopi-ai";
+import * as AIError from "jeopi-ai/error";
+import { toolWireSchema } from "jeopi-ai/utils/schema";
+import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "jeopi-ai/utils/thinking-loop";
+import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "jeopi-ai/utils/tool-call-loop-guard";
+import { isFireworksFastModelId, toFireworksBaseModelId } from "jeopi-catalog/fireworks-model-id";
+import { getSupportedEfforts } from "jeopi-catalog/model-thinking";
+import { modelsAreEqual } from "jeopi-catalog/models";
+import type { InMemorySnapshotStore } from "jeopi-hashline";
+import { Patch } from "jeopi-hashline";
+import { MacOSPowerAssertion } from "jeopi-natives";
+import * as snapcompact from "jeopi-snapcompact";
 import {
 	extractRetryHint,
 	formatDuration,
@@ -134,8 +134,7 @@ import {
 	Snowflake,
 	setProjectDir,
 	withTimeout,
-} from "@oh-my-pi/pi-utils";
-import * as snapcompact from "@oh-my-pi/snapcompact";
+} from "jeopi-utils";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	AdviseTool,

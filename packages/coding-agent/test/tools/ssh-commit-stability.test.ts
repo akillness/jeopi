@@ -12,10 +12,10 @@
  * again.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ToolExecutionComponent } from "@oh-my-pi/pi-coding-agent/modes/components/tool-execution";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { TUI } from "@oh-my-pi/pi-tui";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { ToolExecutionComponent } from "jeopi-cli/modes/components/tool-execution";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
+import type { TUI } from "jeopi-tui";
 
 const uiStub = { requestRender() {} } as unknown as TUI;
 

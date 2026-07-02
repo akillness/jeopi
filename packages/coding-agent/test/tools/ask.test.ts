@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import type { AgentToolContext } from "@oh-my-pi/pi-agent-core";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { getThemeByName, initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { AskTool, askToolRenderer } from "@oh-my-pi/pi-coding-agent/tools/ask";
-import { ToolAbortError } from "@oh-my-pi/pi-coding-agent/tools/tool-errors";
+import type { AgentToolContext } from "jeopi-agent-core";
+import { Settings } from "jeopi-cli/config/settings";
+import type { ExtensionUISelectItem } from "jeopi-cli/extensibility/extensions";
+import { getThemeByName, initTheme } from "jeopi-cli/modes/theme/theme";
+import type { ToolSession } from "jeopi-cli/tools";
+import { AskTool, askToolRenderer } from "jeopi-cli/tools/ask";
+import { ToolAbortError } from "jeopi-cli/tools/tool-errors";
 
 function createSession(overrides: Partial<ToolSession> = {}): ToolSession {
 	return {

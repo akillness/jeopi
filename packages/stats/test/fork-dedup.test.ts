@@ -2,10 +2,10 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { syncAllSessions } from "@oh-my-pi/omp-stats/aggregator";
-import { closeDb, getOverallStats, getRecentRequests, initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
-import type { MessageStats } from "@oh-my-pi/omp-stats/types";
-import { getSessionsDir, getStatsDbPath } from "@oh-my-pi/pi-utils";
+import { syncAllSessions } from "jeopi-stats/aggregator";
+import { closeDb, getOverallStats, getRecentRequests, initDb, insertMessageStats } from "jeopi-stats/db";
+import type { MessageStats } from "jeopi-stats/types";
+import { getSessionsDir, getStatsDbPath } from "jeopi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 installStatsTestIsolation("@pi-stats-fork-dedup-");

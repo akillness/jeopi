@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Effort } from "@oh-my-pi/pi-ai";
-import { clearCustomApis } from "@oh-my-pi/pi-ai/api-registry";
-import { createMockModel, registerMockApi } from "@oh-my-pi/pi-ai/providers/mock";
-import { __providerInFlightForTesting, streamSimple } from "@oh-my-pi/pi-ai/stream";
-import type { Context } from "@oh-my-pi/pi-ai/types";
+import { YAML } from "bun";
+import { Effort } from "jeopi-ai";
+import { clearCustomApis } from "jeopi-ai/api-registry";
+import { createMockModel, registerMockApi } from "jeopi-ai/providers/mock";
+import { __providerInFlightForTesting, streamSimple } from "jeopi-ai/stream";
+import type { Context } from "jeopi-ai/types";
 import {
 	getDefault,
 	getEnumValues,
@@ -14,10 +15,9 @@ import {
 	resetSettingsForTest,
 	type SettingPath,
 	Settings,
-} from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
-import { getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
-import { YAML } from "bun";
+} from "jeopi-cli/config/settings";
+import { AgentStorage } from "jeopi-cli/session/agent-storage";
+import { getProjectAgentDir, TempDir } from "jeopi-utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 function context(): Context {

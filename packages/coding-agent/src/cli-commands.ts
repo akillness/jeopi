@@ -8,7 +8,7 @@
  * `launch` — see #1496 for the original "args silently leak to the LLM"
  * regression that motivated the split.
  */
-import type { CommandEntry } from "@oh-my-pi/pi-utils/cli";
+import type { CommandEntry } from "jeopi-utils/cli";
 import { flagConsumesValue } from "./cli/flag-tables";
 
 export const commands: CommandEntry[] = [

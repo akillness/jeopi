@@ -1,4 +1,4 @@
-import type { ServiceTier, ServiceTierByFamily } from "@oh-my-pi/pi-ai";
+import type { ServiceTier, ServiceTierByFamily } from "jeopi-ai";
 import type { SubmenuOption } from "./settings-schema";
 
 /**

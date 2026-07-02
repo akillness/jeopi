@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { prompt } from "@oh-my-pi/pi-utils";
 /**
  * Format prompt files (mixed XML + Markdown + Handlebars).
  *
@@ -15,6 +14,7 @@ import { prompt } from "@oh-my-pi/pi-utils";
  * 9. Bold RFC 2119 keywords (MUST, SHOULD, MAY, etc.) in prompt content
  */
 import { Glob } from "bun";
+import { prompt } from "jeopi-utils";
 
 const PROMPTS_DIR = `${import.meta.dir}/../src/prompts/`;
 const COMMIT_PROMPTS_DIR = `${import.meta.dir}/../src/commit/prompts/`;

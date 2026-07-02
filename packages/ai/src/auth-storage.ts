@@ -10,7 +10,7 @@
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDbPath, logger } from "@oh-my-pi/pi-utils";
+import { getAgentDbPath, logger } from "jeopi-utils";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
@@ -561,7 +561,7 @@ const OAUTH_REFRESH_SKEW_MS = 60_000;
 const MAX_PENDING_DISABLED_EVENTS = 32;
 
 // Re-exported from the error module (its new home) to preserve the public
-// `@oh-my-pi/pi-ai` entrypoint and the in-module call sites below.
+// `jeopi-ai` entrypoint and the in-module call sites below.
 export { isDefinitiveOAuthFailure } from "./error/auth-classify";
 
 /**

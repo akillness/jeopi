@@ -9,12 +9,9 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { Usage } from "@oh-my-pi/pi-ai";
-import {
-	RedisSessionStorage,
-	type RedisSessionStorageClient,
-} from "@oh-my-pi/pi-coding-agent/session/redis-session-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
+import type { Usage } from "jeopi-ai";
+import { RedisSessionStorage, type RedisSessionStorageClient } from "jeopi-cli/session/redis-session-storage";
+import { SessionManager } from "jeopi-cli/session/session-manager";
 
 interface FakeRedis extends RedisSessionStorageClient {
 	strings: Map<string, string>;

@@ -47,8 +47,8 @@ See [docs/custom-tools.md](../../docs/custom-tools.md) for full documentation.
 **Factory pattern:**
 
 ```typescript
-import { Text } from "@oh-my-pi/pi-tui";
-import type { CustomToolFactory } from "@oh-my-pi/pi-coding-agent";
+import { Text } from "jeopi-tui";
+import type { CustomToolFactory } from "jeopi-cli";
 
 const factory: CustomToolFactory = (pi) => ({
 	name: "my_tool",

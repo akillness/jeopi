@@ -4,16 +4,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gunzipSync } from "node:zlib";
-import { runGcCommand } from "@oh-my-pi/pi-coding-agent/cli/gc-cli";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import {
-	getAgentDir,
-	getBlobsDir,
-	getHistoryDbPath,
-	getSessionsDir,
-	setAgentDir,
-	setProjectDir,
-} from "@oh-my-pi/pi-utils";
+import { runGcCommand } from "jeopi-cli/cli/gc-cli";
+import { Settings } from "jeopi-cli/config/settings";
+import { getAgentDir, getBlobsDir, getHistoryDbPath, getSessionsDir, setAgentDir, setProjectDir } from "jeopi-utils";
 import { runCli } from "../src/cli";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 

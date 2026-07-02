@@ -1,14 +1,14 @@
+import { type } from "arktype";
 import type {
 	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	CustomMessage,
-} from "@oh-my-pi/pi-agent-core";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Text } from "@oh-my-pi/pi-tui";
-import { prompt, untilAborted } from "@oh-my-pi/pi-utils";
-import { type } from "arktype";
+} from "jeopi-agent-core";
+import type { Component } from "jeopi-tui";
+import { Text } from "jeopi-tui";
+import { prompt, untilAborted } from "jeopi-utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
 import resolveDescription from "../prompts/tools/resolve.md" with { type: "text" };

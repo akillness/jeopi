@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentEvent } from "@oh-my-pi/pi-agent-core";
-import { defineRpcClientTool, RpcClient } from "@oh-my-pi/pi-coding-agent/modes";
-import { RpcHostToolBridge } from "@oh-my-pi/pi-coding-agent/modes/rpc/host-tools";
+import type { AgentEvent } from "jeopi-agent-core";
+import { defineRpcClientTool, RpcClient } from "jeopi-cli/modes";
+import { RpcHostToolBridge } from "jeopi-cli/modes/rpc/host-tools";
 import type {
 	RpcHostToolCallRequest,
 	RpcHostToolCancelRequest,
 	RpcHostToolUpdate,
-} from "@oh-my-pi/pi-coding-agent/modes/rpc/rpc-types";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/modes/rpc/rpc-types";
+import { removeWithRetries } from "jeopi-utils";
 
 const tempPaths: string[] = [];
 

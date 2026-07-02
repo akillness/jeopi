@@ -1,7 +1,7 @@
-import type { ImageContent, Message, Model, TextContent } from "@oh-my-pi/pi-ai";
-import type { Component, TUI } from "@oh-my-pi/pi-tui";
-import type { logger as PiLogger } from "@oh-my-pi/pi-utils";
 import type { Type } from "arktype";
+import type { ImageContent, Message, Model, TextContent } from "jeopi-ai";
+import type { Component, TUI } from "jeopi-tui";
+import type { logger as PiLogger } from "jeopi-utils";
 import type * as zod from "zod/v4";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { EditToolDetails } from "../../edit";

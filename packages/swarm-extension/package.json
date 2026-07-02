@@ -1,18 +1,18 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/swarm-extension",
+  "name": "jeopi-swarm-extension",
   "version": "16.2.13",
-  "description": "Swarm orchestration extension for omp",
-  "homepage": "https://omp.sh",
+  "description": "Swarm orchestration extension for jeopi",
+  "homepage": "https://github.com/akillness/jeopi",
   "author": "Derek Rynd",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/akillness/jeopi.git",
     "directory": "packages/swarm-extension"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/akillness/jeopi/issues"
   },
   "keywords": [
     "swarm",
@@ -21,7 +21,7 @@
     "extension"
   ],
   "bin": {
-    "omp-swarm": "src/cli.ts"
+    "jeopi-swarm": "src/cli.ts"
   },
   "scripts": {
     "check": "biome check . && bun run check:types",
@@ -31,13 +31,13 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@oh-my-pi/pi-utils": "workspace:*"
+    "jeopi-utils": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14"
   },
   "peerDependencies": {
-    "@oh-my-pi/pi-coding-agent": "^13"
+    "jeopi-cli": "workspace:^"
   },
   "engines": {
     "bun": ">=1.3.14"

@@ -2,16 +2,16 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, type CredentialDisabledEvent } from "@oh-my-pi/pi-ai";
-import * as oauthUtils from "@oh-my-pi/pi-ai/oauth";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { Extension, ExtensionError, ExtensionFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { ExtensionRuntime } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
-import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
+import { AuthStorage, type CredentialDisabledEvent } from "jeopi-ai";
+import * as oauthUtils from "jeopi-ai/oauth";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import type { Extension, ExtensionError, ExtensionFactory } from "jeopi-cli/extensibility/extensions";
+import { ExtensionRunner } from "jeopi-cli/extensibility/extensions";
+import { ExtensionRuntime } from "jeopi-cli/extensibility/extensions/loader";
+import { createAgentSession } from "jeopi-cli/sdk";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 
 interface SessionDirs {
 	cwd: string;

@@ -1,19 +1,19 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/collab-web",
+  "name": "jeopi-collab-web",
   "version": "15.11.7",
   "private": true,
   "description": "Browser guest client and local relay tools for omp collab live sessions",
-  "homepage": "https://omp.sh",
+  "homepage": "https://github.com/akillness/jeopi",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/akillness/jeopi.git",
     "directory": "packages/collab-web"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/akillness/jeopi/issues"
   },
   "keywords": [
     "collab",
@@ -37,7 +37,7 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@oh-my-pi/pi-wire": "catalog:",
+    "jeopi-wire": "catalog:",
     "lucide-react": "catalog:",
     "marked": "catalog:",
     "react": "catalog:",

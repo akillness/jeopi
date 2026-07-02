@@ -2,18 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { Settings } from "jeopi-cli/config/settings";
 import {
 	buildMemoryToolDeveloperInstructions,
 	getMemoryRoot,
 	refreshMemoryToolDeveloperInstructionsCacheAfterStartup,
 	saveLearnedLesson,
-} from "@oh-my-pi/pi-coding-agent/memories";
-import { localBackend } from "@oh-my-pi/pi-coding-agent/memory-backend/local-backend";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { LearnTool } from "@oh-my-pi/pi-coding-agent/tools/learn";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "jeopi-cli/memories";
+import { localBackend } from "jeopi-cli/memory-backend/local-backend";
+import type { AgentSession } from "jeopi-cli/session/agent-session";
+import type { ToolSession } from "jeopi-cli/tools";
+import { LearnTool } from "jeopi-cli/tools/learn";
+import { removeWithRetries } from "jeopi-utils";
 
 Bun.env.PI_PYTHON_SKIP_CHECK = "1";
 

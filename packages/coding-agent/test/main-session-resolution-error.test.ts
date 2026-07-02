@@ -6,10 +6,10 @@
  * `[Uncaught Exception]`.
  */
 import { describe, expect, it, vi } from "bun:test";
-import type { Args } from "@oh-my-pi/pi-coding-agent/cli/args";
-import type { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { createSessionManager, SessionResolutionError, writeStartupNotice } from "@oh-my-pi/pi-coding-agent/main";
-import * as sessionListingModule from "@oh-my-pi/pi-coding-agent/session/session-listing";
+import type { Args } from "jeopi-cli/cli/args";
+import type { Settings } from "jeopi-cli/config/settings";
+import { createSessionManager, SessionResolutionError, writeStartupNotice } from "jeopi-cli/main";
+import * as sessionListingModule from "jeopi-cli/session/session-listing";
 
 function buildResumeArgs(resume: string): Args {
 	return {

@@ -3,10 +3,10 @@
  */
 
 import * as os from "node:os";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core";
-import type { ToolExample, TSchema } from "@oh-my-pi/pi-ai";
-import { renderToolInventory } from "@oh-my-pi/pi-ai/dialect";
-import { $env, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
+import type { AgentTool } from "jeopi-agent-core";
+import type { ToolExample, TSchema } from "jeopi-ai";
+import { renderToolInventory } from "jeopi-ai/dialect";
+import { $env, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "jeopi-utils";
 import { contextFileCapability } from "./capability/context-file";
 import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";

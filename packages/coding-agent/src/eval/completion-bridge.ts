@@ -11,10 +11,11 @@
  * The call is oneshot and toolless from the model's perspective — pure text
  * in, text (or, with `schema`, a structured object) out.
  */
-import { instrumentedCompleteSimple, resolveTelemetry } from "@oh-my-pi/pi-agent-core";
-import { type Api, Effort, type Model, type Tool } from "@oh-my-pi/pi-ai";
-import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
+
 import { type } from "arktype";
+import { instrumentedCompleteSimple, resolveTelemetry } from "jeopi-agent-core";
+import { type Api, Effort, type Model, type Tool } from "jeopi-ai";
+import { getSupportedEfforts } from "jeopi-catalog/model-thinking";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
 
 import {

@@ -2,13 +2,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { type ExecuteHashlineSingleOptions, executeHashlineSingle } from "@oh-my-pi/pi-coding-agent/edit";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import type { ReadToolDetails } from "@oh-my-pi/pi-coding-agent/tools/read";
-import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import type { AgentToolResult } from "jeopi-agent-core";
+import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
+import { type ExecuteHashlineSingleOptions, executeHashlineSingle } from "jeopi-cli/edit";
+import type { ToolSession } from "jeopi-cli/tools";
+import type { ReadToolDetails } from "jeopi-cli/tools/read";
+import { ReadTool } from "jeopi-cli/tools/read";
+import { removeWithRetries } from "jeopi-utils";
 
 function textOutput(result: AgentToolResult<ReadToolDetails>): string {
 	return result.content

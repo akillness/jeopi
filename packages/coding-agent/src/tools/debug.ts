@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { type } from "arktype";
 import type {
 	AgentTool,
 	AgentToolContext,
@@ -6,11 +7,10 @@ import type {
 	AgentToolUpdateCallback,
 	RenderResultOptions,
 	ToolApprovalDecision,
-} from "@oh-my-pi/pi-agent-core";
-import type { ToolExample } from "@oh-my-pi/pi-ai";
-import { type Component, Text } from "@oh-my-pi/pi-tui";
-import { isEnoent, prompt } from "@oh-my-pi/pi-utils";
-import { type } from "arktype";
+} from "jeopi-agent-core";
+import type { ToolExample } from "jeopi-ai";
+import { type Component, Text } from "jeopi-tui";
+import { isEnoent, prompt } from "jeopi-utils";
 import {
 	type DapBreakpointRecord,
 	type DapCapabilities,

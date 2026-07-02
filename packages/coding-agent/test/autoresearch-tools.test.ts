@@ -1,23 +1,23 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { createSessionRuntime } from "@oh-my-pi/pi-coding-agent/autoresearch/state";
+import { $ } from "bun";
+import type { ImageContent, TextContent } from "jeopi-ai";
+import { createSessionRuntime } from "jeopi-cli/autoresearch/state";
 import {
 	type AutoresearchStorage,
 	closeAllAutoresearchStorages,
 	openAutoresearchStorage,
 	type SessionRow,
-} from "@oh-my-pi/pi-coding-agent/autoresearch/storage";
-import { createInitExperimentTool } from "@oh-my-pi/pi-coding-agent/autoresearch/tools/init-experiment";
-import { createLogExperimentTool } from "@oh-my-pi/pi-coding-agent/autoresearch/tools/log-experiment";
-import { createRunExperimentTool } from "@oh-my-pi/pi-coding-agent/autoresearch/tools/run-experiment";
-import { createUpdateNotesTool } from "@oh-my-pi/pi-coding-agent/autoresearch/tools/update-notes";
-import type { ASIData, LogDetails, NumericMetricMap, RunDetails } from "@oh-my-pi/pi-coding-agent/autoresearch/types";
-import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import * as git from "@oh-my-pi/pi-coding-agent/utils/git";
-import { TempDir } from "@oh-my-pi/pi-utils";
-import { $ } from "bun";
+} from "jeopi-cli/autoresearch/storage";
+import { createInitExperimentTool } from "jeopi-cli/autoresearch/tools/init-experiment";
+import { createLogExperimentTool } from "jeopi-cli/autoresearch/tools/log-experiment";
+import { createRunExperimentTool } from "jeopi-cli/autoresearch/tools/run-experiment";
+import { createUpdateNotesTool } from "jeopi-cli/autoresearch/tools/update-notes";
+import type { ASIData, LogDetails, NumericMetricMap, RunDetails } from "jeopi-cli/autoresearch/types";
+import type { ExtensionAPI, ExtensionContext } from "jeopi-cli/extensibility/extensions";
+import * as git from "jeopi-cli/utils/git";
+import { TempDir } from "jeopi-utils";
 
 afterEach(() => {
 	vi.restoreAllMocks();

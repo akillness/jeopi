@@ -12,8 +12,8 @@
  * Architecture reverse-engineered from Perplexity macOS app (ai.perplexity.mac).
  */
 import * as os from "node:os";
-import { $env } from "@oh-my-pi/pi-utils";
 import { $ } from "bun";
+import { $env } from "jeopi-utils";
 import * as AIError from "../../error";
 import type { OAuthController, OAuthCredentials } from "./types";
 

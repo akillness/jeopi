@@ -1,4 +1,4 @@
-import { logger, Snowflake, workerHostEntry } from "@oh-my-pi/pi-utils";
+import { logger, Snowflake, workerHostEntry } from "jeopi-utils";
 import type { ToolSession } from "../../tools";
 import { ToolAbortError, ToolError } from "../../tools/tool-errors";
 import { callSessionTool, type JsStatusEvent } from "./tool-bridge";

@@ -1,19 +1,13 @@
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import { formatHashlineHeader } from "@oh-my-pi/hashline";
-import type {
-	AgentTool,
-	AgentToolContext,
-	AgentToolResult,
-	AgentToolUpdateCallback,
-	ToolTier,
-} from "@oh-my-pi/pi-agent-core";
-import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@oh-my-pi/pi-natives";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Text } from "@oh-my-pi/pi-tui";
-import { prompt, untilAborted } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback, ToolTier } from "jeopi-agent-core";
+import { formatHashlineHeader } from "jeopi-hashline";
+import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "jeopi-natives";
+import type { Component } from "jeopi-tui";
+import { Text } from "jeopi-tui";
+import { prompt, untilAborted } from "jeopi-utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";

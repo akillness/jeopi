@@ -9,17 +9,17 @@ import type {
 	ProviderSessionState,
 	ToolResultMessage,
 	Usage,
-} from "@oh-my-pi/pi-ai/types";
-import { createOpenAIResponsesHistoryPayload } from "@oh-my-pi/pi-ai/utils";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import type { SessionEntry, SessionMessageEntry } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
+} from "jeopi-ai/types";
+import { createOpenAIResponsesHistoryPayload } from "jeopi-ai/utils";
+import { getBundledModel } from "jeopi-catalog/models";
+import { ModelRegistry } from "jeopi-cli/config/model-registry";
+import { Settings } from "jeopi-cli/config/settings";
+import { createAgentSession } from "jeopi-cli/sdk";
+import type { AgentSession } from "jeopi-cli/session/agent-session";
+import { AuthStorage } from "jeopi-cli/session/auth-storage";
+import type { SessionEntry, SessionMessageEntry } from "jeopi-cli/session/session-entries";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 
 function createUsage(): Usage {
 	return {

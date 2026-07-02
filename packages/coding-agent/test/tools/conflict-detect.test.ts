@@ -8,8 +8,8 @@ import {
 	renderConflictRegion,
 	scanConflictLines,
 	spliceConflict,
-} from "@oh-my-pi/pi-coding-agent/tools/conflict-detect";
-import { ToolError } from "@oh-my-pi/pi-coding-agent/tools/tool-errors";
+} from "jeopi-cli/tools/conflict-detect";
+import { ToolError } from "jeopi-cli/tools/tool-errors";
 
 describe("scanConflictLines", () => {
 	it("detects a 2-way conflict with correct line numbers and labels", () => {

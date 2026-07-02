@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { InteractiveMode } from "@oh-my-pi/pi-coding-agent/modes/interactive-mode";
-import { initTheme, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import * as sessionColor from "@oh-my-pi/pi-coding-agent/utils/session-color";
-import type { Container, NativeScrollbackLiveRegion } from "@oh-my-pi/pi-tui";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { resetSettingsForTest, Settings, settings } from "jeopi-cli/config/settings";
+import { InteractiveMode } from "jeopi-cli/modes/interactive-mode";
+import { initTheme, theme } from "jeopi-cli/modes/theme/theme";
+import type { AgentSession } from "jeopi-cli/session/agent-session";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import * as sessionColor from "jeopi-cli/utils/session-color";
+import type { Container, NativeScrollbackLiveRegion } from "jeopi-tui";
+import { TempDir } from "jeopi-utils";
 
 type Harness = {
 	mode: InteractiveMode;

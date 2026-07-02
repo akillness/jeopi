@@ -1,18 +1,11 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
-import { formatHashlineHeader, stripHashlinePrefixes } from "@oh-my-pi/hashline";
-import type {
-	AgentTool,
-	AgentToolContext,
-	AgentToolResult,
-	AgentToolUpdateCallback,
-	ToolTier,
-} from "@oh-my-pi/pi-agent-core";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { isEnoent, isRecord, prompt, untilAborted } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback, ToolTier } from "jeopi-agent-core";
+import { formatHashlineHeader, stripHashlinePrefixes } from "jeopi-hashline";
+import type { Component } from "jeopi-tui";
+import { isEnoent, isRecord, prompt, untilAborted } from "jeopi-utils";
 
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";

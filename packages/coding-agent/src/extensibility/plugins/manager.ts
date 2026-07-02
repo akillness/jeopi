@@ -10,7 +10,7 @@ import {
 	getProjectPluginOverridesPath,
 	isEnoent,
 	logger,
-} from "@oh-my-pi/pi-utils";
+} from "jeopi-utils";
 import { withExitGuard } from "../utils";
 import { type GitSource, parseGitUrl } from "./git-url";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "./legacy-pi-compat";

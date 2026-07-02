@@ -1,6 +1,6 @@
-import { parseGeminiModel } from "@oh-my-pi/pi-catalog/identity";
-import { calculateCost } from "@oh-my-pi/pi-catalog/models";
-import { fetchWithRetry, readSseJson } from "@oh-my-pi/pi-utils";
+import { parseGeminiModel } from "jeopi-catalog/identity";
+import { calculateCost } from "jeopi-catalog/models";
+import { fetchWithRetry, readSseJson } from "jeopi-utils";
 import * as AIError from "../error";
 import type {
 	AssistantMessage,

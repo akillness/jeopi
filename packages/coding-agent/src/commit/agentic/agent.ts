@@ -1,9 +1,9 @@
-import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Api, Model } from "@oh-my-pi/pi-ai";
-import { Markdown } from "@oh-my-pi/pi-tui";
-import { prompt } from "@oh-my-pi/pi-utils";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import chalk from "chalk";
+import type { ThinkingLevel } from "jeopi-agent-core";
+import type { Api, Model } from "jeopi-ai";
+import { Markdown } from "jeopi-tui";
+import { prompt } from "jeopi-utils";
+import { INTENT_FIELD } from "jeopi-wire";
 import typesDescriptionPrompt from "../../commit/prompts/types-description.md" with { type: "text" };
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";

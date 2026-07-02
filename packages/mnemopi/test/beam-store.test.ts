@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { initBeam } from "@oh-my-pi/pi-mnemopi/core/beam/schema";
+import { initBeam } from "jeopi-mnemopi/core/beam/schema";
 import {
 	exportToDict,
 	forgetWorking,
@@ -15,9 +15,9 @@ import {
 	scratchpadRead,
 	scratchpadWrite,
 	updateWorking,
-} from "@oh-my-pi/pi-mnemopi/core/beam/store";
-import type { BeamEvent, BeamMemoryState } from "@oh-my-pi/pi-mnemopi/core/beam/types";
-import { openDatabase } from "@oh-my-pi/pi-mnemopi/db";
+} from "jeopi-mnemopi/core/beam/store";
+import type { BeamEvent, BeamMemoryState } from "jeopi-mnemopi/core/beam/types";
+import { openDatabase } from "jeopi-mnemopi/db";
 
 const states: BeamMemoryState[] = [];
 

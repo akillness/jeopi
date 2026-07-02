@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { isUsageLimit } from "@oh-my-pi/pi-ai/error/flags";
+import { isUsageLimit } from "jeopi-ai/error/flags";
 import {
 	calculateRateLimitBackoffMs,
 	isUsageLimitOutcome,
 	isUsageLimitStatus,
 	parseRateLimitReason,
-} from "@oh-my-pi/pi-ai/error/rate-limit";
+} from "jeopi-ai/error/rate-limit";
 
 describe("parseRateLimitReason", () => {
 	it("classifies Google Quota exceeded as QUOTA_EXHAUSTED", () => {

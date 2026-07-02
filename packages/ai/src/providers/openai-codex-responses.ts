@@ -1,12 +1,8 @@
 import * as os from "node:os";
 import { scheduler } from "node:timers/promises";
-import { calculateCost } from "@oh-my-pi/pi-catalog/models";
-import {
-	CODEX_BASE_URL,
-	getCodexAccountId,
-	OPENAI_HEADER_VALUES,
-	OPENAI_HEADERS,
-} from "@oh-my-pi/pi-catalog/wire/codex";
+import { type } from "arktype";
+import { calculateCost } from "jeopi-catalog/models";
+import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "jeopi-catalog/wire/codex";
 import {
 	$env,
 	$flag,
@@ -16,8 +12,7 @@ import {
 	parseStreamingJson,
 	readSseJson,
 	structuredCloneJSON,
-} from "@oh-my-pi/pi-utils";
-import { type } from "arktype";
+} from "jeopi-utils";
 import packageJson from "../../package.json" with { type: "json" };
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";

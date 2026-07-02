@@ -1,8 +1,8 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
-import type { ToolExample } from "@oh-my-pi/pi-ai";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { prompt } from "@oh-my-pi/pi-utils";
 import { type } from "arktype";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "jeopi-agent-core";
+import type { ToolExample } from "jeopi-ai";
+import type { Component } from "jeopi-tui";
+import { prompt } from "jeopi-utils";
 import type { SSHHost } from "../capability/ssh";
 import { sshCapability } from "../capability/ssh";
 import { loadCapability } from "../discovery";

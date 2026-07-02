@@ -1,14 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import {
-	convertCodexResponsesMessages,
-	streamOpenAICodexResponses,
-} from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
-import { type OpenAIResponsesOptions, streamOpenAIResponses } from "@oh-my-pi/pi-ai/providers/openai-responses";
-import { buildResponsesInput } from "@oh-my-pi/pi-ai/providers/openai-shared";
-import type { Context, Model, ModelSpec, ProviderSessionState } from "@oh-my-pi/pi-ai/types";
-import { createOpenAIResponsesHistoryPayload, truncateResponseItemId } from "@oh-my-pi/pi-ai/utils";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+import { convertCodexResponsesMessages, streamOpenAICodexResponses } from "jeopi-ai/providers/openai-codex-responses";
+import { type OpenAIResponsesOptions, streamOpenAIResponses } from "jeopi-ai/providers/openai-responses";
+import { buildResponsesInput } from "jeopi-ai/providers/openai-shared";
+import type { Context, Model, ModelSpec, ProviderSessionState } from "jeopi-ai/types";
+import { createOpenAIResponsesHistoryPayload, truncateResponseItemId } from "jeopi-ai/utils";
+import { buildModel } from "jeopi-catalog/build";
+import { getBundledModel } from "jeopi-catalog/models";
 
 function createAbortedSignal(): AbortSignal {
 	const controller = new AbortController();

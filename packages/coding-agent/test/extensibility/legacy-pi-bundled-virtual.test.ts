@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	__getLegacyPiBundledRegistryGlobal,
 	__synthesizeLegacyPiBundledSourceWithRegistry,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
+} from "jeopi-cli/extensibility/plugins/legacy-pi-compat";
 
 // Regression for issue #3423: Bun 1.3.14 made `--compile` extras unreachable
 // via every filesystem-style API, so `legacy-pi-compat.ts` now routes
@@ -10,16 +10,16 @@ import {
 // re-exports a live registry entry from `globalThis`. The synthesizer must
 // preserve every named export (and a default if present) so legacy
 // extensions see the same surface they would have through a real `file://`
-// load — otherwise `import { foo } from "@oh-my-pi/pi-coding-agent"` raises
+// load — otherwise `import { foo } from "jeopi-cli"` raises
 // `Export named 'foo' not found in module ...`.
 describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	const registry = {
-		"@oh-my-pi/pi-coding-agent": {
+		jeopi: {
 			VERSION: "16.1.17",
 			defineTool: () => undefined,
 			Type: { Object: () => undefined },
 		},
-		"@oh-my-pi/pi-utils": {
+		"jeopi-utils": {
 			isCompiledBinary: () => false,
 			default: () => "default-export",
 			VERSION: "16.1.17",
@@ -31,10 +31,8 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	const globalKey = __getLegacyPiBundledRegistryGlobal();
 
 	it("emits one ES named export per enumerable namespace key", () => {
-		const src = __synthesizeLegacyPiBundledSourceWithRegistry("@oh-my-pi/pi-coding-agent", registry);
-		expect(src).toContain(
-			`const __omp_bundled = globalThis[${JSON.stringify(globalKey)}]["@oh-my-pi/pi-coding-agent"];`,
-		);
+		const src = __synthesizeLegacyPiBundledSourceWithRegistry("jeopi", registry);
+		expect(src).toContain(`const __omp_bundled = globalThis[${JSON.stringify(globalKey)}]["jeopi"];`);
 		expect(src).toContain('export const VERSION = __omp_bundled["VERSION"];');
 		expect(src).toContain('export const defineTool = __omp_bundled["defineTool"];');
 		expect(src).toContain('export const Type = __omp_bundled["Type"];');
@@ -43,7 +41,7 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	});
 
 	it("forwards `default` through `export default` so default imports survive", () => {
-		const src = __synthesizeLegacyPiBundledSourceWithRegistry("@oh-my-pi/pi-utils", registry);
+		const src = __synthesizeLegacyPiBundledSourceWithRegistry("jeopi-utils", registry);
 		expect(src).toContain("export default __omp_bundled.default;");
 		// Default and named exports coexist on the same module.
 		expect(src).toContain('export const VERSION = __omp_bundled["VERSION"];');
@@ -51,7 +49,7 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	});
 
 	it("omits `default` line when the registered namespace has no default export", () => {
-		const src = __synthesizeLegacyPiBundledSourceWithRegistry("@oh-my-pi/pi-coding-agent", registry);
+		const src = __synthesizeLegacyPiBundledSourceWithRegistry("jeopi", registry);
 		expect(src).not.toContain("export default");
 	});
 
@@ -77,7 +75,7 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 		// or skipped an enumerable export.
 		(globalThis as Record<string, unknown>)[globalKey] = registry;
 		try {
-			const src = __synthesizeLegacyPiBundledSourceWithRegistry("@oh-my-pi/pi-coding-agent", registry);
+			const src = __synthesizeLegacyPiBundledSourceWithRegistry("jeopi", registry);
 			// Strip the ES export prefix and run the body as a plain script so
 			// we can read `__omp_bundled` from the returned closure.
 			const body = src

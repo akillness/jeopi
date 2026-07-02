@@ -7,8 +7,8 @@
  * - Convenience helpers: captureText / execText, AbortSignal, timeouts.
  */
 
-import { Process } from "@oh-my-pi/pi-natives";
 import type { Spawn, Subprocess } from "bun";
+import { Process } from "jeopi-natives";
 
 type InMask = "pipe" | "ignore" | Buffer | Uint8Array | null;
 

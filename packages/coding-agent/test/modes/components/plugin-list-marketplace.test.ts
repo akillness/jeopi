@@ -1,19 +1,16 @@
 import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import * as os from "node:os";
 import { stripVTControlCharacters } from "node:util";
-import { PluginManager } from "@oh-my-pi/pi-coding-agent/extensibility/plugins";
-import {
-	type InstalledPluginSummary,
-	MarketplaceManager,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/marketplace";
-import type { InstalledPlugin } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/types";
+import { PluginManager } from "jeopi-cli/extensibility/plugins";
+import { type InstalledPluginSummary, MarketplaceManager } from "jeopi-cli/extensibility/plugins/marketplace";
+import type { InstalledPlugin } from "jeopi-cli/extensibility/plugins/types";
 import {
 	MarketplacePluginDetailComponent,
 	PluginListComponent,
 	type PluginListEntry,
 	PluginSettingsComponent,
-} from "@oh-my-pi/pi-coding-agent/modes/components/plugin-settings";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+} from "jeopi-cli/modes/components/plugin-settings";
+import { initTheme } from "jeopi-cli/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

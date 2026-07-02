@@ -6,23 +6,23 @@
  * behavior they have in the TUI.
  */
 import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
-import { Agent, type AgentTool } from "@oh-my-pi/pi-agent-core";
-import { createMockModel, type MockModelOptions } from "@oh-my-pi/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { type SettingPath, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { EditTool } from "@oh-my-pi/pi-coding-agent/edit";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import { type } from "arktype";
+import { Agent, type AgentTool } from "jeopi-agent-core";
+import { createMockModel, type MockModelOptions } from "jeopi-ai/providers/mock";
+import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
+import { getBundledModel } from "jeopi-catalog/models";
+import { type SettingPath, Settings } from "jeopi-cli/config/settings";
+import { EditTool } from "jeopi-cli/edit";
+import { AgentSession } from "jeopi-cli/session/agent-session";
 import type {
 	ClientBridge,
 	ClientBridgePermissionOutcome,
 	ClientBridgePermissionToolCall,
-} from "@oh-my-pi/pi-coding-agent/session/client-bridge";
-import { convertToLlm } from "@oh-my-pi/pi-coding-agent/session/messages";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { TempDir } from "@oh-my-pi/pi-utils";
-import { type } from "arktype";
+} from "jeopi-cli/session/client-bridge";
+import { convertToLlm } from "jeopi-cli/session/messages";
+import { SessionManager } from "jeopi-cli/session/session-manager";
+import type { ToolSession } from "jeopi-cli/tools";
+import { TempDir } from "jeopi-utils";
 
 // ---------------------------------------------------------------------------
 // Shared setup

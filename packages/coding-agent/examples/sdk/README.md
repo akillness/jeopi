@@ -29,7 +29,7 @@ npx tsx examples/sdk/01-minimal.ts
 ## Quick Reference
 
 ```typescript
-import { getModel } from "@oh-my-pi/pi-ai";
+import { getModel } from "jeopi-ai";
 import {
 	AuthStorage,
 	createAgentSession,
@@ -48,7 +48,7 @@ import {
 	HIDDEN_TOOLS,
 	createTools,
 	ResolveTool,
-} from "@oh-my-pi/pi-coding-agent";
+} from "jeopi-cli";
 
 // Auth and models setup
 const authStorage = discoverAuthStorage();

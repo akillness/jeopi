@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import type { AgentMessage } from "jeopi-agent-core";
 
 // Single-entry memo for the proseOnly formatting path. During a streaming tick
 // the same growing thinking text is formatted up to three times (reveal count,
