@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.19] - 2026-07-02
+
 ### Fixed
 
 - Fixed the startup update notice never appearing: the version check queried the nonexistent `jeopi` npm package (renamed CLI ships as `jeopi-cli`), so the 404 silently suppressed the "New version X is available" banner. The check now shares the updater's `NPM_PACKAGE`/`NPM_REGISTRY` constants so the notice and `jeopi update` can never target different packages.
