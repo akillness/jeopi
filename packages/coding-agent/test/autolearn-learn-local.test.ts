@@ -9,6 +9,7 @@ import {
 	refreshMemoryToolDeveloperInstructionsCacheAfterStartup,
 	saveLearnedLesson,
 } from "jeopi-cli/memories";
+import { stripOkfFrontmatter, validateOkfDocument } from "jeopi-cli/memories/okf";
 import { localBackend } from "jeopi-cli/memory-backend/local-backend";
 import type { AgentSession } from "jeopi-cli/session/agent-session";
 import type { ToolSession } from "jeopi-cli/tools";
@@ -39,9 +40,10 @@ describe("learned-lesson storage (local backend)", () => {
 			context: "from   the   build",
 		});
 		expect(result.stored).toBe(1);
-		expect(await Bun.file(learnedFile).text()).toBe(
-			"- Prefer Bun.file over readFileSync. _(context: from the build)_\n",
-		);
+		const text = await Bun.file(learnedFile).text();
+		// learned.md is an OKF atom; the lesson list is its body.
+		expect(validateOkfDocument(text)).toEqual([]);
+		expect(stripOkfFrontmatter(text).trim()).toBe("- Prefer Bun.file over readFileSync. _(context: from the build)_");
 	});
 
 	it("redacts secrets, including provider token prefixes, before persisting", async () => {
@@ -67,7 +69,9 @@ describe("learned-lesson storage (local backend)", () => {
 		await saveLearnedLesson(agentDir, projCwd, { content: "A" });
 		await saveLearnedLesson(agentDir, projCwd, { content: "B" });
 		await saveLearnedLesson(agentDir, projCwd, { content: "A" });
-		const lines = (await Bun.file(learnedFile).text()).trim().split("\n");
+		const lines = stripOkfFrontmatter(await Bun.file(learnedFile).text())
+			.trim()
+			.split("\n");
 		expect(lines).toEqual(["- A", "- B"]);
 	});
 
@@ -75,7 +79,9 @@ describe("learned-lesson storage (local backend)", () => {
 		for (let i = 0; i < 102; i++) {
 			await saveLearnedLesson(agentDir, projCwd, { content: `L${i}` });
 		}
-		const lines = (await Bun.file(learnedFile).text()).trim().split("\n");
+		const lines = stripOkfFrontmatter(await Bun.file(learnedFile).text())
+			.trim()
+			.split("\n");
 		expect(lines).toHaveLength(100);
 		expect(lines[0]).toBe("- L101");
 		expect(lines).not.toContain("- L0");
@@ -102,7 +108,7 @@ describe("learned-lesson storage (local backend)", () => {
 
 	it("bounds a single oversized lesson", async () => {
 		await saveLearnedLesson(agentDir, projCwd, { content: "X".repeat(5000) });
-		const line = (await Bun.file(learnedFile).text()).trim();
+		const line = stripOkfFrontmatter(await Bun.file(learnedFile).text()).trim();
 		// "- " prefix + at most MAX_LEARNED_CONTENT_CHARS (2000) content chars.
 		expect(line.length).toBeLessThanOrEqual(2002);
 		expect(line.length).toBeGreaterThan(1000);
