@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { type ResolvedThinkingLevel, ThinkingLevel } from "jeopi-agent-core";
-import { Effort, THINKING_EFFORTS } from "jeopi-ai";
+import { Effort, THINKING_EFFORTS } from "jeopi-catalog/effort";
 import { padding, visibleWidth } from "jeopi-tui";
 import { postmortem, TempDir } from "jeopi-utils";
 import { generateJsonReport, generateReport } from "./report";
