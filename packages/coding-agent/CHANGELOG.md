@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the startup update notice never appearing: the version check queried the nonexistent `jeopi` npm package (renamed CLI ships as `jeopi-cli`), so the 404 silently suppressed the "New version X is available" banner. The check now shares the updater's `NPM_PACKAGE`/`NPM_REGISTRY` constants so the notice and `jeopi update` can never target different packages.
+- Fixed Windows npm installs never finding a prebuilt native addon: the npm registry's name heuristic rejects `jeopi-natives-win32-x64` as spam, so the win32 leaf now publishes under the `jeopi-natives-windows-x64` alias. The native loader probes the alias first (falling back to the tag-derived name), and `jeopi update` pins the aliased leaf in lock-step with `jeopi-natives`.
+
 ## [16.2.18] - 2026-07-02
 
 ### Fixed

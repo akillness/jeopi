@@ -7,6 +7,18 @@ export interface LeafTarget {
 	tag: string;
 	os: string;
 	cpu: string;
+	/** npm package name override; defaults to `jeopi-natives-<tag>`. */
+	npmName?: string;
+}
+
+/**
+ * npm package name a leaf target publishes under. `npmName` overrides the
+ * `jeopi-natives-<tag>` default; keep every consumer (manifest generation,
+ * core optionalDependencies, npm-trust setup, the runtime loader, and
+ * `jeopi update`) on this mapping so the names can never drift.
+ */
+export function leafPackageName(target: Pick<LeafTarget, "tag" | "npmName">): string {
+	return target.npmName ?? `jeopi-natives-${target.tag}`;
 }
 
 export interface BuildLeafManifestInput extends LeafTarget {
@@ -52,7 +64,10 @@ export const LEAF_TARGETS: readonly LeafTarget[] = [
 	{ tag: "linux-arm64", os: "linux", cpu: "arm64" },
 	{ tag: "darwin-x64", os: "darwin", cpu: "x64" },
 	{ tag: "darwin-arm64", os: "darwin", cpu: "arm64" },
-	{ tag: "win32-x64", os: "win32", cpu: "x64" },
+	// The registry's name heuristic hard-rejects `jeopi-natives-win32-x64`
+	// with `403 Package name triggered spam detection` while accepting every
+	// sibling, so the win32 leaf publishes under the `windows-x64` alias.
+	{ tag: "win32-x64", os: "win32", cpu: "x64", npmName: "jeopi-natives-windows-x64" },
 ];
 
 const packageDirDefault = path.join(import.meta.dir, "..");
@@ -79,7 +94,7 @@ function selectPrimaryAddonFile(tag: string, files: readonly string[]): string {
 	return files[0];
 }
 
-export function buildLeafManifest({ tag, os, cpu, files, version }: BuildLeafManifestInput): LeafManifest {
+export function buildLeafManifest({ tag, os, cpu, files, version, npmName }: BuildLeafManifestInput): LeafManifest {
 	const addonFiles = [...new Set(files.map(file => path.basename(file)))];
 	if (addonFiles.length === 0) throw new Error(`No native addon files found for ${tag}`);
 	for (const file of addonFiles) {
@@ -87,7 +102,7 @@ export function buildLeafManifest({ tag, os, cpu, files, version }: BuildLeafMan
 	}
 	const main = selectPrimaryAddonFile(tag, addonFiles);
 	return {
-		name: `jeopi-natives-${tag}`,
+		name: leafPackageName({ tag, npmName }),
 		version,
 		os: [os],
 		cpu: [cpu],

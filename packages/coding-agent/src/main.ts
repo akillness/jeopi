@@ -29,6 +29,7 @@ import { processFileArguments } from "./cli/file-processor";
 import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
 import { applyStartupCwd } from "./cli/startup-cwd";
+import { fetchNewerPublishedVersion } from "./cli/update-cli";
 import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
 import {
@@ -102,21 +103,7 @@ async function checkForNewVersion(currentVersion: string): Promise<string | unde
 	if (!settings.get("startup.checkUpdate")) {
 		return;
 	}
-	try {
-		const response = await fetch("https://registry.npmjs.org/jeopi/latest");
-		if (!response.ok) return undefined;
-
-		const data = (await response.json()) as { version?: string };
-		const latestVersion = data.version;
-
-		if (latestVersion && Bun.semver.order(latestVersion, currentVersion) > 0) {
-			return latestVersion;
-		}
-
-		return undefined;
-	} catch {
-		return undefined;
-	}
+	return await fetchNewerPublishedVersion(currentVersion);
 }
 
 // Todo settings are caller-controlled in protocol modes. Do not host-default them:

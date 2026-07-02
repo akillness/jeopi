@@ -14,7 +14,12 @@ import { $which, APP_NAME, isEnoent, VERSION } from "jeopi-utils";
 import { theme } from "../modes/theme/theme";
 
 const REPO = "akillness/jeopi";
-const PACKAGE = "jeopi-cli";
+/**
+ * npm package that ships the CLI. Exported so the startup update notice
+ * (`checkForNewVersion` in main.ts) queries the same package this command
+ * installs — the two must never drift or the notice checks a phantom name.
+ */
+export const NPM_PACKAGE = "jeopi-cli";
 const HOMEBREW_FORMULA = "akillness/tap/jeopi";
 const MISE_TOOL = "github:akillness/jeopi";
 /**
@@ -28,10 +33,10 @@ const MISE_TOOL = "github:akillness/jeopi";
  * `No version matching "X" found for specifier "<pkg>" (but package exists)`.
  * See #1686.
  */
-const NPM_REGISTRY = "https://registry.npmjs.org/";
+export const NPM_REGISTRY = "https://registry.npmjs.org/";
 
 /**
- * Core native addon package. Bumped in lock-step with {@link PACKAGE} so the
+ * Core native addon package. Bumped in lock-step with {@link NPM_PACKAGE} so the
  * version sentinel the loader looks up at runtime matches the `.node` on
  * disk; see {@link buildBunInstallArgs} for why this must be installed
  * explicitly rather than inherited as a transitive dependency.
@@ -39,18 +44,20 @@ const NPM_REGISTRY = "https://registry.npmjs.org/";
 const NATIVES_PACKAGE = "jeopi-natives";
 
 /**
- * Platform tags the release pipeline publishes as
- * `jeopi-natives-<tag>` leaves. Mirrors `SUPPORTED_PLATFORMS` in
- * `packages/natives/native/loader-state.js` and `LEAF_TARGETS` in
- * `packages/natives/scripts/gen-npm-packages.ts`; kept here as the local
+ * Platform tags the release pipeline publishes as native addon leaves, mapped
+ * to the npm package that carries each addon. Mirrors `SUPPORTED_PLATFORMS` in
+ * `packages/natives/native/loader-state.js` and `LEAF_TARGETS`/`leafPackageName`
+ * in `packages/natives/scripts/gen-npm-packages.ts`; kept here as the local
  * source of truth so the update path stays free of cross-package imports.
+ * `win32-x64` ships as `jeopi-natives-windows-x64` — the registry's name
+ * heuristic rejects the tag-derived name with `403 … spam detection`.
  */
-const SUPPORTED_NATIVE_TAGS: ReadonlySet<string> = new Set([
-	"linux-x64",
-	"linux-arm64",
-	"darwin-x64",
-	"darwin-arm64",
-	"win32-x64",
+const NATIVE_LEAF_PACKAGES: ReadonlyMap<string, string> = new Map([
+	["linux-x64", "jeopi-natives-linux-x64"],
+	["linux-arm64", "jeopi-natives-linux-arm64"],
+	["darwin-x64", "jeopi-natives-darwin-x64"],
+	["darwin-arm64", "jeopi-natives-darwin-arm64"],
+	["win32-x64", "jeopi-natives-windows-x64"],
 ]);
 
 function currentNativeTag(): string {
@@ -239,7 +246,7 @@ async function resolveUpdateTarget(): Promise<UpdateTarget> {
  * Uses npm instead of GitHub API to avoid unauthenticated rate limiting.
  */
 async function getLatestRelease(): Promise<ReleaseInfo> {
-	const response = await fetch(`${NPM_REGISTRY}${PACKAGE}/latest`);
+	const response = await fetch(`${NPM_REGISTRY}${NPM_PACKAGE}/latest`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch release info: ${response.statusText}`);
 	}
@@ -252,6 +259,30 @@ async function getLatestRelease(): Promise<ReleaseInfo> {
 		tag,
 		version,
 	};
+}
+
+/**
+ * Resolve the latest published {@link NPM_PACKAGE} version when it is newer
+ * than `currentVersion`, else `undefined`. Backs the startup update notice
+ * (`New version X is available. Run: jeopi update`); errors and offline
+ * registries resolve to `undefined` so startup never blocks on the check.
+ */
+export async function fetchNewerPublishedVersion(currentVersion: string): Promise<string | undefined> {
+	try {
+		const response = await fetch(`${NPM_REGISTRY}${NPM_PACKAGE}/latest`);
+		if (!response.ok) return undefined;
+
+		const data = (await response.json()) as { version?: string };
+		const latestVersion = data.version;
+
+		if (latestVersion && Bun.semver.order(latestVersion, currentVersion) > 0) {
+			return latestVersion;
+		}
+
+		return undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -727,7 +758,7 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
  * (`The .node file on disk is from a different release than this loader`).
  * Listing the natives explicitly forces bun to replace them in lock-step.
  * The leaf is added only on tags the release pipeline actually publishes
- * ({@link SUPPORTED_NATIVE_TAGS}) so unsupported platforms still fail with
+ * ({@link NATIVE_LEAF_PACKAGES}) so unsupported platforms still fail with
  * the original "no matching version" message instead of `EBADPLATFORM`.
  * See #1824.
  */
@@ -737,11 +768,12 @@ export function buildBunInstallArgs(expectedVersion: string, nativeTag: string =
 		"-g",
 		"--no-cache",
 		`--registry=${NPM_REGISTRY}`,
-		`${PACKAGE}@${expectedVersion}`,
+		`${NPM_PACKAGE}@${expectedVersion}`,
 		`${NATIVES_PACKAGE}@${expectedVersion}`,
 	];
-	if (SUPPORTED_NATIVE_TAGS.has(nativeTag)) {
-		args.push(`${NATIVES_PACKAGE}-${nativeTag}@${expectedVersion}`);
+	const leafPackage = NATIVE_LEAF_PACKAGES.get(nativeTag);
+	if (leafPackage) {
+		args.push(`${leafPackage}@${expectedVersion}`);
 	}
 	return args;
 }

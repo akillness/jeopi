@@ -56,13 +56,33 @@ function getNativesDir() {
 	return path.join(os.homedir(), ".jeopi", "natives");
 }
 
+/**
+ * npm package names that may carry the platform's addon, preferred first.
+ * `win32-x64` publishes as `jeopi-natives-windows-x64` — the registry's name
+ * heuristic rejects the tag-derived name with `403 … spam detection` — so the
+ * loader probes the alias before the `jeopi-natives-<tag>` default. Mirrors
+ * `leafPackageName` in `scripts/gen-npm-packages.ts`.
+ *
+ * @param {string} platformTag
+ * @returns {string[]}
+ */
+export function leafPackageNamesForTag(platformTag) {
+	const names = [];
+	if (platformTag === "win32-x64") names.push("jeopi-natives-windows-x64");
+	names.push(`jeopi-natives-${platformTag}`);
+	return names;
+}
+
 function resolveLeafPackageDir(platformTag) {
-	try {
-		const require_ = createRequire(import.meta.url);
-		return path.dirname(require_.resolve(`jeopi-natives-${platformTag}/package.json`));
-	} catch {
-		return null;
+	const require_ = createRequire(import.meta.url);
+	for (const name of leafPackageNamesForTag(platformTag)) {
+		try {
+			return path.dirname(require_.resolve(`${name}/package.json`));
+		} catch {
+			// Probe the next candidate name.
+		}
 	}
+	return null;
 }
 
 // =========================================================================

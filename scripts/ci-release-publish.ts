@@ -34,6 +34,7 @@ import {
 	type GeneratedLeafPackage,
 	generateNpmPackages,
 	LEAF_TARGETS,
+	leafPackageName,
 } from "../packages/natives/scripts/gen-npm-packages.ts";
 
 export interface PublishPackage {
@@ -183,7 +184,7 @@ export async function applyPublishBin(pkgRelDir: string, write: boolean): Promis
 function buildNativeOptionalDependencies(version: string): JsonObject {
 	const optionalDependencies: JsonObject = {};
 	for (const target of LEAF_TARGETS) {
-		optionalDependencies[`jeopi-natives-${target.tag}`] = version;
+		optionalDependencies[leafPackageName(target)] = version;
 	}
 	return optionalDependencies;
 }
