@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [16.2.18] - 2026-07-02
+
+### Fixed
+
+- Stabilized pi-native stream watchdog tests by driving timer progression deterministically and waiting for fetch startup before asserting caller abort propagation.
+
 ## [16.2.14] - 2026-07-02
 
 ### Added

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, type Mock, mock, spyOn } from "bun:test";
+import { afterEach, describe, expect, it, type Mock, mock, spyOn, vi } from "bun:test";
 import { streamPiNative } from "jeopi-ai/providers/pi-native-client";
 import type { AssistantMessage, AssistantMessageEvent, Context, FetchImpl, Model, ModelSpec } from "jeopi-ai/types";
 import { buildModel } from "jeopi-catalog/build";
@@ -41,12 +41,30 @@ function stalledBody(bytes: Uint8Array[] = []): ReadableStream<Uint8Array> {
 }
 
 function delayedBody(chunks: Array<{ atMs: number; bytes: Uint8Array }>): ReadableStream<Uint8Array> {
+	let closed = false;
 	return new ReadableStream<Uint8Array>({
 		start(controller) {
 			for (const chunk of chunks) {
-				setTimeout(() => controller.enqueue(chunk.bytes), chunk.atMs);
+				setTimeout(() => {
+					if (closed) return;
+					try {
+						controller.enqueue(chunk.bytes);
+					} catch {
+						closed = true;
+					}
+				}, chunk.atMs);
 			}
-			setTimeout(() => controller.close(), Math.max(...chunks.map(chunk => chunk.atMs)) + 1);
+			setTimeout(
+				() => {
+					if (closed) return;
+					closed = true;
+					controller.close();
+				},
+				Math.max(...chunks.map(chunk => chunk.atMs)) + 1,
+			);
+		},
+		cancel() {
+			closed = true;
 		},
 	});
 }
@@ -108,8 +126,14 @@ async function collectEvents(stream: AsyncIterable<AssistantMessageEvent>): Prom
 	return out;
 }
 
+async function flushMicrotasks(): Promise<void> {
+	await Promise.resolve();
+	await Promise.resolve();
+}
+
 afterEach(() => {
 	mock.restore();
+	vi.useRealTimers();
 });
 
 describe("streamPiNative request shape", () => {
@@ -326,17 +350,22 @@ describe("streamPiNative event flow", () => {
 
 	it("does not time out a healthy pi-native stream that keeps making semantic progress", async () => {
 		const final = baseAssistant({ content: [{ type: "text", text: "hello world" }] });
+		vi.useFakeTimers();
 		const chunks = [
 			{ atMs: 0, bytes: sseEventBytes({ type: "start", partial: baseAssistant() }) },
 			{ atMs: 15, bytes: sseEventBytes({ type: "text_delta", contentIndex: 0, delta: "hello", partial: final }) },
 			{ atMs: 35, bytes: sseEventBytes({ type: "text_delta", contentIndex: 0, delta: " world", partial: final }) },
 			{ atMs: 55, bytes: sseEventBytes({ type: "done", reason: "stop", message: final }) },
 		];
-		const fetchImpl: FetchImpl = (async () =>
-			new Response(delayedBody(chunks), {
+		const fetchStarted = Promise.withResolvers<void>();
+		const fetchImpl: FetchImpl = (async () => {
+			const response = new Response(delayedBody(chunks), {
 				status: 200,
 				headers: { "Content-Type": "text/event-stream" },
-			})) as FetchImpl;
+			});
+			fetchStarted.resolve();
+			return response;
+		}) as FetchImpl;
 
 		const stream = streamPiNative(fakeModel(), baseContext, {
 			apiKey: "k",
@@ -345,7 +374,16 @@ describe("streamPiNative event flow", () => {
 			streamIdleTimeoutMs: 30,
 		});
 
-		const result = await stream.result();
+		await fetchStarted.promise;
+		const resultPromise = stream.result();
+		vi.advanceTimersByTime(15);
+		await flushMicrotasks();
+		vi.advanceTimersByTime(20);
+		await flushMicrotasks();
+		vi.advanceTimersByTime(20);
+		await flushMicrotasks();
+
+		const result = await resultPromise;
 		expect(result.stopReason).toBe("stop");
 		expect(result.content).toEqual([{ type: "text", text: "hello world" }]);
 	});
@@ -392,8 +430,10 @@ describe("streamPiNative event flow", () => {
 
 	it("forwards caller aborts to the underlying fetch signal", async () => {
 		const captured: { signal?: AbortSignal } = {};
+		const fetchStarted = Promise.withResolvers<void>();
 		const fetchImpl: FetchImpl = (async (_input, init) => {
 			captured.signal = init?.signal ?? undefined;
+			fetchStarted.resolve();
 			return new Response(stalledBody(), { status: 200, headers: { "Content-Type": "text/event-stream" } });
 		}) as FetchImpl;
 		const controller = new AbortController();
@@ -403,7 +443,7 @@ describe("streamPiNative event flow", () => {
 			signal: controller.signal,
 		});
 
-		await Bun.sleep(0);
+		await fetchStarted.promise;
 		expect(captured.signal?.aborted).toBe(false);
 		controller.abort(new Error("caller aborted"));
 

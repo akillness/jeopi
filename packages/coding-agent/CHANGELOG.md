@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [16.2.18] - 2026-07-02
+
+### Fixed
+
+- Fixed release CI after the jeopi rebrand by asserting the raw SSE dropped-record debug marker uses `jeopi-debug-dropped`.
+
 ## [16.2.17] - 2026-07-02
 
 ### Changed

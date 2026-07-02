@@ -632,11 +632,11 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.2.18]** (2026-07-02) — Fixed release CI after the jeopi rebrand by asserting the raw SSE dropped-record debug marker uses `jeopi-debug-dropped`.
 - **[16.2.17]** (2026-07-02) — Clarified the root README changelog digest as the latest five released entries while keeping the full package history linked from `packages/coding-agent/CHANGELOG.md`.
 - **[16.2.16]** (2026-07-02) — Removed remaining `omp`-branded release surfaces from jeopi: CI runner labels and artifact names, Homebrew formula generation, issue templates, profile alias markers, plugin manifest discovery, local…
 - **[16.2.15]** (2026-07-02) — Fixed the release workflow to refresh the root README changelog digest from `packages/coding-agent/CHANGELOG.md` during version bumps, so each release tag carries the same latest-five digest…
 - **[16.2.14]** (2026-07-02) — Added `providers.anthropic.serverSideFallback` configuration option to opt into Anthropic's server-side-fallback beta chain, allowing Claude Fable 5 / Mythos 5 requests to automatically retry on Opus…
-- **[16.2.13]** (2026-07-01) — Fixed `models.yml` remote compaction schema support for V2 streaming endpoint fields. (#4146)
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->
