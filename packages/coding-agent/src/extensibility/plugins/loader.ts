@@ -117,9 +117,9 @@ async function collectPluginsAtRoot(
 			throw err;
 		}
 
-		const manifest: PluginManifest | undefined = pluginPkg.jeopi || pluginPkg.pi;
+		const manifest: PluginManifest | undefined = pluginPkg.jeopi || pluginPkg.omp || pluginPkg.pi;
 		if (!manifest) {
-			// No jeopi/pi plugin manifest, skip
+			// No jeopi/omp/pi plugin manifest, skip
 			continue;
 		}
 		manifest.version = pluginPkg.version;
@@ -241,13 +241,14 @@ function readDeclaredManifestEntries(dir: string): DeclaredManifestEntries {
 	} catch {
 		return { declared: false, files: [] };
 	}
-	let pkg: { jeopi?: { extensions?: unknown }; pi?: { extensions?: unknown } };
+	type ManifestExtensionEntries = { extensions?: unknown };
+	let pkg: { jeopi?: ManifestExtensionEntries; omp?: ManifestExtensionEntries; pi?: ManifestExtensionEntries };
 	try {
-		pkg = JSON.parse(raw) as { jeopi?: { extensions?: unknown }; pi?: { extensions?: unknown } };
+		pkg = JSON.parse(raw) as typeof pkg;
 	} catch {
 		return { declared: false, files: [] };
 	}
-	const declared = (pkg.jeopi ?? pkg.pi)?.extensions;
+	const declared = (pkg.jeopi ?? pkg.omp ?? pkg.pi)?.extensions;
 	if (!Array.isArray(declared) || declared.length === 0) {
 		return { declared: false, files: [] };
 	}

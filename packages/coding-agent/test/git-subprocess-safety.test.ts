@@ -170,6 +170,14 @@ describe("git subprocess safety", () => {
 		await flushMicrotasks();
 		expect(kill).toHaveBeenCalledWith("SIGTERM");
 
+		// clone's failure path runs `fs.promises.rm` while settling. On Linux,
+		// Bun 1.3.14 never resolves fs.promises.rm once fake timers have been
+		// advanced (the internal completion timer lands on the mocked clock and
+		// no further advance ever fires it), which wedges this await — and the
+		// stuck rm poisons later real-timer rm calls in the same process. The
+		// deadline behavior was already asserted above, so restore real timers
+		// before letting the rejection (and its rm cleanup) settle.
+		vi.useRealTimers();
 		const error = await failure;
 		expect(error).toBeInstanceOf(git.GitCommandError);
 		expect(String(error.message)).toContain("timed out");

@@ -56,6 +56,8 @@ export interface PluginPackageJson {
 	version: string;
 	description?: string;
 	jeopi?: PluginManifest;
+	/** Pre-rebrand manifest key, still honored for installed legacy plugins. */
+	omp?: PluginManifest;
 	pi?: PluginManifest;
 }
 

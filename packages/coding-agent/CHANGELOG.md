@@ -8,6 +8,12 @@
 
 - Clarified the root README changelog digest as the latest five released entries while keeping the full package history linked from `packages/coding-agent/CHANGELOG.md`.
 
+### Fixed
+
+- Fixed plugin discovery to keep honoring the pre-rebrand `omp` package.json manifest key alongside `jeopi` and `pi`, so plugins installed before the rename stay visible to the loader, installer, doctor, and extension scanner.
+- Fixed release CI on GitHub-hosted runners: the GPU-probe and raw-SSE tests now isolate state under the renamed `jeopi` XDG app directory instead of leaking into `~/.jeopi`, and the git clone deadline tests restore real timers before settling so Bun's Linux fake-timer `fs.promises.rm` hang can no longer wedge the suite.
+- Made release npm publish steps auto-skip when no npm credentials are configured (NPM_TOKEN secret or trusted publisher), so a credential-less release still ships binaries and the GitHub Release.
+
 ## [16.2.16] - 2026-07-02
 
 ### Changed

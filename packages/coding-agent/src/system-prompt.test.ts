@@ -23,7 +23,7 @@ async function runProbeScenario(options: {
 		const cacheRoot = path.join(tempRoot, "cache");
 		const probeCountPath = path.join(tempRoot, "probe-count");
 		await fs.mkdir(binDir, { recursive: true });
-		await fs.mkdir(path.join(cacheRoot, "omp"), { recursive: true });
+		await fs.mkdir(path.join(cacheRoot, "jeopi"), { recursive: true });
 		const lspciPath = path.join(binDir, "lspci");
 		await Bun.write(
 			lspciPath,

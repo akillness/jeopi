@@ -526,7 +526,7 @@ export class PluginManager {
 				}
 				throw err;
 			}
-			const manifest: PluginManifest = pkg.jeopi || pkg.pi || { version: pkg.version };
+			const manifest: PluginManifest = pkg.jeopi || pkg.omp || pkg.pi || { version: pkg.version };
 			manifest.version = pkg.version;
 
 			// Resolve enabled features
@@ -652,7 +652,9 @@ export class PluginManager {
 				if (isEnoent(err)) continue;
 				throw err;
 			}
-			const manifest: PluginManifest = pluginPkg.jeopi || pluginPkg.pi || { version: pluginPkg.version };
+			const manifest: PluginManifest = pluginPkg.jeopi ||
+				pluginPkg.omp ||
+				pluginPkg.pi || { version: pluginPkg.version };
 			manifest.version = pluginPkg.version;
 
 			const runtimeState = config.plugins[name] || {
@@ -717,7 +719,7 @@ export class PluginManager {
 
 		await fs.promises.symlink(absolutePath, linkPath);
 
-		const manifest: PluginManifest = pkg.jeopi || pkg.pi || { version: pkg.version };
+		const manifest: PluginManifest = pkg.jeopi || pkg.omp || pkg.pi || { version: pkg.version };
 		manifest.version = pkg.version;
 
 		// Add to runtime config
@@ -930,15 +932,15 @@ export class PluginManager {
 				}
 				throw err;
 			}
-			const hasManifest = !!(pluginPkg.jeopi || pluginPkg.pi);
-			const manifest: PluginManifest | undefined = pluginPkg.jeopi || pluginPkg.pi;
+			const hasManifest = !!(pluginPkg.jeopi || pluginPkg.omp || pluginPkg.pi);
+			const manifest: PluginManifest | undefined = pluginPkg.jeopi || pluginPkg.omp || pluginPkg.pi;
 
 			checks.push({
 				name: `plugin:${name}`,
 				status: hasManifest ? "ok" : "warning",
 				message: hasManifest
 					? `v${pluginPkg.version}${pluginPkg.description ? ` - ${pluginPkg.description}` : ""}`
-					: `v${pluginPkg.version} - No omp/pi manifest (not a jeopi plugin)`,
+					: `v${pluginPkg.version} - No jeopi/omp/pi manifest (not a jeopi plugin)`,
 			});
 
 			// Check tools path exists if specified
