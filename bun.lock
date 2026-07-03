@@ -21,7 +21,7 @@
     },
     "packages/agent": {
       "name": "jeopi-agent-core",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
         "jeopi-ai": "catalog:",
@@ -39,7 +39,7 @@
     },
     "packages/ai": {
       "name": "jeopi-ai",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/catalog": {
       "name": "jeopi-catalog",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -69,7 +69,7 @@
     },
     "packages/coding-agent": {
       "name": "jeopi-cli",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "bin": {
         "jeopi": "dist/cli.js",
       },
@@ -137,7 +137,7 @@
     },
     "packages/hashline": {
       "name": "jeopi-hashline",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "dependencies": {
         "diff": "catalog:",
         "lru-cache": "catalog:",
@@ -148,7 +148,7 @@
     },
     "packages/mnemopi": {
       "name": "jeopi-mnemopi",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
@@ -174,7 +174,7 @@
     },
     "packages/natives": {
       "name": "jeopi-natives",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
@@ -182,7 +182,7 @@
     },
     "packages/snapcompact": {
       "name": "jeopi-snapcompact",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "dependencies": {
         "jeopi-ai": "catalog:",
         "jeopi-natives": "catalog:",
@@ -195,7 +195,7 @@
     },
     "packages/stats": {
       "name": "jeopi-stats",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "bin": {
         "jeopi-stats": "./src/index.ts",
       },
@@ -221,7 +221,7 @@
     },
     "packages/swarm-extension": {
       "name": "jeopi-swarm-extension",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "bin": {
         "jeopi-swarm": "src/cli.ts",
       },
@@ -247,7 +247,7 @@
     },
     "packages/tui": {
       "name": "jeopi-tui",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "dependencies": {
         "jeopi-natives": "catalog:",
         "jeopi-utils": "catalog:",
@@ -288,7 +288,7 @@
     },
     "packages/utils": {
       "name": "jeopi-utils",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "dependencies": {
         "handlebars": "catalog:",
         "jeopi-natives": "catalog:",
@@ -301,7 +301,7 @@
     },
     "packages/wire": {
       "name": "jeopi-wire",
-      "version": "16.2.22",
+      "version": "16.2.23",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
@@ -364,18 +364,18 @@
     "fflate": "0.8.3",
     "ghostty-web": "^0.4.0",
     "handlebars": "^4.7.9",
-    "jeopi-agent-core": "16.2.22",
-    "jeopi-ai": "16.2.22",
-    "jeopi-catalog": "16.2.22",
-    "jeopi-cli": "16.2.22",
-    "jeopi-hashline": "16.2.22",
-    "jeopi-mnemopi": "16.2.22",
-    "jeopi-natives": "16.2.22",
-    "jeopi-snapcompact": "16.2.22",
-    "jeopi-stats": "16.2.22",
-    "jeopi-tui": "16.2.22",
-    "jeopi-utils": "16.2.22",
-    "jeopi-wire": "16.2.22",
+    "jeopi-agent-core": "16.2.23",
+    "jeopi-ai": "16.2.23",
+    "jeopi-catalog": "16.2.23",
+    "jeopi-cli": "16.2.23",
+    "jeopi-hashline": "16.2.23",
+    "jeopi-mnemopi": "16.2.23",
+    "jeopi-natives": "16.2.23",
+    "jeopi-snapcompact": "16.2.23",
+    "jeopi-stats": "16.2.23",
+    "jeopi-tui": "16.2.23",
+    "jeopi-utils": "16.2.23",
+    "jeopi-wire": "16.2.23",
     "linkedom": "^0.18.12",
     "lint-staged": "^17.0.7",
     "lru-cache": "11.5.1",
@@ -724,7 +724,7 @@
 
     "@octokit/plugin-rest-endpoint-methods": ["@octokit/plugin-rest-endpoint-methods@17.0.0", "", { "dependencies": { "@octokit/types": "^16.0.0" }, "peerDependencies": { "@octokit/core": ">=6" } }, "sha512-B5yCyIlOJFPqUUeiD0cnBJwWJO8lkJs5d8+ze9QDP6SvfiXSz1BF+91+0MeI1d2yxgOhU/O+CvtiZ9jSkHhFAw=="],
 
-    "@octokit/request": ["@octokit/request@10.0.10", "", { "dependencies": { "@octokit/endpoint": "^11.0.3", "@octokit/request-error": "^7.0.2", "@octokit/types": "^16.0.0", "content-type": "^2.0.0", "json-with-bigint": "^3.5.3", "universal-user-agent": "^7.0.2" } }, "sha512-KxNC2pTqqhszMNrf12ZRd4PonRgyJdsM4F/jySiddQK+DsRcfBtUvqn8t7UsyZhnRJHvX46OohDt5N3VqIWC2w=="],
+    "@octokit/request": ["@octokit/request@10.0.11", "", { "dependencies": { "@octokit/endpoint": "^11.0.3", "@octokit/request-error": "^7.0.2", "@octokit/types": "^16.0.0", "content-type": "^2.0.0", "json-with-bigint": "^3.5.3", "universal-user-agent": "^7.0.2" } }, "sha512-+s7HUxjfFqOMS9VlIwDffq0MikjSAK0gSpG73W+meAvVAvX4MBrHYTK5Bj3Uot55qFT4gzUtfzE4mGWY4Br8/Q=="],
 
     "@octokit/request-error": ["@octokit/request-error@7.1.0", "", { "dependencies": { "@octokit/types": "^16.0.0" } }, "sha512-KMQIfq5sOPpkQYajXHwnhjCC0slzCNScLHs9JafXc4RAJI+9f+jNDlBNaIMTvazOPLgb4BnlhGJOTbnN0wIjPw=="],
 
