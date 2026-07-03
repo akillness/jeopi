@@ -50,11 +50,35 @@ export interface AdvisorRuntimeHost {
 	beginAdvisorUpdate?(): void;
 	/** Surface a non-recovering advisor failure to the host UI without adding model-visible context. */
 	notifyFailure?(error: unknown): void;
+	/** Surface a one-time notice that thinking was stripped from advisor renders after a provider refusal. */
+	notifyThinkingStripped?(): void;
 }
 
 interface PendingDelta {
 	text: string;
 	turns: number;
+}
+
+/** Construction-time tuning for {@link AdvisorRuntime}. */
+export interface AdvisorRuntimeOptions {
+	/** Render the primary's thinking blocks into advisor deltas (default true). */
+	includeThinking?: boolean;
+}
+
+/**
+ * Match the stable `Refusal` / `Refusal (…)` message prefix pi-ai emits for a
+ * provider classifier refusal (`stop_details.type === "refusal"` mapped in
+ * `packages/ai/src/providers/anthropic.ts`), e.g. Anthropic Fable's
+ * `Refusal (reasoning_extraction): This request was blocked …`. Refusals are
+ * payload-shape-bound: per Anthropic's refusal semantics, replaying the
+ * identical payload predictably re-refuses, so the drain loop must degrade the
+ * payload instead of blind-retrying it.
+ */
+const REFUSAL_MESSAGE_PREFIX = /^(?:Error:\s*)?Refusal(?:\s*\(|:|$)/;
+
+export function isRefusalError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return REFUSAL_MESSAGE_PREFIX.test(message.trim());
 }
 
 interface CatchupWaiter {
@@ -86,11 +110,24 @@ export class AdvisorRuntime {
 	#epoch = 0;
 	disposed = false;
 
+	/**
+	 * Render primary thinking into deltas. Doubles as the refusal-degrade latch:
+	 * starts `true` (or whatever the constructor option says) and flips to
+	 * `false` exactly once, the first time a classifier refusal is caught — see
+	 * the `#drain` catch block. That single flip is sufficient to both change
+	 * future renders AND guard against re-triggering the degrade path, so no
+	 * separate one-shot flag is needed alongside it.
+	 */
+	#includeThinking: boolean;
+
 	constructor(
 		private readonly agent: AdvisorAgent,
 		private readonly host: AdvisorRuntimeHost,
 		private readonly retryDelayMs = 1000,
-	) {}
+		options: AdvisorRuntimeOptions = {},
+	) {
+		this.#includeThinking = options.includeThinking ?? true;
+	}
 
 	get backlog(): number {
 		return this.#backlog;
@@ -205,7 +242,7 @@ export class AdvisorRuntime {
 		const obfuscator = this.host.obfuscator;
 		const formattedDelta = obfuscator?.hasSecrets() ? obfuscateAdvisorDelta(obfuscator, delta) : delta;
 		const md = formatSessionHistoryMarkdown(formattedDelta, {
-			includeThinking: true,
+			includeThinking: this.#includeThinking,
 			includeToolIntent: true,
 			watchedRoles: true,
 			expandPrimaryContext: true,
@@ -352,6 +389,33 @@ export class AdvisorRuntime {
 					if (this.#epoch !== epoch) continue;
 					this.#rollbackFailedTurn(messageSnapshot);
 					logger.debug("advisor turn failed", { err: String(err) });
+					// Classifier refusals (e.g. Anthropic Fable's `reasoning_extraction`,
+					// which flags harnesses that feed model thinking back as text) are
+					// payload-shape-bound: re-sending the identical batch predictably
+					// re-refuses. Degrade once — latch thinking off, re-prime, and requeue
+					// a re-rendered batch without thinking. Flipping `#includeThinking` to
+					// `false` here doubles as the one-shot guard: a refusal after the
+					// strip fails the `this.#includeThinking` check below and falls
+					// through to the normal consecutive-failure watchdog, so this cannot
+					// loop.
+					if (this.#includeThinking && isRefusalError(err)) {
+						this.#includeThinking = false;
+						const queuedTurns = this.#pending.reduce((sum, b) => sum + b.turns, 0);
+						this.#resetAdvisorContext(false, false);
+						const stripped = this.#renderDelta(this.#latestMessages);
+						try {
+							this.host.notifyThinkingStripped?.();
+						} catch (notifyErr) {
+							logger.warn("advisor thinking-strip notification failed", { err: String(notifyErr) });
+						}
+						if (stripped !== null) {
+							this.#pending.unshift({ text: stripped, turns: finalTurns + queuedTurns });
+						} else {
+							this.#backlog = Math.max(0, this.#backlog - (finalTurns + queuedTurns));
+							this.#notifyWaiters();
+						}
+						continue;
+					}
 					this.#consecutiveFailures++;
 					if (this.#consecutiveFailures >= 3) {
 						logger.warn("advisor failed consecutively 3 times; dropping backlog to prevent stall");

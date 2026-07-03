@@ -303,6 +303,130 @@ export async function fetchNewerPublishedVersion(currentVersion: string): Promis
 	}
 }
 
+/** Minimal published GitHub release shape used by the update-notes and registry-lag helpers. */
+export interface GitHubReleaseSummary {
+	version: string;
+	body: string;
+}
+
+/** Cap on printed release-note lines so a many-versions-behind update does not flood the terminal. */
+const RELEASE_NOTES_MAX_LINES = 40;
+
+/**
+ * Parse a GitHub releases API response into {@link GitHubReleaseSummary}
+ * entries, keeping only published (non-draft, non-prerelease) releases whose
+ * tag matches the `vX.Y.Z` convention. Split out from {@link fetchGitHubReleases}
+ * so the response-shape handling is independently testable without a network
+ * call.
+ */
+export function parseGitHubReleases(data: unknown): GitHubReleaseSummary[] {
+	if (!Array.isArray(data)) return [];
+	const releases: GitHubReleaseSummary[] = [];
+	for (const entry of data as Array<{
+		tag_name?: unknown;
+		body?: unknown;
+		draft?: unknown;
+		prerelease?: unknown;
+	}>) {
+		if (entry.draft === true || entry.prerelease === true) continue;
+		const tag = typeof entry.tag_name === "string" ? entry.tag_name : "";
+		const match = tag.match(/^v(\d+\.\d+\.\d+)$/);
+		if (!match) continue;
+		releases.push({ version: match[1], body: typeof entry.body === "string" ? entry.body : "" });
+	}
+	return releases;
+}
+
+/**
+ * Fetch recent published releases for {@link REPO} from the GitHub API.
+ *
+ * Best-effort: `jeopi update` must never fail because release notes are
+ * unreachable, so network errors, rate limits, and shape surprises all
+ * resolve to an empty list. Only called on explicit `jeopi update` runs —
+ * the frequent startup notice keeps using the npm registry to avoid
+ * unauthenticated GitHub rate limits.
+ */
+async function fetchGitHubReleases(): Promise<GitHubReleaseSummary[]> {
+	try {
+		const response = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`, {
+			headers: { accept: "application/vnd.github+json", "user-agent": `${APP_NAME}-update` },
+		});
+		if (!response.ok) return [];
+		return parseGitHubReleases(await response.json());
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Collect release-note bodies for versions in `(currentVersion, targetVersion]`,
+ * newest first. Backs the "what changed" block `jeopi update` prints under the
+ * "New version available" line, so a user several versions behind sees every
+ * intervening release, not just the newest body.
+ */
+export function selectReleaseNotesInRange(
+	releases: readonly GitHubReleaseSummary[],
+	currentVersion: string,
+	targetVersion: string,
+): GitHubReleaseSummary[] {
+	return releases
+		.filter(
+			release =>
+				compareVersions(release.version, currentVersion) > 0 &&
+				compareVersions(release.version, targetVersion) <= 0,
+		)
+		.sort((a, b) => compareVersions(b.version, a.version));
+}
+
+/**
+ * Render selected release notes as plain indented text, capped at `maxLines`.
+ * HTML comments (release template scaffolding) are stripped; a truncated
+ * rendering ends with a pointer at the releases page.
+ */
+export function formatReleaseNotes(
+	notes: readonly GitHubReleaseSummary[],
+	maxLines: number = RELEASE_NOTES_MAX_LINES,
+): string {
+	const lines: string[] = [];
+	for (const note of notes) {
+		const body = note.body
+			.replace(/\r\n/g, "\n")
+			.replace(/<!--[\s\S]*?-->/g, "")
+			.trim();
+		lines.push(`v${note.version}`);
+		for (const bodyLine of body.split("\n")) {
+			if (body.length === 0) break;
+			lines.push(`  ${bodyLine}`);
+		}
+		lines.push("");
+	}
+	while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+	if (lines.length > maxLines) {
+		lines.length = maxLines;
+		lines.push(`  … full notes: https://github.com/${REPO}/releases`);
+	}
+	return lines.join("\n");
+}
+
+/**
+ * Detect a published GitHub release the npm registry has not served yet.
+ *
+ * When the release pipeline dies between the GitHub Release and the npm
+ * publish job (or npm credentials are missing so the publish silently
+ * no-ops), the npm `latest` this updater trusts stays behind while GitHub
+ * advances — and `jeopi update` would report "Already up to date" with no
+ * hint that a newer release exists. Returns the newest GitHub version
+ * strictly above `npmVersion`, else `undefined`.
+ */
+export function detectRegistryLag(npmVersion: string, releases: readonly GitHubReleaseSummary[]): string | undefined {
+	let newest: string | undefined;
+	for (const release of releases) {
+		if (compareVersions(release.version, npmVersion) <= 0) continue;
+		if (newest === undefined || compareVersions(release.version, newest) > 0) newest = release.version;
+	}
+	return newest;
+}
+
 /**
  * Compare semver versions. Returns:
  * - negative if a < b
@@ -922,11 +1046,31 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 
 	if (comparison <= 0 && !opts.force) {
 		console.log(chalk.green(`${theme.status.success} Already up to date`));
+		// npm is this updater's install channel, but GitHub Releases is where the
+		// pipeline publishes first — diverging means the npm publish job is still
+		// running or died (or npm credentials were missing and the publish
+		// silently no-oped). Say so instead of leaving "Already up to date" as
+		// the only signal after a visibly tagged release.
+		const laggedVersion = detectRegistryLag(release.version, await fetchGitHubReleases());
+		if (laggedVersion) {
+			console.log(
+				chalk.yellow(`GitHub has release v${laggedVersion}, but the npm registry still serves ${release.version}.`),
+			);
+			console.log(
+				chalk.yellow(
+					`The npm publish for v${laggedVersion} has not landed (release pipeline still running or failed); try again in a few minutes.`,
+				),
+			);
+		}
 		return;
 	}
 
 	if (comparison > 0) {
 		console.log(chalk.cyan(`New version available: ${release.version}`));
+		const notes = selectReleaseNotesInRange(await fetchGitHubReleases(), VERSION, release.version);
+		if (notes.length > 0) {
+			console.log(chalk.dim(`\n${formatReleaseNotes(notes)}\n`));
+		}
 	} else {
 		console.log(chalk.yellow(`Forcing reinstall of ${release.version}`));
 	}

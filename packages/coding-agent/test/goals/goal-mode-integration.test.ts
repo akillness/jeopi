@@ -395,7 +395,10 @@ describe("InteractiveMode goal mode integration", () => {
 			throw new Error("Expected goal tool to be active");
 		}
 
-		const result = await goalTool.execute("call-1", { op: "complete" });
+		const result = await goalTool.execute("call-1", {
+			op: "complete",
+			evidence: "Verified the budget-limited deliverable against the current repo state before completing.",
+		});
 		const completionText = JSON.stringify(result.content);
 
 		expect(result.details?.completionBudgetReport).toBe(

@@ -113,6 +113,7 @@ describe("GoalTool", () => {
 			op: "complete",
 			objective: undefined,
 			token_budget: undefined,
+			evidence: "Ran the full test suite and manually diffed the release notes against the changelog.",
 		});
 		expect(runtime.completeGoalFromTool).toHaveBeenCalledTimes(1);
 		expect(completed.details).toMatchObject({
@@ -155,7 +156,12 @@ describe("GoalTool", () => {
 		);
 
 		await expect(
-			tool.execute("call-complete", { op: "complete", objective: undefined, token_budget: undefined }),
+			tool.execute("call-complete", {
+				op: "complete",
+				objective: undefined,
+				token_budget: undefined,
+				evidence: "Checked the deliverable and it does not exist yet.",
+			}),
 		).rejects.toThrow("cannot complete goal because no goal is active");
 	});
 
@@ -206,6 +212,7 @@ describe("GoalTool", () => {
 			op: "complete",
 			objective: undefined,
 			token_budget: undefined,
+			evidence: "Ran `bun test` for the release package and confirmed every deliverable file exists.",
 		});
 
 		expect(result.details).toMatchObject({ op: "complete" });
@@ -233,6 +240,7 @@ describe("GoalTool", () => {
 			op: "complete",
 			objective: undefined,
 			token_budget: undefined,
+			evidence: "Reviewed the paused work's diff and confirmed the tests pass.",
 		});
 		expect(result.details?.goal?.status).toBe("complete");
 		expect(harness.getState()?.goal.status).toBe("complete");
@@ -315,5 +323,66 @@ describe("GoalTool", () => {
 		expect(result.details?.op).toBe("drop");
 		expect(result.details?.goal?.status).toBe("dropped");
 		expect(harness.getState()).toBeUndefined();
+	});
+	it("rejects op=complete when evidence is missing", async () => {
+		const harness = createRuntimeHarness();
+		await harness.runtime.createGoal({ objective: "Ship it" });
+		const tool = new GoalTool(
+			createToolSession({
+				getGoalRuntime: () => harness.runtime,
+				getGoalModeState: () => harness.getState(),
+			}),
+		);
+
+		await expect(
+			tool.execute("call-complete", { op: "complete", objective: undefined, token_budget: undefined }),
+		).rejects.toThrow("evidence is required when op=complete");
+		expect(harness.getState()?.goal.status).toBe("active");
+	});
+
+	it("rejects op=complete when evidence is a generic status word instead of a verification claim", async () => {
+		const harness = createRuntimeHarness();
+		await harness.runtime.createGoal({ objective: "Ship it" });
+		const tool = new GoalTool(
+			createToolSession({
+				getGoalRuntime: () => harness.runtime,
+				getGoalModeState: () => harness.getState(),
+			}),
+		);
+
+		for (const trivial of ["done", "  Done.  ", "lgtm", "verified", "ok"]) {
+			await expect(
+				tool.execute("call-complete", {
+					op: "complete",
+					objective: undefined,
+					token_budget: undefined,
+					evidence: trivial,
+				}),
+			).rejects.toThrow("too generic to count as verification");
+		}
+		expect(harness.getState()?.goal.status).toBe("active");
+	});
+
+	it("records the completion evidence on the goal and surfaces it in the result text", async () => {
+		const harness = createRuntimeHarness();
+		await harness.runtime.createGoal({ objective: "Ship it" });
+		const tool = new GoalTool(
+			createToolSession({
+				getGoalRuntime: () => harness.runtime,
+				getGoalModeState: () => harness.getState(),
+			}),
+		);
+
+		const evidence = "Ran the release script and confirmed the published package version matches the tag.";
+		const result = await tool.execute("call-complete", {
+			op: "complete",
+			objective: undefined,
+			token_budget: undefined,
+			evidence,
+		});
+
+		expect(harness.getState()?.goal.completionEvidence).toBe(evidence);
+		expect(result.details?.goal?.completionEvidence).toBe(evidence);
+		expect((result.content[0] as { text: string }).text).toContain(`Evidence: ${evidence}`);
 	});
 });

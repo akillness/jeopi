@@ -26,6 +26,7 @@ import {
 	isAdvisorInterruptImmuneTurnActive,
 	isAdvisorTranscriptName,
 	isInterruptingSeverity,
+	isRefusalError,
 	resolveAdvisorDeliveryChannel,
 	type WatchdogConfigDoc,
 } from "..";
@@ -1310,6 +1311,178 @@ describe("advisor", () => {
 			expect(lengthsBeforePrompt[lengthsBeforePrompt.length - 1]).toBe(0);
 			expect(rollbackCalls).toHaveLength(3);
 			expect(state.messages).toHaveLength(2);
+		});
+
+		it("strips thinking and retries once when the provider refuses the payload (reasoning_extraction)", async () => {
+			const promptInputs: string[] = [];
+			const strippedNotices: number[] = [];
+			let refuseNext = true;
+			const agent: AdvisorAgent = {
+				prompt: async input => {
+					promptInputs.push(input);
+					if (refuseNext) {
+						refuseNext = false;
+						throw new Error(
+							"Refusal (reasoning_extraction): This request was blocked as it seems to violate Anthropic's Terms of Service restrictions on reverse engineering or duplicating model outputs.",
+						);
+					}
+				},
+				abort: () => {},
+				reset: () => {},
+				state: { messages: [] },
+			};
+			const thinking = "secret chain of thought the classifier flags";
+			const messages: AgentMessage[] = [
+				{ role: "user", content: "do the thing", timestamp: 1 } as AgentMessage,
+				{
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking },
+						{ type: "text", text: "done" },
+					],
+					timestamp: 2,
+				} as AgentMessage,
+			];
+			const host: AdvisorRuntimeHost = {
+				snapshotMessages: () => messages,
+				enqueueAdvice: () => {},
+				notifyThinkingStripped: () => strippedNotices.push(1),
+			};
+			const runtime = new AdvisorRuntime(agent, host, 0);
+
+			runtime.onTurnEnd(messages);
+			await Bun.sleep(0);
+			await Bun.sleep(0);
+
+			// First attempt carried thinking; the refusal triggered exactly one
+			// stripped re-render instead of a blind identical retry.
+			expect(promptInputs).toHaveLength(2);
+			expect(promptInputs[0]).toContain("_thinking:_");
+			expect(promptInputs[0]).toContain(thinking);
+			expect(promptInputs[1]).not.toContain("_thinking:_");
+			expect(promptInputs[1]).not.toContain(thinking);
+			expect(promptInputs[1]).toContain("done");
+			expect(strippedNotices).toHaveLength(1);
+			expect(runtime.backlog).toBe(0);
+
+			// Thinking stays latched off for subsequent turns.
+			messages.push({
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: "later thoughts" },
+					{ type: "text", text: "next" },
+				],
+				timestamp: 3,
+			} as AgentMessage);
+			runtime.onTurnEnd(messages);
+			await Bun.sleep(0);
+			expect(promptInputs).toHaveLength(3);
+			expect(promptInputs[2]).not.toContain("later thoughts");
+			expect(strippedNotices).toHaveLength(1);
+		});
+
+		it("skips the degrade path when thinking is disabled at construction and falls through to the watchdog", async () => {
+			const promptInputs: string[] = [];
+			const strippedNotices: number[] = [];
+			const failures: unknown[] = [];
+			const agent: AdvisorAgent = {
+				prompt: async input => {
+					promptInputs.push(input);
+					throw new Error("Refusal (reasoning_extraction): blocked");
+				},
+				abort: () => {},
+				reset: () => {},
+				state: { messages: [] },
+			};
+			const messages: AgentMessage[] = [
+				{ role: "user", content: "start", timestamp: 1 } as AgentMessage,
+				{
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "hidden reasoning" },
+						{ type: "text", text: "visible" },
+					],
+					timestamp: 2,
+				} as AgentMessage,
+			];
+			const host: AdvisorRuntimeHost = {
+				snapshotMessages: () => messages,
+				enqueueAdvice: () => {},
+				notifyFailure: error => failures.push(error),
+				notifyThinkingStripped: () => strippedNotices.push(1),
+			};
+			const runtime = new AdvisorRuntime(agent, host, 0, { includeThinking: false });
+
+			runtime.onTurnEnd(messages);
+			await Bun.sleep(0);
+			await Bun.sleep(0);
+			await Bun.sleep(0);
+
+			// Thinking never rendered, so there is nothing to strip: the refusal is
+			// handled by the normal 3-strike watchdog, not an infinite degrade loop.
+			expect(promptInputs).toHaveLength(3);
+			for (const input of promptInputs) {
+				expect(input).not.toContain("hidden reasoning");
+			}
+			expect(strippedNotices).toHaveLength(0);
+			expect(failures).toHaveLength(1);
+			expect(runtime.backlog).toBe(0);
+		});
+
+		it("trips the watchdog when refusals persist after the thinking strip", async () => {
+			const promptInputs: string[] = [];
+			const strippedNotices: number[] = [];
+			const failures: unknown[] = [];
+			const agent: AdvisorAgent = {
+				prompt: async input => {
+					promptInputs.push(input);
+					throw new Error("Refusal (reasoning_extraction): still blocked");
+				},
+				abort: () => {},
+				reset: () => {},
+				state: { messages: [] },
+			};
+			const messages: AgentMessage[] = [
+				{ role: "user", content: "start", timestamp: 1 } as AgentMessage,
+				{
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "flagged reasoning" },
+						{ type: "text", text: "visible" },
+					],
+					timestamp: 2,
+				} as AgentMessage,
+			];
+			const host: AdvisorRuntimeHost = {
+				snapshotMessages: () => messages,
+				enqueueAdvice: () => {},
+				notifyFailure: error => failures.push(error),
+				notifyThinkingStripped: () => strippedNotices.push(1),
+			};
+			const runtime = new AdvisorRuntime(agent, host, 0);
+
+			runtime.onTurnEnd(messages);
+			for (let i = 0; i < 6; i++) await Bun.sleep(0);
+
+			// 1 refused attempt with thinking + 3 stripped attempts → watchdog drop.
+			// The strip fires exactly once; there is no auto-recovery loop.
+			expect(promptInputs).toHaveLength(4);
+			expect(promptInputs[0]).toContain("_thinking:_");
+			expect(promptInputs[1]).not.toContain("_thinking:_");
+			expect(strippedNotices).toHaveLength(1);
+			expect(failures).toHaveLength(1);
+			expect(runtime.backlog).toBe(0);
+		});
+
+		it("classifies pi-ai refusal message shapes without matching ordinary errors", () => {
+			expect(isRefusalError(new Error("Refusal (reasoning_extraction): blocked by ToS"))).toBe(true);
+			expect(isRefusalError(new Error("Refusal (no details provided)"))).toBe(true);
+			expect(isRefusalError(new Error("Refusal: something"))).toBe(true);
+			expect(isRefusalError(new Error("Refusal"))).toBe(true);
+			expect(isRefusalError("Error: Refusal (reasoning_extraction): blocked")).toBe(true);
+			expect(isRefusalError(new Error("404 No endpoints available"))).toBe(false);
+			expect(isRefusalError(new Error("Refusals are handled elsewhere"))).toBe(false);
+			expect(isRefusalError(new Error("stream timeout"))).toBe(false);
 		});
 
 		it("drops the in-flight batch when a reset aborts the advisor prompt", async () => {

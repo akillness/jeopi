@@ -137,6 +137,19 @@ const shutdownHandlerTui = (_command: ParsedSlashCommand, runtime: TuiSlashComma
 	void runtime.ctx.shutdown();
 	return commandConsumed();
 };
+/**
+ * Invalidate plugin-root caches and refresh slash-command/SSH-tool state after
+ * a TUI-side marketplace mutation (install/uninstall/upgrade/enable/disable).
+ * Mirrors the ACP `runtime.reloadPlugins()` adapter built in
+ * `executeBuiltinSlashCommand` — required because `handleTui` overrides bypass
+ * that adapter entirely.
+ */
+async function reloadPluginsTui(runtime: TuiSlashCommandRuntime): Promise<void> {
+	const projectPath = await resolveActiveProjectRegistryPath(runtime.ctx.sessionManager.getCwd());
+	clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
+	await runtime.ctx.refreshSlashCommandState();
+	await runtime.ctx.session.refreshSshTool({ activateIfAvailable: true });
+}
 
 async function handleUsageResetCommand(
 	arg: string,
@@ -1953,6 +1966,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 						const name = parsed.installSpec.slice(0, atIdx);
 						const marketplace = parsed.installSpec.slice(atIdx + 1);
 						await mgr.installPlugin(name, marketplace, { force: parsed.force, scope: parsed.scope });
+						await reloadPluginsTui(runtime);
 						runtime.ctx.showStatus(`Installed ${name} from ${marketplace}`);
 						break;
 					}
@@ -1971,6 +1985,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 							return;
 						}
 						await mgr.uninstallPlugin(uninstArgs.pluginId, uninstArgs.scope);
+						await reloadPluginsTui(runtime);
 						runtime.ctx.showStatus(`Uninstalled ${uninstArgs.pluginId}`);
 						break;
 					}
@@ -1997,12 +2012,14 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 								return;
 							}
 							const result = await mgr.upgradePlugin(upArgs.pluginId, upArgs.scope);
+							await reloadPluginsTui(runtime);
 							runtime.ctx.showStatus(`Upgraded ${upArgs.pluginId} to ${result.version}`);
 						} else {
 							const results = await mgr.upgradeAllPlugins();
 							if (results.length === 0) {
 								runtime.ctx.showStatus("All marketplace plugins are up to date");
 							} else {
+								await reloadPluginsTui(runtime);
 								const lines = results.map(r => `  ${r.pluginId}: ${r.from} -> ${r.to}`);
 								runtime.ctx.showStatus(`Upgraded ${results.length} plugin(s):\n${lines.join("\n")}`);
 							}
@@ -2141,6 +2158,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 						}
 						const isEnable = sub === "enable";
 						await mgr.setPluginEnabled(parsed.pluginId, isEnable, parsed.scope);
+						await reloadPluginsTui(runtime);
 						runtime.ctx.showStatus(`${isEnable ? "Enabled" : "Disabled"} ${parsed.pluginId}`);
 						break;
 					}

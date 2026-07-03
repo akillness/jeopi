@@ -681,6 +681,14 @@ export function getDocsRsCacheDir(): string {
 export function getAutoQaDbDir(): string {
 	return dirs.rootSubdir("autoqa.db", "data");
 }
+
+/** Get the plugin trust-decision store path (~/.jeopi/plugin-trust.json). Records
+ * per-plugin trust-on-first-use decisions ("<name>@<version>" -> granted|denied) so
+ * third-party plugin code (tools/hooks/commands/extensions) only executes after an
+ * explicit grant. */
+export function getPluginTrustStorePath(): string {
+	return dirs.rootSubdir("plugin-trust.json", "state");
+}
 /**
  * Stable 7-character hex digest of an absolute filesystem path.
  *

@@ -27,7 +27,7 @@ import type { CustomMessage } from "../session/messages";
 import type { UsageStatistics } from "../session/session-entries";
 import type { ToolChoiceQueue } from "../session/tool-choice-queue";
 import { TaskTool } from "../task";
-import type { CriticGateState } from "../task/critic-gate";
+import type { ApprovedPlanHash, CriticGateState } from "../task/critic-gate";
 import type { AgentOutputManager } from "../task/output-manager";
 import { canSpawnAtDepth } from "../task/types";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
@@ -64,6 +64,7 @@ import { ResolveTool } from "./resolve";
 import { reportFindingTool } from "./review";
 import { SearchToolBm25Tool } from "./search-tool-bm25";
 import { loadSshTool } from "./ssh";
+import { isSubagentToolEnabled, SubagentTool } from "./subagent";
 import { type TodoPhase, TodoTool } from "./todo";
 import { WriteTool } from "./write";
 import { YieldTool } from "./yield";
@@ -102,6 +103,7 @@ export * from "./resolve";
 export * from "./review";
 export * from "./search-tool-bm25";
 export * from "./ssh";
+export * from "./subagent";
 export * from "./todo";
 export * from "./tts";
 export * from "./write";
@@ -278,6 +280,10 @@ export interface ToolSession {
 	getCriticGateState?: () => CriticGateState | undefined;
 	/** Replace the critic gate state (undefined clears the gate). */
 	setCriticGateState?: (state: CriticGateState | undefined) => void;
+	/** Plan content hash a critic verdict of `okay` approved (see `task/critic-gate.ts`); survives the gate clearing on `okay` so a later spawn can detect post-approval plan drift. */
+	getApprovedPlanHash?: () => ApprovedPlanHash | undefined;
+	/** Replace the approved-plan hash (undefined clears it). */
+	setApprovedPlanHash?: (hash: ApprovedPlanHash | undefined) => void;
 	/** Goal mode state (if active or paused) */
 	getGoalModeState?: () => GoalModeState | undefined;
 	/** Goal runtime for the active agent session. */
@@ -466,6 +472,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	task: s => TaskTool.create(s),
 	job: s => new JobTool(s),
 	irc: IrcTool.createIf,
+	subagent: SubagentTool.createIf,
 	todo: s => new TodoTool(s),
 	web_search: s => new WebSearchTool(s),
 	search_tool_bm25: SearchToolBm25Tool.createIf,
@@ -620,6 +627,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		if (name === "browser") return session.settings.get("browser.enabled");
 		if (name === "checkpoint" || name === "rewind") return session.settings.get("checkpoint.enabled");
 		if (name === "irc") return isIrcEnabled(session.settings, session.taskDepth ?? 0);
+		if (name === "subagent") return isSubagentToolEnabled(session.settings, session.taskDepth ?? 0);
 		if (name === "retain" || name === "recall" || name === "reflect") {
 			return ["hindsight", "mnemopi"].includes(session.settings.get("memory.backend") ?? "");
 		}

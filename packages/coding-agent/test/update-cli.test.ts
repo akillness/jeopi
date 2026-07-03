@@ -8,12 +8,15 @@ import {
 	buildHomebrewUpdateArgs,
 	buildMiseForceInstallArgs,
 	buildMiseUpgradeArgs,
+	detectRegistryLag,
 	fetchNewerPublishedVersion,
+	formatReleaseNotes,
 	getLatestRelease,
 	pruneBunInstallCache,
 	replaceBinaryForUpdate,
 	resolveBunGlobalNodeModulesDirFromLocations,
 	resolveUpdateMethodForTest,
+	selectReleaseNotesInRange,
 	sweepStaleBackups,
 } from "jeopi-cli/cli/update-cli";
 import { removeWithRetries } from "jeopi-utils";
@@ -416,5 +419,67 @@ describe("update-cli stale backup sweep", () => {
 		expect(await Bun.file(`${targetPath}.1800000000000.99.bak`).exists()).toBe(false);
 		expect(await Bun.file(path.join(dir, "notes.bak")).exists()).toBe(true);
 		expect(await Bun.file(`${targetPath}.config.bak`).exists()).toBe(true);
+	});
+});
+
+describe("update-cli release notes selection", () => {
+	const releases = [
+		{ version: "16.2.19", body: "## jeopi-cli\n\n### Fixed\n\n- old fix" },
+		{ version: "16.2.23", body: "## jeopi-cli\n\n### Changed\n\n- newest change" },
+		{ version: "16.2.22", body: "" },
+		{ version: "16.2.21", body: "## jeopi-ai\n\n### Fixed\n\n- middle fix" },
+	];
+
+	it("returns only versions in (current, target], newest first, so a user several versions behind sees every intervening release", () => {
+		const notes = selectReleaseNotesInRange(releases, "16.2.21", "16.2.23");
+		expect(notes.map(n => n.version)).toEqual(["16.2.23", "16.2.22"]);
+	});
+
+	it("excludes releases above the npm target so a GitHub release npm has not served yet is never advertised as installable", () => {
+		const notes = selectReleaseNotesInRange(releases, "16.2.19", "16.2.22");
+		expect(notes.map(n => n.version)).toEqual(["16.2.22", "16.2.21"]);
+	});
+
+	it("returns nothing when current already matches the target", () => {
+		expect(selectReleaseNotesInRange(releases, "16.2.23", "16.2.23")).toEqual([]);
+	});
+});
+
+describe("update-cli release notes formatting", () => {
+	it("renders one version header per release with the body indented and HTML comments stripped", () => {
+		const rendered = formatReleaseNotes([
+			{ version: "16.2.23", body: "<!-- template -->### Changed\r\n\r\n- newest change" },
+			{ version: "16.2.22", body: "" },
+		]);
+		expect(rendered).toBe("v16.2.23\n  ### Changed\n  \n  - newest change\n\nv16.2.22");
+	});
+
+	it("caps output at maxLines and appends the releases-page pointer", () => {
+		const body = Array.from({ length: 30 }, (_, i) => `- change ${i}`).join("\n");
+		const rendered = formatReleaseNotes([{ version: "16.2.23", body }], 5);
+		const lines = rendered.split("\n");
+		expect(lines).toHaveLength(6);
+		expect(lines[5]).toContain("https://github.com/akillness/jeopi/releases");
+	});
+});
+
+describe("update-cli registry lag detection", () => {
+	const githubReleases = [
+		{ version: "16.2.23", body: "" },
+		{ version: "16.2.24", body: "" },
+		{ version: "16.2.22", body: "" },
+	];
+
+	it("reports the newest GitHub release when npm latest is behind, so a failed npm publish is not silently reported as up to date", () => {
+		expect(detectRegistryLag("16.2.23", githubReleases)).toBe("16.2.24");
+	});
+
+	it("stays quiet when npm latest matches or exceeds every GitHub release", () => {
+		expect(detectRegistryLag("16.2.24", githubReleases)).toBeUndefined();
+		expect(detectRegistryLag("16.3.0", githubReleases)).toBeUndefined();
+	});
+
+	it("stays quiet when the GitHub release list is unavailable", () => {
+		expect(detectRegistryLag("16.2.23", [])).toBeUndefined();
 	});
 });

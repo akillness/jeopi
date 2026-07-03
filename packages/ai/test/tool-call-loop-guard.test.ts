@@ -12,6 +12,31 @@ const zeroUsage = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 } satisfies AssistantMessage["usage"];
 
+function turn(id: string, name: string, args: Record<string, unknown>, resultText = "ok") {
+	return {
+		message: {
+			role: "assistant" as const,
+			content: [{ type: "toolCall" as const, id, name, arguments: args }],
+			api: "openai-responses" as const,
+			provider: "openai",
+			model: "test-model",
+			usage: zeroUsage,
+			stopReason: "toolUse" as const,
+			timestamp: Date.now(),
+		},
+		toolResults: [
+			{
+				role: "toolResult" as const,
+				toolCallId: id,
+				toolName: name,
+				content: [{ type: "text" as const, text: resultText }],
+				isError: false,
+				timestamp: Date.now(),
+			},
+		],
+	};
+}
+
 describe("ToolCallLoopGuard", () => {
 	test("detects the fifth consecutive identical tool call", () => {
 		const guard = new ToolCallLoopGuard({ threshold: 5, exemptTools: ["job", "irc"] });
@@ -240,5 +265,95 @@ describe("ToolCallLoopGuard", () => {
 				],
 			}),
 		).toBeNull();
+	});
+});
+
+describe("ToolCallLoopGuard cyclical detection", () => {
+	test("detects an A,B,A,B,… alternating pattern across the cycle window", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 5, exemptTools: [], cycleWindowSize: 6 });
+		let detection = null;
+		for (let index = 0; index < 6; index++) {
+			const isA = index % 2 === 0;
+			detection = guard.recordTurn(
+				isA
+					? turn(`call-${index}`, "grep", { pattern: "TODO" })
+					: turn(`call-${index}`, "read", { path: "src/index.ts" }),
+			);
+		}
+		expect(detection).toEqual({
+			kind: "cyclical_tool_calls",
+			toolNames: ["grep", "read"],
+			windowSize: 6,
+		});
+	});
+
+	test("does not re-fire on the following turn while the same A/B pair keeps alternating", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 5, exemptTools: [], cycleWindowSize: 6 });
+		const detections: Array<unknown> = [];
+		for (let index = 0; index < 8; index++) {
+			const isA = index % 2 === 0;
+			detections.push(
+				guard.recordTurn(
+					isA
+						? turn(`call-${index}`, "grep", { pattern: "TODO" })
+						: turn(`call-${index}`, "read", { path: "src/index.ts" }),
+				),
+			);
+		}
+		const fired = detections.filter(detection => detection !== null);
+		expect(fired).toHaveLength(1);
+		expect(fired[0]).toMatchObject({ kind: "cyclical_tool_calls" });
+	});
+
+	test("fires again after the alternating pair changes to a different pair", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 5, exemptTools: [], cycleWindowSize: 4 });
+		const detections: Array<unknown> = [];
+		for (let index = 0; index < 4; index++) {
+			const isA = index % 2 === 0;
+			detections.push(
+				guard.recordTurn(
+					isA
+						? turn(`call-${index}`, "grep", { pattern: "TODO" })
+						: turn(`call-${index}`, "read", { path: "src/index.ts" }),
+				),
+			);
+		}
+		for (let index = 4; index < 8; index++) {
+			const isA = index % 2 === 0;
+			detections.push(
+				guard.recordTurn(
+					isA
+						? turn(`call-${index}`, "grep", { pattern: "FIXME" })
+						: turn(`call-${index}`, "glob", { pattern: "*.ts" }),
+				),
+			);
+		}
+		const fired = detections.filter((detection): detection is { kind: string } => detection !== null);
+		expect(fired).toHaveLength(2);
+		expect(fired.every(detection => detection.kind === "cyclical_tool_calls")).toBe(true);
+	});
+
+	test("does not treat a pure single-tool repeat as a cycle (already covered by repeated_tool_call)", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 100, exemptTools: [], cycleWindowSize: 6 });
+		let detection = null;
+		for (let index = 0; index < 6; index++) {
+			detection = guard.recordTurn(turn(`call-${index}`, "bash", { command: "pytest -q" }));
+		}
+		expect(detection).toBeNull();
+	});
+
+	test("does not flag three-or-more distinct tools rotating through the window", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 100, exemptTools: [], cycleWindowSize: 6 });
+		const calls: Array<[string, Record<string, unknown>]> = [
+			["read", { path: "a.ts" }],
+			["grep", { pattern: "TODO" }],
+			["glob", { pattern: "*.ts" }],
+		];
+		let detection = null;
+		for (let index = 0; index < 6; index++) {
+			const [name, args] = calls[index % calls.length]!;
+			detection = guard.recordTurn(turn(`call-${index}`, name, args));
+		}
+		expect(detection).toBeNull();
 	});
 });

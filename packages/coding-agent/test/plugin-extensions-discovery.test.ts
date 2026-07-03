@@ -14,8 +14,14 @@ describe("plugin extension discovery", () => {
 	const originalAgentDir = getAgentDir();
 	const xdgVars = ["XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"] as const;
 	const originalXdg = new Map<string, string | undefined>();
+	let originalTrustAllPlugins: string | undefined;
 
 	beforeEach(() => {
+		// These fixtures install plugins for real (not mocks), so they must clear the
+		// trust-on-first-use gate (see extensibility/plugins/trust.ts) or every plugin
+		// extension below would be silently skipped as untrusted.
+		originalTrustAllPlugins = Bun.env.PI_TRUST_ALL_PLUGINS;
+		Bun.env.PI_TRUST_ALL_PLUGINS = "true";
 		projectDir = TempDir.createSync("@pi-plugin-ext-");
 		// Redirect the whole config root to an isolated temp home so plugin discovery
 		// resolves into `<tempHome>/.jeopi/plugins` on every platform. Two things are needed:
@@ -82,6 +88,11 @@ describe("plugin extension discovery", () => {
 		originalXdg.clear();
 		setAgentDir(originalAgentDir);
 		removeSyncWithRetries(tempHome);
+		if (originalTrustAllPlugins === undefined) {
+			delete Bun.env.PI_TRUST_ALL_PLUGINS;
+		} else {
+			Bun.env.PI_TRUST_ALL_PLUGINS = originalTrustAllPlugins;
+		}
 	});
 
 	it("loads installed plugin extensions declared in package.json", async () => {
@@ -91,6 +102,14 @@ describe("plugin extension discovery", () => {
 		expect(result.errors).toHaveLength(0);
 		expect(extension).toBeDefined();
 		expect(extension?.commands.has("plugin-ext")).toBe(true);
+	});
+
+	it("skips an untrusted plugin's extensions instead of loading them (trust-on-first-use gate)", async () => {
+		delete Bun.env.PI_TRUST_ALL_PLUGINS;
+		const result = await discoverAndLoadExtensions([], projectDir.path());
+		const extension = result.extensions.find(ext => ext.path.endsWith(path.join("dist", "extension.ts")));
+
+		expect(extension).toBeUndefined();
 	});
 
 	it("loads installed legacy Pi plugin extensions from Windows drive-letter paths", async () => {

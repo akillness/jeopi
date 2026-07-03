@@ -45,10 +45,18 @@ import {
 // Import review tools for side effects (registers subagent tool handlers)
 import "../tools/review";
 import type { AsyncJobManager } from "../async";
-import type { LocalProtocolOptions } from "../internal-urls";
+import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
 import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
-import { CRITIC_AGENT_NAME, evaluateCriticGateSpawn, parseCriticVerdict, updateCriticGateState } from "./critic-gate";
+import {
+	CRITIC_AGENT_NAME,
+	evaluateCriticGateSpawn,
+	GATED_PLAN_LOCAL_URL,
+	hashPlanContent,
+	parseCriticVerdict,
+	planIntegrityMismatchMessage,
+	updateCriticGateState,
+} from "./critic-gate";
 import { type DiscoveryResult, discoverAgents, getAgent } from "./discovery";
 import { runSubprocess } from "./executor";
 import {
@@ -545,6 +553,30 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 	#isBatchEnabled(): boolean {
 		return this.session.settings.get("task.batch");
+	}
+
+	/** Local protocol options for resolving `local://` paths outside a specific
+	 *  subagent spawn (e.g. the critic-gate plan-integrity check below). */
+	#sessionLocalProtocolOptions(): LocalProtocolOptions {
+		return (
+			this.session.localProtocolOptions ?? {
+				getArtifactsDir: this.session.getArtifactsDir ?? (() => null),
+				getSessionId: this.session.getSessionId ?? (() => null),
+			}
+		);
+	}
+
+	/** Read + hash `local://jeo-plan.md` for the critic-gate plan-integrity pin.
+	 *  Returns `null` when the file does not exist or can't be read — callers
+	 *  treat that as "no current plan to compare against". */
+	async #hashGatedPlanContent(): Promise<string | null> {
+		try {
+			const absolutePath = resolveLocalUrlToPath(GATED_PLAN_LOCAL_URL, this.#sessionLocalProtocolOptions());
+			const content = await fs.readFile(absolutePath, "utf8");
+			return hashPlanContent(content);
+		} catch {
+			return null;
+		}
 	}
 
 	#getSpawnSemaphore(): Semaphore {
@@ -1134,6 +1166,21 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			};
 		}
 
+		// Plan-integrity pin: even with the gate clear (latest verdict `okay`), a
+		// non-read-only spawn is refused if `local://jeo-plan.md` no longer matches
+		// the content that verdict approved — closes the TOCTOU window between
+		// critic approval and execution (see task/critic-gate.ts).
+		const approvedPlanHash = this.session.getApprovedPlanHash?.();
+		if (approvedPlanHash && !isReadOnlyAgent(agent)) {
+			const currentHash = await this.#hashGatedPlanContent();
+			if (currentHash !== approvedPlanHash.hash) {
+				return {
+					content: [{ type: "text", text: planIntegrityMismatchMessage(approvedPlanHash) }],
+					details: { projectAgentsDir, results: [], totalDurationMs: 0 },
+				};
+			}
+		}
+
 		const planModeState = this.session.getPlanModeState?.();
 		const planModeBaseTools = ["read", "grep", "glob", "lsp", "web_search"];
 		const planModeTools = [
@@ -1418,6 +1465,20 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					this.session.setCriticGateState(
 						updateCriticGateState(this.session.getCriticGateState?.(), parsed, result.id),
 					);
+					// Plan-integrity pin: an `okay` verdict records the current plan
+					// content's hash so a later spawn can detect the plan changing out
+					// from under this exact approval (see the check above and
+					// task/critic-gate.ts). A non-okay verdict clears any prior pin —
+					// the stronger critic-gate write/spawn lock takes over until the
+					// next `okay`, so a stale pin has no protective value to keep.
+					if (this.session.setApprovedPlanHash) {
+						if (parsed.verdict === "okay") {
+							const hash = await this.#hashGatedPlanContent();
+							this.session.setApprovedPlanHash(hash ? { hash, agentId: result.id, at: Date.now() } : undefined);
+						} else {
+							this.session.setApprovedPlanHash(undefined);
+						}
+					}
 				}
 			}
 

@@ -106,6 +106,38 @@ async function checkForNewVersion(currentVersion: string): Promise<string | unde
 	return await fetchNewerPublishedVersion(currentVersion);
 }
 
+/**
+ * How often a long-running interactive session rechecks the registry after the
+ * initial startup check. A session started before a release ships never
+ * re-queries on its own otherwise — `checkForNewVersion` only ever ran once at
+ * launch, so the "Update Available" banner stayed invisible until the user
+ * restarted, even hours into a session with a newer version already published.
+ */
+export const VERSION_RECHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * Show the update banner exactly once per newer version — `lastNotified` is
+ * the version already surfaced (or the running version, before any notice),
+ * so a recheck that still resolves to the same newer version does not
+ * re-post the banner every interval tick. Returns the version to remember as
+ * `lastNotified` for the next call.
+ *
+ * Re-checks `startup.checkUpdate` at call time (not just inside
+ * `checkForNewVersion`): `/settings` can disable update checks while an
+ * in-flight fetch's promise was still pending.
+ */
+export function notifyIfNewerVersion(
+	mode: Pick<InteractiveMode, "showNewVersionNotification">,
+	newVersion: string | undefined,
+	lastNotified: string,
+): string {
+	if (newVersion && newVersion !== lastNotified && settings.get("startup.checkUpdate")) {
+		mode.showNewVersionNotification(newVersion);
+		return newVersion;
+	}
+	return lastNotified;
+}
+
 // Todo settings are caller-controlled in protocol modes. Do not host-default them:
 // embedders need project-level opt-outs for reminder/prelude prompt injection.
 const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
@@ -127,6 +159,7 @@ const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
 	// they do opt in they get the default tuning rather than the user's local tuning.
 	"advisor.enabled",
 	"advisor.subagents",
+	"advisor.includeThinking",
 	"advisor.syncBacklog",
 	"advisor.immuneTurns",
 	"tier.advisor",
@@ -438,16 +471,29 @@ async function runInteractiveMode(
 		await setupWizard.runSetupWizard(mode, setupScenes);
 	}
 
-	versionCheckPromise
-		.then(newVersion => {
-			if (!settings.get("startup.checkUpdate")) {
-				return;
-			}
-			if (newVersion) {
-				mode.showNewVersionNotification(newVersion);
-			}
-		})
-		.catch(() => {});
+	let lastNotifiedVersion = version;
+
+	// Both the initial startup check and the periodic recheck below funnel
+	// through this: whichever finds a newer version updates the "already
+	// notified" watermark and (via `notifyIfNewerVersion`) shows the banner at
+	// most once per version.
+	const applyVersionCheckResult = (newVersion: string | undefined): void => {
+		lastNotifiedVersion = notifyIfNewerVersion(mode, newVersion, lastNotifiedVersion);
+	};
+
+	versionCheckPromise.then(applyVersionCheckResult).catch(() => {});
+
+	// A session started before a release ships never sees it otherwise: the
+	// startup check above only ever ran once at launch, so a release published
+	// hours into a long-running session left the "Update Available" banner
+	// invisible until the user restarted. Recheck the registry periodically and
+	// notify at most once per newer version.
+	const versionRecheckTimer = setInterval(() => {
+		checkForNewVersion(version)
+			.then(applyVersionCheckResult)
+			.catch(() => {});
+	}, VERSION_RECHECK_INTERVAL_MS);
+	versionRecheckTimer.unref?.();
 
 	// Cold-launch cleanup: the first paint already clears native history, and this
 	// replay replaces the welcome/startup frame with the resumed/new transcript.

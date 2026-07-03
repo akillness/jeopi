@@ -9,6 +9,8 @@ const ARGUMENT_SUMMARY_LIMIT = 400;
 export interface ToolCallLoopGuardOptions {
 	readonly threshold: number;
 	readonly exemptTools: readonly string[];
+	/** Window size for alternating-pattern (A,B,A,B,…) cycle detection; defaults to 6. */
+	readonly cycleWindowSize?: number;
 }
 
 /** A completed assistant turn plus the tool results it produced. */
@@ -25,6 +27,16 @@ export interface RepeatedToolCallDetection {
 	readonly resultSummary: string;
 	readonly argumentsSummary: string;
 }
+
+/** Details needed to steer the model away from an alternating tool-call cycle (A,B,A,B,…). */
+export interface CyclicalToolCallDetection {
+	readonly kind: "cyclical_tool_calls";
+	/** Distinct tool names seen in the detection window, in first-seen order. */
+	readonly toolNames: readonly string[];
+	readonly windowSize: number;
+}
+
+export type ToolCallLoopDetection = RepeatedToolCallDetection | CyclicalToolCallDetection;
 
 function canonicalizeToolCallValue(value: unknown): unknown {
 	if (Array.isArray(value)) {
@@ -70,18 +82,24 @@ export class ToolCallLoopGuard {
 	#exemptTools: ReadonlySet<string>;
 	#lastHash: string | undefined;
 	#count = 0;
+	#cycleWindowSize: number;
+	#recentCalls: Array<{ hash: string; toolName: string }> = [];
+	#lastCycleSignature: string | undefined;
 
 	constructor(options: ToolCallLoopGuardOptions) {
 		this.#threshold = Math.max(1, Math.trunc(options.threshold));
 		this.#exemptTools = new Set(options.exemptTools);
+		this.#cycleWindowSize = Math.max(3, Math.trunc(options.cycleWindowSize ?? 6));
 	}
 
-	/** Records one completed turn and returns the threshold hit, if any. */
-	recordTurn(turn: ToolCallLoopTurn): RepeatedToolCallDetection | null {
+	/** Records one completed turn and returns the threshold/cycle hit, if any. */
+	recordTurn(turn: ToolCallLoopTurn): ToolCallLoopDetection | null {
 		const toolCalls = turn.message.content.filter((part): part is ToolCall => part.type === "toolCall");
 		if (toolCalls.length !== 1 || this.#exemptTools.has(toolCalls[0]!.name)) {
 			this.#lastHash = undefined;
 			this.#count = 0;
+			this.#recentCalls = [];
+			this.#lastCycleSignature = undefined;
 			return null;
 		}
 
@@ -95,13 +113,36 @@ export class ToolCallLoopGuard {
 			this.#count = 1;
 		}
 
-		if (this.#count !== this.#threshold) return null;
-		return {
-			kind: "repeated_tool_call",
-			toolName: toolCall.name,
-			count: this.#count,
-			resultSummary: summarizeToolResult(turn.toolResults, toolCall.id),
-			argumentsSummary: summarizeText(canonicalArgs, ARGUMENT_SUMMARY_LIMIT),
-		};
+		if (this.#count === this.#threshold) {
+			return {
+				kind: "repeated_tool_call",
+				toolName: toolCall.name,
+				count: this.#count,
+				resultSummary: summarizeToolResult(turn.toolResults, toolCall.id),
+				argumentsSummary: summarizeText(canonicalArgs, ARGUMENT_SUMMARY_LIMIT),
+			};
+		}
+
+		// Alternating A,B,A,B,… pattern: exact-repeat detection above never fires
+		// (the hash changes every turn), but the model is still spinning between
+		// exactly two distinct calls without making progress.
+		this.#recentCalls.push({ hash, toolName: toolCall.name });
+		if (this.#recentCalls.length > this.#cycleWindowSize) this.#recentCalls.shift();
+		if (this.#recentCalls.length < this.#cycleWindowSize) return null;
+
+		const distinctHashes = new Set(this.#recentCalls.map(call => call.hash));
+		if (distinctHashes.size !== 2) {
+			this.#lastCycleSignature = undefined;
+			return null;
+		}
+		const signature = [...distinctHashes].sort().join("|");
+		if (signature === this.#lastCycleSignature) return null;
+		this.#lastCycleSignature = signature;
+
+		const toolNames: string[] = [];
+		for (const call of this.#recentCalls) {
+			if (!toolNames.includes(call.toolName)) toolNames.push(call.toolName);
+		}
+		return { kind: "cyclical_tool_calls", toolNames, windowSize: this.#cycleWindowSize };
 	}
 }

@@ -21,6 +21,7 @@ import defaultPersonality from "./prompts/system/personalities/default.md" with 
 import friendlyPersonality from "./prompts/system/personalities/friendly.md" with { type: "text" };
 import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
+import safetyKernelTemplate from "./prompts/system/safety-kernel.md" with { type: "text" };
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
 import { shortenPath } from "./tools/render-utils";
 import { type ActiveRepoContext, resolveActiveRepoContext } from "./utils/active-repo-context";
@@ -499,7 +500,10 @@ export interface BuildSystemPromptResult {
 /** Build the system prompt with tools, guidelines, and context */
 export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}): Promise<BuildSystemPromptResult> {
 	if ($env.NULL_PROMPT === "true") {
-		return { systemPrompt: [] };
+		// Even the perf-oriented empty-prompt escape hatch (test-only; see
+		// system-prompt.test.ts and agent-session-python-cleanup.test.ts) must not
+		// zero out the non-negotiable safety rules — see safety-kernel.md.
+		return { systemPrompt: [prompt.render(safetyKernelTemplate, { secretsEnabled: true })] };
 	}
 
 	const {
@@ -770,7 +774,15 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		renderMermaid,
 	};
 	const rendered = prompt.render(resolvedCustomPrompt ? customSystemPromptTemplate : systemPromptTemplate, data);
-	const systemPrompt = [rendered];
+	// The default template (system-prompt.md) already carries the full harness
+	// guardrail contract inline. A caller-supplied custom prompt replaces block 0
+	// entirely (see `callerControlsCustomPrompt` above), which otherwise drops those
+	// guardrails — so only the custom-prompt path gets the safety kernel appended
+	// after the custom text, where the custom prompt itself cannot suppress it.
+	const firstBlock = resolvedCustomPrompt
+		? `${rendered}\n\n${prompt.render(safetyKernelTemplate, data).trim()}`
+		: rendered;
+	const systemPrompt = [firstBlock];
 	// Custom prompt templates already render context files and append text; the
 	// project footer still carries environment, cwd, workspace, and dir-context.
 	const projectPrompt = prompt

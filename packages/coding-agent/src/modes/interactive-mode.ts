@@ -66,6 +66,7 @@ import type {
 	ExtensionWidgetOptions,
 } from "../extensibility/extensions";
 import type { CompactOptions } from "../extensibility/extensions/types";
+import { pluginTrustKey, setPluginTrustHandler } from "../extensibility/plugins/trust";
 import type { Skill } from "../extensibility/skills";
 import { loadSlashCommands } from "../extensibility/slash-commands";
 import { type GuidedGoalMessage, runGuidedGoalTurn } from "../goals/guided-setup";
@@ -813,6 +814,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		// guarantees the decision persists even when the prompt is triggered
 		// from a subagent whose own `Settings` is an in-memory snapshot.
 		setAutoQaConsentHandler(() => this.#promptAutoQaConsent(), Settings.instance);
+		// Wire the plugin trust-on-first-use gate to the same Yes/No popup
+		// mechanism. Process-global for the same reason as autoQA above: a
+		// subagent's plugin loader resolves through this closure too.
+		setPluginTrustHandler(plugin => this.#promptPluginTrust(plugin));
 
 		await logger.time(
 			"InteractiveMode.init:slashCommands",
@@ -3268,6 +3273,21 @@ export class InteractiveMode implements InteractiveModeContext {
 		return choice === "Yes";
 	}
 
+	/**
+	 * Show the plugin trust-on-first-use popup and return the user's decision.
+	 * Invoked by the process-global plugin trust handler; gates loading a
+	 * third-party plugin's tools/hooks/commands/extensions (arbitrary code via
+	 * native `import()`) until the user explicitly grants it.
+	 */
+	async #promptPluginTrust(plugin: { name: string; version: string }): Promise<boolean | null> {
+		const choice = await this.showHookSelector(
+			`🔌 Plugin "${pluginTrustKey(plugin)}" wants to run code with full tool/exec access.\nTrust it and load its tools/hooks/commands/extensions?`,
+			["Yes", "No"],
+		);
+		if (choice === undefined) return null;
+		return choice === "Yes";
+	}
+
 	stop(): void {
 		if (this.loadingAnimation) {
 			this.#stopLoadingAnimation(false);
@@ -3304,6 +3324,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Clear the process-global consent handler so it doesn't outlive this
 		// InteractiveMode instance (e.g. test harnesses, headless re-init).
 		setAutoQaConsentHandler(null, null);
+		setPluginTrustHandler(null);
 		if (this.isInitialized) {
 			this.ui.stop();
 			this.isInitialized = false;

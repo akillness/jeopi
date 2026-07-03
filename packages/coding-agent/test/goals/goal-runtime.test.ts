@@ -344,7 +344,9 @@ describe("goal runtime", () => {
 			},
 		});
 
-		const completed = await harness.runtime.completeGoalFromTool();
+		const completed = await harness.runtime.completeGoalFromTool(
+			"Ran the full release checklist and confirmed every deliverable is in the shipped build.",
+		);
 
 		expect(completed.status).toBe("complete");
 		const state = harness.getState();
@@ -440,11 +442,32 @@ describe("goal runtime", () => {
 			},
 		});
 
-		const completed = await harness.runtime.completeGoalFromTool();
+		const completed = await harness.runtime.completeGoalFromTool(
+			"Reviewed the paused work's output and confirmed it matches the objective.",
+		);
 		expect(completed.status).toBe("complete");
 		const state = harness.getState();
 		expect(state?.enabled).toBe(false);
 		expect(state?.mode).toBe("exiting");
 		expect(state?.goal.status).toBe("complete");
+	});
+
+	it("completeGoalFromTool validates evidence directly (defense in depth for non-tool callers)", async () => {
+		const harness = createHarness({
+			state: { enabled: true, mode: "active", goal: createGoal() },
+		});
+
+		await expect(harness.runtime.completeGoalFromTool("")).rejects.toThrow("evidence is required");
+		await expect(harness.runtime.completeGoalFromTool("done")).rejects.toThrow(
+			"too generic to count as verification",
+		);
+		expect(harness.getState()?.goal.status).toBe("active");
+
+		const completed = await harness.runtime.completeGoalFromTool(
+			"Confirmed the objective via a fresh test run and manual output review.",
+		);
+		expect(completed.completionEvidence).toBe(
+			"Confirmed the objective via a fresh test run and manual output review.",
+		);
 	});
 });

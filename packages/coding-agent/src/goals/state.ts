@@ -11,6 +11,9 @@ export interface Goal {
 	timeUsedSeconds: number;
 	createdAt: number;
 	updatedAt: number;
+	/** Set only when status transitions to "complete"; the caller's verification claim
+	 * (see `goals/completion-evidence.ts`). Absent for goals that never completed. */
+	completionEvidence?: string;
 }
 
 export interface GoalModeState {

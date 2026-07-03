@@ -2,6 +2,7 @@ import { escapeXmlText, prompt, Snowflake } from "jeopi-utils";
 import goalBudgetLimitPrompt from "../prompts/goals/goal-budget-limit.md" with { type: "text" };
 import goalContinuationPrompt from "../prompts/goals/goal-continuation.md" with { type: "text" };
 import goalModeActivePrompt from "../prompts/goals/goal-mode-active.md" with { type: "text" };
+import { assertSubstantiveCompletionEvidence } from "./completion-evidence";
 import type { Goal, GoalBudgetSteering, GoalModeState, GoalRuntimeEvent, GoalTokenUsage } from "./state";
 
 export interface GoalRuntimeHost {
@@ -470,7 +471,10 @@ export class GoalRuntime {
 		});
 	}
 
-	async completeGoalFromTool(): Promise<Goal> {
+	async completeGoalFromTool(evidence: string): Promise<Goal> {
+		// Validated here too (not just in GoalTool), so any direct GoalRuntime caller
+		// (SDK embedders bypassing the tool schema) gets the same guardrail.
+		const verifiedEvidence = assertSubstantiveCompletionEvidence(evidence);
 		return await this.#withAccounting(async () => {
 			await this.#flushUsageLocked("suppressed");
 			const state = this.#getStateClone();
@@ -485,6 +489,7 @@ export class GoalRuntime {
 			}
 			state.enabled = false;
 			state.goal.status = "complete";
+			state.goal.completionEvidence = verifiedEvidence;
 			state.goal.updatedAt = this.#now();
 			state.mode = "exiting";
 			state.reason = "completed";

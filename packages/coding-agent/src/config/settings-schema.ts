@@ -285,7 +285,7 @@ const EMPTY_STRING_ARRAY: string[] = [];
 const EMPTY_STRING_RECORD: Record<string, string> = {};
 const EMPTY_NUMBER_RECORD: Record<string, number> = {};
 const DEFAULT_CYCLE_ORDER: string[] = ["smol", "default", "slow"];
-const DEFAULT_TOOL_CALL_LOOP_EXEMPT_TOOLS: string[] = ["job", "irc"];
+const DEFAULT_TOOL_CALL_LOOP_EXEMPT_TOOLS: string[] = ["job", "irc", "subagent"];
 const EMPTY_MODEL_TAGS_RECORD: ModelTagsSettings = {};
 const HINDSIGHT_RECALL_TYPES_DEFAULT: string[] = ["world", "experience"];
 export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
@@ -411,6 +411,18 @@ export const SETTINGS_SCHEMA = {
 			group: "Advisor",
 			label: "Advisor for Subagents",
 			description: "Also enable the advisor on spawned task/eval subagents.",
+			condition: "advisorEnabled",
+		},
+	},
+	"advisor.includeThinking": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "model",
+			group: "Advisor",
+			label: "Advisor Sees Thinking",
+			description:
+				"Include the primary agent's thinking blocks in advisor transcript updates. Some provider classifiers (e.g. Anthropic's reasoning_extraction) refuse payloads that replay thinking as text; the advisor also auto-disables this for the session after such a refusal.",
 			condition: "advisorEnabled",
 		},
 	},
@@ -1592,7 +1604,7 @@ export const SETTINGS_SCHEMA = {
 			tab: "interaction",
 			group: "Startup & Updates",
 			label: "Check for Updates",
-			description: "Check for jeopi updates on startup",
+			description: "Check for jeopi updates on startup and periodically during long sessions",
 		},
 	},
 

@@ -6,11 +6,12 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getPluginsDir, getPluginsLockfile, isEnoent } from "jeopi-utils";
+import { getPluginsDir, getPluginsLockfile, isEnoent, logger } from "jeopi-utils";
 import { getConfigDirPaths } from "../../config";
 import { resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import { installLegacyPiSpecifierShim } from "./legacy-pi-compat";
 import { normalizePluginRuntimeConfig } from "./runtime-config";
+import { resolvePluginTrust } from "./trust";
 import type {
 	InstalledPlugin,
 	PluginManifest,
@@ -443,10 +444,35 @@ export function resolvePluginExtensionPaths(plugin: InstalledPlugin): string[] {
 // =============================================================================
 
 /**
- * Get all tool paths from all enabled plugins.
+ * `getEnabledPlugins` filtered down to plugins the user has trusted (or
+ * explicitly denied) via {@link resolvePluginTrust}. Plugin code executes via
+ * native `import()` with full `exec`/API access, so — unlike user-authored
+ * `.jeopi/tools/` etc., which are trusted by construction — third-party
+ * plugin code must clear a trust-on-first-use gate before any of its
+ * tools/hooks/commands/extensions are loaded. Untrusted/denied plugins are
+ * silently skipped here (not thrown): the plugin stays installed and its
+ * non-code capabilities (skills/rules, discovered separately) are unaffected.
+ */
+async function getTrustedEnabledPlugins(cwd: string): Promise<ScopedInstalledPlugin[]> {
+	const plugins = await getEnabledPlugins(cwd);
+	if (plugins.length === 0) return plugins;
+	const trusted: ScopedInstalledPlugin[] = [];
+	for (const plugin of plugins) {
+		const isTrusted = await resolvePluginTrust({ name: plugin.name, version: plugin.version });
+		if (isTrusted) {
+			trusted.push(plugin);
+		} else {
+			logger.debug("plugin code load skipped: not trusted", { name: plugin.name, version: plugin.version });
+		}
+	}
+	return trusted;
+}
+
+/**
+ * Get all tool paths from all enabled *and trusted* plugins.
  */
 export async function getAllPluginToolPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
+	const plugins = await getTrustedEnabledPlugins(cwd);
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
@@ -457,10 +483,10 @@ export async function getAllPluginToolPaths(cwd: string): Promise<string[]> {
 }
 
 /**
- * Get all hook paths from all enabled plugins.
+ * Get all hook paths from all enabled *and trusted* plugins.
  */
 export async function getAllPluginHookPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
+	const plugins = await getTrustedEnabledPlugins(cwd);
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
@@ -471,10 +497,10 @@ export async function getAllPluginHookPaths(cwd: string): Promise<string[]> {
 }
 
 /**
- * Get all command paths from all enabled plugins.
+ * Get all command paths from all enabled *and trusted* plugins.
  */
 export async function getAllPluginCommandPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
+	const plugins = await getTrustedEnabledPlugins(cwd);
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
@@ -485,10 +511,10 @@ export async function getAllPluginCommandPaths(cwd: string): Promise<string[]> {
 }
 
 /**
- * Get all extension module paths from all enabled plugins.
+ * Get all extension module paths from all enabled *and trusted* plugins.
  */
 export async function getAllPluginExtensionPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
+	const plugins = await getTrustedEnabledPlugins(cwd);
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {

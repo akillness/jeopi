@@ -22,6 +22,15 @@
  * input, even re-submitting to `critic` is refused — the agent must stop and
  * report the surviving gaps instead of burning tokens on convergence-free
  * re-planning.
+ *
+ * `okay` clearing the gate is not the whole story: nothing previously stopped
+ * the plan file from being edited *after* the critic approved it and *before*
+ * a non-read-only agent executes it (a TOCTOU window — jeo-code closes the
+ * same gap with a `sha256(planContent) === consensus_hash` pin in
+ * `team.ts`/`approve.ts`). {@link ApprovedPlanHash} / {@link hashPlanContent} /
+ * {@link planIntegrityMismatchMessage} port that pin: the caller records the
+ * approved plan's hash when a verdict resolves `okay`, and re-checks it
+ * immediately before spawning a non-read-only agent.
  */
 
 /** Agent name whose structured verdicts drive the gate. */
@@ -144,5 +153,42 @@ export function criticGateWriteMessage(state: CriticGateState): string {
 	return (
 		`${gateSummaryLine(state)} The working tree is locked until a critic returns \`okay\` for the revised plan ` +
 		`(or the user sends a new message). Write plans and notes to local:// files instead.${formatRequiredFixes(state)}`
+	);
+}
+
+/** Canonical `local://` path for the plan the `/jeo` workflow gates on (see `prompts/agents/jeo.md`). */
+export const GATED_PLAN_LOCAL_URL = "local://jeo-plan.md";
+
+/** Hash of the plan content a critic verdict of `okay` approved, so a later
+ *  spawn gate can detect the plan changing out from under an already-`okay`
+ *  verdict. Held by the parent session alongside (but independent of)
+ *  {@link CriticGateState} — it survives the gate clearing on `okay`, which is
+ *  exactly when it starts mattering. */
+export interface ApprovedPlanHash {
+	/** sha256 hex digest of the plan content at the moment of the `okay` verdict. */
+	hash: string;
+	/** Agent id of the critic run that approved this content. */
+	agentId: string;
+	/** Epoch ms when the verdict was recorded. */
+	at: number;
+}
+
+/** Stable hash of plan content for {@link ApprovedPlanHash} pinning. Not a
+ *  cryptographic integrity boundary (the model can read its own hash target) —
+ *  it exists to catch accidental or incidental drift between critic approval
+ *  and execution, the same threat model as jeo-code's `consensus_hash`. */
+export function hashPlanContent(content: string): string {
+	return new Bun.CryptoHasher("sha256").update(content).digest("hex");
+}
+
+/**
+ * Error text for a non-read-only spawn attempted when the plan content no
+ * longer matches what the critic approved (edited after `okay`, or deleted).
+ */
+export function planIntegrityMismatchMessage(approved: ApprovedPlanHash): string {
+	return (
+		`Critic gate: \`${GATED_PLAN_LOCAL_URL}\` no longer matches the content \`${approved.agentId}\` reviewed and approved. ` +
+		`The plan changed (or was removed) after the \`okay\` verdict — spawning a non-read-only agent is blocked by the runtime. ` +
+		"Re-submit the current plan to a fresh `critic` and execute only after a new `okay` verdict."
 	);
 }

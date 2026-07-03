@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `ToolCallLoopGuard.recordTurn` now also detects an alternating A,B,A,B,… tool-call cycle (exactly two distinct calls filling a 6-turn window), returning a `cyclical_tool_calls` detection alongside the existing `repeated_tool_call` one. `recordTurn`'s return type is now `ToolCallLoopDetection = RepeatedToolCallDetection | CyclicalToolCallDetection`.
+
 ## [16.2.21] - 2026-07-02
 
 ### Fixed

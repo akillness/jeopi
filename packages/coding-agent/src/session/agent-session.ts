@@ -112,7 +112,7 @@ import {
 import * as AIError from "jeopi-ai/error";
 import { toolWireSchema } from "jeopi-ai/utils/schema";
 import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "jeopi-ai/utils/thinking-loop";
-import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "jeopi-ai/utils/tool-call-loop-guard";
+import { type ToolCallLoopDetection, ToolCallLoopGuard } from "jeopi-ai/utils/tool-call-loop-guard";
 import { isFireworksFastModelId, toFireworksBaseModelId } from "jeopi-catalog/fireworks-model-id";
 import { getSupportedEfforts } from "jeopi-catalog/model-thinking";
 import { modelsAreEqual } from "jeopi-catalog/models";
@@ -258,6 +258,7 @@ import planModeToolDecisionReminderPrompt from "../prompts/system/plan-mode-tool
 import rewindReportTemplate from "../prompts/system/rewind-report.md" with { type: "text" };
 import sideChannelNoToolsReminder from "../prompts/system/side-channel-no-tools.md" with { type: "text" };
 import thinkingLoopRedirectTemplate from "../prompts/system/thinking-loop-redirect.md" with { type: "text" };
+import toolCallCycleRedirectTemplate from "../prompts/system/tool-call-cycle-redirect.md" with { type: "text" };
 import toolCallLoopRedirectTemplate from "../prompts/system/tool-call-loop-redirect.md" with { type: "text" };
 import ttsrInterruptTemplate from "../prompts/system/ttsr-interrupt.md" with { type: "text" };
 import ttsrToolReminderTemplate from "../prompts/system/ttsr-tool-reminder.md" with { type: "text" };
@@ -271,7 +272,7 @@ import {
 	type SecretObfuscator,
 } from "../secrets/obfuscator";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
-import type { CriticGateState } from "../task/critic-gate";
+import type { ApprovedPlanHash, CriticGateState } from "../task/critic-gate";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -398,6 +399,7 @@ const GEMINI_TOOL_REMINDER_TYPE = "gemini-tool-call-reminder";
  *  thinking/response loop. Steers the model off the repeated content; never displayed. */
 const THINKING_LOOP_REDIRECT_TYPE = "thinking-loop-redirect";
 const TOOL_CALL_LOOP_REDIRECT_TYPE = "tool-call-loop-redirect";
+const TOOL_CALL_CYCLE_REDIRECT_TYPE = "tool-call-cycle-redirect";
 
 function customMessageContentText(content: string | (TextContent | ImageContent)[]): string {
 	if (typeof content === "string") return content;
@@ -1545,6 +1547,11 @@ export class AgentSession {
 	 *  Engaged while the latest verdict is non-okay; cleared by an okay verdict,
 	 *  the next user-authored prompt, or a new session. */
 	#criticGateState: CriticGateState | undefined;
+	/** Plan content hash a critic verdict of `okay` approved (see task/critic-gate.ts).
+	 *  Independent of `#criticGateState` — it is set exactly when that gate clears via
+	 *  `okay`, and is what lets a later non-read-only spawn detect the plan changing
+	 *  out from under an already-approved verdict. Same clear triggers as the gate. */
+	#approvedPlanHash: ApprovedPlanHash | undefined;
 	#goalModeState: GoalModeState | undefined;
 	#goalRuntime: GoalRuntime;
 	#advisorEnabled = false;
@@ -2432,21 +2439,33 @@ export class AgentSession {
 				// so two SessionManagers never hold the same file at once.
 				this.#advisorRecorderClosed,
 			);
-			const runtime = new AdvisorRuntime(advisorAgentFacade, {
-				snapshotMessages: () => this.agent.state.messages,
-				enqueueAdvice: (note, severity) => this.#routeAdvice(advisorRef, note, severity),
-				maintainContext: incomingTokens => this.#maintainAdvisorContext(advisorRef, incomingTokens),
-				obfuscator: this.#obfuscator,
-				beginAdvisorUpdate: () => advisorRef.emissionGuard.beginUpdate(),
-				notifyFailure: error => {
-					const message = error instanceof Error ? error.message : String(error);
-					this.emitNotice(
-						"warning",
-						`Advisor${slug ? ` "${advisorName}"` : ""} unavailable for ${formatModelString(advisorModel)}: ${message}`,
-						"advisor",
-					);
+			const runtime = new AdvisorRuntime(
+				advisorAgentFacade,
+				{
+					snapshotMessages: () => this.agent.state.messages,
+					enqueueAdvice: (note, severity) => this.#routeAdvice(advisorRef, note, severity),
+					maintainContext: incomingTokens => this.#maintainAdvisorContext(advisorRef, incomingTokens),
+					obfuscator: this.#obfuscator,
+					beginAdvisorUpdate: () => advisorRef.emissionGuard.beginUpdate(),
+					notifyFailure: error => {
+						const message = error instanceof Error ? error.message : String(error);
+						this.emitNotice(
+							"warning",
+							`Advisor${slug ? ` "${advisorName}"` : ""} unavailable for ${formatModelString(advisorModel)}: ${message}`,
+							"advisor",
+						);
+					},
+					notifyThinkingStripped: () => {
+						this.emitNotice(
+							"info",
+							`Advisor${slug ? ` "${advisorName}"` : ""}: ${formatModelString(advisorModel)} refused a transcript containing thinking; retrying without thinking for the rest of the session.`,
+							"advisor",
+						);
+					},
 				},
-			});
+				undefined,
+				{ includeThinking: this.settings.get("advisor.includeThinking") as boolean },
+			);
 
 			const advisorRef: ActiveAdvisor = {
 				name: advisorName,
@@ -4636,7 +4655,18 @@ export class AgentSession {
 		return this.#toolCallLoopGuard;
 	}
 
-	#maybeInjectToolCallLoopRedirect(messages: AgentMessage[], detection: RepeatedToolCallDetection): void {
+	#maybeInjectToolCallLoopRedirect(messages: AgentMessage[], detection: ToolCallLoopDetection): void {
+		if (detection.kind === "cyclical_tool_calls") {
+			const toolNames = detection.toolNames.join(" and ");
+			const content = prompt.render(toolCallCycleRedirectTemplate, {
+				tool_names: toolNames,
+				window_size: detection.windowSize,
+			});
+			const details = { toolNames: detection.toolNames, windowSize: detection.windowSize };
+			logger.warn("cross-turn alternating tool-call cycle detected", { toolNames: detection.toolNames });
+			this.#appendRedirectMessage(TOOL_CALL_CYCLE_REDIRECT_TYPE, content, details, messages);
+			return;
+		}
 		const content = prompt.render(toolCallLoopRedirectTemplate, {
 			tool_name: detection.toolName,
 			count: detection.count,
@@ -4653,9 +4683,18 @@ export class AgentSession {
 			toolName: detection.toolName,
 			count: detection.count,
 		});
+		this.#appendRedirectMessage(TOOL_CALL_LOOP_REDIRECT_TYPE, content, details, messages);
+	}
+
+	#appendRedirectMessage(
+		customType: string,
+		content: string,
+		details: Record<string, unknown>,
+		messages: AgentMessage[],
+	): void {
 		const redirectMessage: CustomMessage = {
 			role: "custom",
-			customType: TOOL_CALL_LOOP_REDIRECT_TYPE,
+			customType,
 			content,
 			display: false,
 			details,
@@ -4666,7 +4705,7 @@ export class AgentSession {
 		if (this.agent.state.messages !== messages) {
 			this.agent.appendMessage(redirectMessage);
 		}
-		this.sessionManager.appendCustomMessageEntry(TOOL_CALL_LOOP_REDIRECT_TYPE, content, false, details, "agent");
+		this.sessionManager.appendCustomMessageEntry(customType, content, false, details, "agent");
 	}
 
 	/**
@@ -6720,6 +6759,14 @@ export class AgentSession {
 		this.#criticGateState = state;
 	}
 
+	getApprovedPlanHash(): ApprovedPlanHash | undefined {
+		return this.#approvedPlanHash;
+	}
+
+	setApprovedPlanHash(hash: ApprovedPlanHash | undefined): void {
+		this.#approvedPlanHash = hash;
+	}
+
 	getGoalModeState(): GoalModeState | undefined {
 		return this.#goalModeState;
 	}
@@ -7158,6 +7205,7 @@ export class AgentSession {
 			// The user regaining control is the only override for the critic gate:
 			// a fresh user message clears any engaged non-okay verdict.
 			this.#criticGateState = undefined;
+			this.#approvedPlanHash = undefined;
 		}
 
 		// If streaming, queue via steer() or followUp() based on option
@@ -8381,6 +8429,7 @@ export class AgentSession {
 		this.#planReferenceSent = false;
 		this.#planReferencePath = "local://PLAN.md";
 		this.#criticGateState = undefined;
+		this.#approvedPlanHash = undefined;
 		this.#resetAdvisorSessionState();
 		this.#reconnectToAgent();
 

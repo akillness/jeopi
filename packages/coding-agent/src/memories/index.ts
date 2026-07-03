@@ -220,7 +220,11 @@ function renderMemoryToolDeveloperInstructionsSnapshot(
 	if (!summaryOut && !learnedOut) return undefined;
 
 	return prompt.render(readPathTemplate, {
-		memory_summary: summaryOut,
+		// `learned` already went through `neutralizeInjection` (strips all `<>`), so it
+		// can't contain a `<memory_context>` breakout. `summaryOut` is raw memory_summary.md
+		// content (untrusted — consolidated from prior tool output) with no such guard, so
+		// it gets the narrower container-tag-only neutralization here.
+		memory_summary: neutralizeContainerTag(summaryOut, "memory_context"),
 		learned: learnedOut,
 	});
 }
@@ -1336,6 +1340,22 @@ function neutralizeInjection(text: string): string {
 		.replace(/~{2,}/g, "~")
 		.replace(/\s+/g, " ")
 		.trim();
+}
+
+/**
+ * Escape occurrences of a single container tag inside untrusted text before
+ * embedding it in that same container, so the text can't prematurely close the
+ * container and inject fake content after it under that boundary. Narrower than
+ * {@link neutralizeInjection}: only the named tag is touched (angle brackets used
+ * for markdown/code elsewhere in the text survive intact). Mirrors gajae-code's
+ * `frameMemory` tag-breakout guard (`<project_memory>` → `‹project_memory›`).
+ */
+function neutralizeContainerTag(text: string, tagName: string): string {
+	const escapedTagName = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return text.replace(
+		new RegExp(`<(/?)${escapedTagName}>`, "gi"),
+		(_match, closing: string) => `\u2039${closing}${tagName}\u203a`,
+	);
 }
 
 /** Slice to `maxChars`, dropping a trailing unpaired high surrogate. */

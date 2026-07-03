@@ -127,7 +127,7 @@ async function watchCI(): Promise<boolean> {
 	}
 }
 
-function hasUnreleasedContent(content: string): boolean {
+export function hasUnreleasedContent(content: string): boolean {
 	const unreleasedMatch = content.match(/## \[Unreleased\]\s*\n([\s\S]*?)(?=## \[\d|$)/);
 	if (!unreleasedMatch) return false;
 	const sectionContent = unreleasedMatch[1].trim();
@@ -216,7 +216,7 @@ function compareVersions(a: string, b: string): number {
 	return aPatch - bPatch;
 }
 
-async function cmdRelease(versionOrBump: string): Promise<void> {
+async function cmdRelease(versionOrBump: string, options: { allowEmptyChangelog: boolean }): Promise<void> {
 	console.log("\n=== Release Script ===\n");
 
 	// 1. Pre-flight checks
@@ -236,6 +236,31 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		process.exit(1);
 	}
 	console.log("  Working directory clean");
+
+	// Changelog gate — a release cut with no [Unreleased] content anywhere
+	// ships a GitHub Release whose body is only the auto-generated compare
+	// link (see v16.2.22), so users never see what changed. Refuse unless the
+	// operator explicitly opts into a noteless rebuild.
+	const changelogsWithContent: string[] = [];
+	for await (const changelog of changelogGlob.scan(".")) {
+		if (hasUnreleasedContent(await Bun.file(changelog).text())) {
+			changelogsWithContent.push(changelog);
+		}
+	}
+	if (changelogsWithContent.length === 0) {
+		if (options.allowEmptyChangelog) {
+			console.log("  No [Unreleased] changelog content; proceeding anyway (--allow-empty)");
+		} else {
+			console.error("Error: No package has content under ## [Unreleased] in packages/*/CHANGELOG.md.");
+			console.error("A release cut now would publish a GitHub Release with an empty body.");
+			console.error("Add changelog entries for the changes being released, or:");
+			console.error("  - run `bun scripts/fix-changelogs.ts` if entries were filed under a released section");
+			console.error("  - pass --allow-empty for an intentional no-notes rebuild");
+			process.exit(1);
+		}
+	} else {
+		console.log(`  Unreleased changelog content in ${changelogsWithContent.length} package(s)`);
+	}
 
 	let latestTag: string;
 	try {
@@ -437,23 +462,32 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 // Main
 // =============================================================================
 
-const arg = process.argv[2];
+if (import.meta.main) {
+	const rawArgs = process.argv.slice(2);
+	const allowEmptyChangelog = rawArgs.includes("--allow-empty");
+	const positional = rawArgs.filter(a => !a.startsWith("--"));
+	const arg = positional[0];
 
-if (!arg) {
-	console.error("Usage:");
-	console.error("  bun scripts/release.ts <version|major|minor|patch>   Full release");
-	console.error("  bun scripts/release.ts watch                         Watch CI for current commit");
-	process.exit(1);
-}
+	const printUsage = () => {
+		console.error("Usage:");
+		console.error("  bun scripts/release.ts <version|major|minor|patch> [--allow-empty]   Full release");
+		console.error(
+			"  bun scripts/release.ts watch                                         Watch CI for current commit",
+		);
+	};
 
-if (arg === "watch") {
-	await cmdWatch();
-} else if (arg === "major" || arg === "minor" || arg === "patch" || /^\d+\.\d+\.\d+$/.test(arg)) {
-	await cmdRelease(arg);
-} else {
-	console.error(`Unknown command or invalid version: ${arg}`);
-	console.error("Usage:");
-	console.error("  bun scripts/release.ts <version|major|minor|patch>   Full release");
-	console.error("  bun scripts/release.ts watch                         Watch CI for current commit");
-	process.exit(1);
+	if (!arg) {
+		printUsage();
+		process.exit(1);
+	}
+
+	if (arg === "watch") {
+		await cmdWatch();
+	} else if (arg === "major" || arg === "minor" || arg === "patch" || /^\d+\.\d+\.\d+$/.test(arg)) {
+		await cmdRelease(arg, { allowEmptyChangelog });
+	} else {
+		console.error(`Unknown command or invalid version: ${arg}`);
+		printUsage();
+		process.exit(1);
+	}
 }

@@ -11,6 +11,7 @@ import type { ToolSession } from "../../tools";
 import { formatErrorDetail, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import { ToolError } from "../../tools/tool-errors";
 import { framedBlock, renderStatusLine, truncateToWidth } from "../../tui";
+import { assertSubstantiveCompletionEvidence } from "../completion-evidence";
 import { completionBudgetReport, remainingTokens } from "../runtime";
 import type { Goal, GoalStatus, GoalToolDetails } from "../state";
 
@@ -18,6 +19,9 @@ const goalSchema = type({
 	op: type("'create' | 'get' | 'complete' | 'resume' | 'drop'").describe("goal operation"),
 	"objective?": type("string").describe("goal objective"),
 	"token_budget?": type("number.integer").describe("token budget"),
+	"evidence?": type("string").describe(
+		"required when op=complete: what you verified and how (tests run, output inspected, files diffed, etc.)",
+	),
 });
 
 export type GoalToolInput = typeof goalSchema.infer;
@@ -53,6 +57,14 @@ function validateCreateParams(params: GoalToolInput): { objective: string; token
 		throw new ToolError("token_budget must be a positive integer when provided");
 	}
 	return { objective, tokenBudget };
+}
+
+function validateCompleteParams(params: GoalToolInput): string {
+	try {
+		return assertSubstantiveCompletionEvidence(params.evidence);
+	} catch (err) {
+		throw new ToolError(err instanceof Error ? err.message : String(err));
+	}
 }
 
 export class GoalTool implements AgentTool<typeof goalSchema, GoalToolDetails> {
@@ -94,7 +106,7 @@ export class GoalTool implements AgentTool<typeof goalSchema, GoalToolDetails> {
 			const dropped = await runtime.dropGoal();
 			response = buildGoalToolResponse(dropped ?? null);
 		} else {
-			const completed = await runtime.completeGoalFromTool();
+			const completed = await runtime.completeGoalFromTool(validateCompleteParams(params));
 			response = buildGoalToolResponse(completed, { includeCompletionReport: true });
 		}
 		let text: string;
@@ -105,6 +117,9 @@ export class GoalTool implements AgentTool<typeof goalSchema, GoalToolDetails> {
 			}
 			if (response.remainingTokens !== null) {
 				text += `\nRemaining tokens: ${response.remainingTokens}`;
+			}
+			if (response.goal.completionEvidence) {
+				text += `\nEvidence: ${response.goal.completionEvidence}`;
 			}
 			if (response.completionBudgetReport) {
 				text += `\n\n${response.completionBudgetReport}`;
