@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Added the animated jeopi character mascot (hooded doll + jeo-code crayfish) to the README, then removed the older static `hero.gif` wordmark banner above it so the animated mascot is the sole header image.
+
 ## [16.2.21] - 2026-07-02
 
 ### Fixed
