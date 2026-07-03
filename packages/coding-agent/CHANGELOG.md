@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.24] - 2026-07-03
+
 ### Breaking Changes
 
 - Installed plugins' tools/hooks/commands/extensions no longer load automatically. Each plugin now needs a one-time trust grant (interactive Yes/No prompt on first load, or `PI_TRUST_ALL_PLUGINS=1` for headless/CI runs) before its code executes — see the trust-on-first-use entry below. Plugin skills/rules and marketplace listing/install are unaffected.
