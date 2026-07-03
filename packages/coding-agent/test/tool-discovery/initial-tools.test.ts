@@ -12,6 +12,7 @@ import {
 	IrcTool,
 	JobTool,
 	SshTool,
+	SubagentTool,
 } from "jeopi-cli/tools";
 
 const allToolsSettings = Settings.isolated({
@@ -51,6 +52,7 @@ async function getToolMetadata(): Promise<Map<string, { loadMode?: string; summa
 		new GithubTool(toolSession),
 		new SshTool(toolSession, [], new Map(), ""),
 		new JobTool(toolSession),
+		new SubagentTool(toolSession),
 		new IrcTool(toolSession),
 	]) {
 		metadata.set(tool.name, { loadMode: tool.loadMode, summary: tool.summary });
