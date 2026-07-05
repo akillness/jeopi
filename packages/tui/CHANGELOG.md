@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [16.2.25] - 2026-07-05
+
+### Added
+
+- Added `priority?: number` to `SlashCommand` (ported from gajae-code): `CombinedAutocompleteProvider`'s slash-command ranking now breaks same-score ties by `priority` (higher first) instead of falling through only to registry order. Text-match quality (exact/prefix/contains/subsequence) still ranks first — `priority` only decides ties within the same score tier, most visibly the bare `/` menu where every command scores 1.
+
 ## [16.2.14] - 2026-07-02
 
 ### Fixed

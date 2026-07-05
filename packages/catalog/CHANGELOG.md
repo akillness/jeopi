@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [16.2.25] - 2026-07-05
+
+### Added
+
+- Added the `tencent` provider (Tencent Cloud MaaS, international `tokenhub-intl` gateway): API-key-only, Anthropic Messages wire format, serving DeepSeek/MiniMax/Zhipu GLM/Moonshot Kimi/Hunyuan MT models. Ported from gajae-code's `openai-compatible-catalog.ts` `protocol: "anthropic"` entry. The gateway has no `/v1/models` route and isn't indexed by models.dev, so the 16-model catalog is a curated static seed (`provider-models/tencent.ts`) baked into `models.json` at generation time — reconciled to a single list, unlike gajae-code's two divergent (and partly dead) Tencent model lists.
+
 ## [16.2.14] - 2026-07-02
 
 ### Breaking Changes

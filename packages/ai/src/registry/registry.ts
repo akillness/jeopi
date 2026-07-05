@@ -49,6 +49,7 @@ import { qwenPortalProvider } from "./qwen-portal";
 import { sakanaProvider } from "./sakana";
 import { syntheticProvider } from "./synthetic";
 import { tavilyProvider } from "./tavily";
+import { tencentProvider } from "./tencent";
 import { togetherProvider } from "./together";
 import type { ProviderDefinition } from "./types";
 import { umansProvider } from "./umans";
@@ -139,6 +140,7 @@ const ALL = [
 	mistralProvider,
 	minimaxProvider,
 	amazonBedrockProvider,
+	tencentProvider,
 ];
 
 export type RegistryDef = (typeof ALL)[number];

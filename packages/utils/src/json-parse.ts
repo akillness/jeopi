@@ -490,6 +490,75 @@ class RelaxedJson {
 }
 
 /**
+ * Cheap pre-check for whether a JSON source could decode to any UTF-16 surrogate
+ * code unit — either a raw surrogate character already in the text, or a `\uD…`
+ * escape that resolves into the surrogate range. Lets the parse hot path skip the
+ * deep surrogate walk entirely for the overwhelmingly common surrogate-free input.
+ */
+const SURROGATE_HINT_RE = /[\uD800-\uDFFF]|\\u[dD]/;
+
+/**
+ * Replace every unpaired UTF-16 surrogate code unit with the Unicode replacement
+ * character (U+FFFD), leaving valid surrogate pairs (real astral characters like
+ * emoji) intact. Returns the input unchanged when it is already well-formed.
+ *
+ * Lone surrogates leak in when a provider splits an astral character across two
+ * streamed tool-call deltas, or emits a truncated `\uD83D` escape. Left in place
+ * they crash well-formedness-strict consumers downstream (e.g. `encodeURIComponent`,
+ * URL building), so we normalize them at the JSON boundary.
+ */
+export function stripLoneSurrogates(text: string): string {
+	let out: string | null = null;
+	const len = text.length;
+	for (let i = 0; i < len; i++) {
+		const c = text.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff) {
+			const next = i + 1 < len ? text.charCodeAt(i + 1) : 0;
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				// Valid high+low pair — keep both code units verbatim.
+				if (out !== null) out += text[i] + text[i + 1];
+				i++;
+				continue;
+			}
+			// Lone high surrogate.
+			out ??= text.slice(0, i);
+			out += "\uFFFD";
+		} else if (c >= 0xdc00 && c <= 0xdfff) {
+			// Lone low surrogate (a paired low is consumed above).
+			out ??= text.slice(0, i);
+			out += "\uFFFD";
+		} else if (out !== null) {
+			out += text[i];
+		}
+	}
+	return out ?? text;
+}
+
+/** Recursively {@link stripLoneSurrogates} every string in a parsed JSON value. */
+function stripLoneSurrogatesDeep(value: unknown): unknown {
+	if (typeof value === "string") return stripLoneSurrogates(value);
+	if (Array.isArray(value)) {
+		for (let i = 0; i < value.length; i++) value[i] = stripLoneSurrogatesDeep(value[i]);
+		return value;
+	}
+	if (value !== null && typeof value === "object") {
+		const record = value as Record<string, unknown>;
+		for (const key of Object.keys(record)) {
+			const cleanKey = stripLoneSurrogates(key);
+			const cleanVal = stripLoneSurrogatesDeep(record[key]);
+			if (cleanKey !== key) {
+				delete record[key];
+				record[cleanKey] = cleanVal;
+			} else {
+				record[key] = cleanVal;
+			}
+		}
+		return record;
+	}
+	return value;
+}
+
+/**
  * Final-parse a JSON value, repairing the common LLM malformations
  * ({@link RelaxedJson}). Tries strict `JSON.parse` first (fast path, exact JSON
  * semantics), then the relaxed parser. Throws when the input is unrepairable,
@@ -497,11 +566,13 @@ class RelaxedJson {
  * rather than execute a half-formed one.
  */
 export function parseJsonWithRepair<T>(json: string): T {
+	let parsed: unknown;
 	try {
-		return JSON.parse(json) as T;
+		parsed = JSON.parse(json);
 	} catch {
-		return new RelaxedJson(json, false).parse() as T;
+		parsed = new RelaxedJson(json, false).parse();
 	}
+	return (SURROGATE_HINT_RE.test(json) ? stripLoneSurrogatesDeep(parsed) : parsed) as T;
 }
 
 /**
@@ -512,15 +583,17 @@ export function parseJsonWithRepair<T>(json: string): T {
 export function parseStreamingJson<T = Record<string, unknown>>(partialJson: string | undefined): T {
 	const trimmed = partialJson?.trimStart();
 	if (!trimmed) return {} as T;
+	let parsed: unknown;
 	try {
-		return JSON.parse(trimmed) as T;
+		parsed = JSON.parse(trimmed);
 	} catch {
 		try {
-			return (new RelaxedJson(trimmed, true).parse() ?? {}) as T;
+			parsed = new RelaxedJson(trimmed, true).parse() ?? {};
 		} catch {
 			return {} as T;
 		}
 	}
+	return (SURROGATE_HINT_RE.test(trimmed) ? stripLoneSurrogatesDeep(parsed) : parsed) as T;
 }
 
 /**

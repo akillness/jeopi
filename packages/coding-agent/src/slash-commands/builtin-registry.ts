@@ -211,6 +211,7 @@ function parseShakeMode(args: string): ShakeMode | { error: string } {
 const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	{
 		name: "settings",
+		priority: 40,
 		description: "Open settings menu",
 		handleTui: (_command, runtime) => {
 			runtime.ctx.showSettingsSelector();
@@ -265,6 +266,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "goal",
+		priority: 84,
 		description: "Toggle goal mode (persistent autonomous objective for this session)",
 		subcommands: [
 			{ name: "set", description: "Set or replace the goal", usage: "<objective>" },
@@ -558,6 +560,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "export",
+		priority: 50,
 		description: "Export session to HTML file",
 		inlineHint: "[path]",
 		allowArgs: true,
@@ -585,6 +588,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "dump",
+		priority: 54,
 		description: "Copy session transcript to clipboard (and write LLM request JSON to tmp)",
 		acpDescription: "Return full transcript as plain text, with LLM request JSON path",
 		allowArgs: true,
@@ -854,6 +858,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "copy",
+		priority: 55,
 		description: "Pick text or code from the conversation to copy",
 		allowArgs: true,
 		handleTui: async (command, runtime) => {
@@ -928,6 +933,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "session",
+		priority: 88,
 		description: "Session management commands",
 		acpDescription: "Show session information",
 		acpInputHint: "info|delete",
@@ -1344,6 +1350,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "new",
+		priority: 96,
 		description: "Start a new session",
 		handleTui: async (_command, runtime) => {
 			runtime.ctx.editor.setText("");
@@ -1381,6 +1388,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "compact",
+		priority: 72,
 		description: "Manually compact the session context",
 		acpDescription: "Compact the conversation",
 		subcommands: COMPACT_MODES.map(mode => ({
@@ -1467,6 +1475,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "resume",
+		priority: 92,
 		description: "Resume a different session",
 		inlineHint: "[session id]",
 		allowArgs: true,
@@ -1525,6 +1534,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "retry",
+		priority: 70,
 		description: "Retry the last failed agent turn",
 		handleTui: async (_command, runtime) => {
 			const didRetry = await runtime.ctx.session.retry();

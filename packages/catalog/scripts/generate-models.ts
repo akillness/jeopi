@@ -41,6 +41,7 @@ import {
 	SAKANA_FUGU_STATIC_MODELS,
 	stripFireworksDeepSeekThinkingToggle,
 } from "../src/provider-models/openai-compat";
+import { buildTencentStaticSeed } from "../src/provider-models/tencent";
 import type { Api, ModelSpec } from "../src/types";
 import { cleanModelName } from "../src/utils";
 import { collapseEffortVariantsAcrossProviders } from "../src/variant-collapse";
@@ -487,6 +488,11 @@ async function generateModels() {
 	// persisted `modelRoles.default = "xai-oauth/<id>"` is honored before the
 	// async refresh fires (interactive boot does not await refresh).
 	allModels.push(...buildXaiOAuthStaticSeed());
+	// Tencent Cloud MaaS is not in models.dev and has no `/v1/models` route, so
+	// the curated static seed (packages/catalog/src/provider-models/tencent.ts)
+	// is the only source — always push it (see buildTencentStaticSeed()'s own
+	// doc comment for provenance).
+	allModels.push(...buildTencentStaticSeed());
 	// Seed Anthropic models that are live on the first-party API or in limited
 	// release but that models.dev has not catalogued yet (e.g. Claude Fable 5 /
 	// Mythos 5). Deduped behind upstream entries; metadata is pinned in

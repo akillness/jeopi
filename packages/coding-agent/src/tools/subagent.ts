@@ -76,6 +76,7 @@ const PREVIEW_CHARS = 2_000;
 const FULL_PREVIEW_CHARS = 12_000;
 const DEFAULT_PAUSE_DIRECTIVE =
 	"Stop at the next safe boundary and yield. You can be resumed later with more instructions.";
+const DEFAULT_RESUME_MESSAGE = "Continue from where you left off.";
 
 export type SubagentStatus = "queued" | "running" | "paused" | "completed" | "failed" | "cancelled" | "not_found";
 
@@ -522,18 +523,26 @@ export class SubagentTool implements AgentTool<typeof subagentSchema, SubagentTo
 			};
 		}
 
+		// GJC parity: a `paused` subagent has saved context it stopped *because
+		// we asked it to* — resume can proceed with a default continuation body,
+		// the same way GJC's native `resumeSubagent` continues a non-terminal
+		// record without requiring a message. A subagent that simply finished on
+		// its own (completed/failed/cancelled) has no such known intent, so that
+		// case still requires an explicit `message`.
+		const isPaused = this.#pausedIds.has(id);
 		const message = params.message?.trim();
-		if (!message) {
+		if (!message && !isPaused) {
 			throw new ToolError(
 				`\`message\` is required to resume "${id}" — it has no pending work to continue on its own.`,
 			);
 		}
+		const body = message || DEFAULT_RESUME_MESSAGE;
 		return this.#deliver(
 			manager,
 			registry,
 			senderId,
 			id,
-			message,
+			body,
 			"resume",
 			verbosity,
 			outcome => `Resumed ${id} (${outcome}).`,

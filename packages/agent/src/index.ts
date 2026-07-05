@@ -12,6 +12,8 @@ export * from "./proxy";
 export * from "./replay-policy";
 // Run-level telemetry collector + aggregators
 export * from "./run-collector";
+// Telegram remote-control pipeline
+export * from "./telegram";
 // Telemetry
 export * from "./telemetry";
 // Thinking selectors

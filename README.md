@@ -366,7 +366,7 @@ Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google A
 
 Subscription-routed. `/login` attaches the session.
 
-Cursor `oauth` · GitHub Copilot `oauth` · GitLab Duo · Kimi Code `plan` · Moonshot · MiniMax Coding Plan `plan` · MiniMax Coding Plan CN `plan` · Alibaba Coding Plan `plan` · Qwen Portal · Z.AI / GLM Coding Plan `plan` · Xiaomi MiMo · Qianfan · NanoGPT · Venice · Kilo · ZenMux · OpenCode Go · OpenCode Zen
+Cursor `oauth` · GitHub Copilot `oauth` · GitLab Duo · Kimi Code `plan` · Moonshot · MiniMax Coding Plan `plan` · MiniMax Coding Plan CN `plan` · Alibaba Coding Plan `plan` · Qwen Portal · Z.AI / GLM Coding Plan `plan` · Xiaomi MiMo · Qianfan · NanoGPT · Venice · Kilo · ZenMux · Tencent Cloud MaaS · OpenCode Go · OpenCode Zen
 
 ### Run it yourself
 
@@ -632,11 +632,11 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.2.25]** (2026-07-05) — `resume` on a target that finished entirely on its own (not `paused`) now requires an explicit `message`; only a `paused` target can resume without one (continues with a default nudge, since the…
+- **[16.2.24]** (2026-07-03) — Installed plugins' tools/hooks/commands/extensions no longer load automatically. Each plugin now needs a one-time trust grant (interactive Yes/No prompt on first load, or `PI_TRUST_ALL_PLUGINS=1` for…
 - **[16.2.23]** (2026-07-03) — Added the animated jeopi character mascot (hooded doll + jeo-code crayfish) to the README, then removed the older static `hero.gif` wordmark banner above it so the animated mascot is the sole header…
 - **[16.2.21]** (2026-07-02) — Fixed long-window quota exhaustion (including Cloud Code Assist daily quota) being shown as a generic `Retry failed after 1 attempts` error. When the provider retry window exceeds `retry.maxDelayMs`,…
 - **[16.2.20]** (2026-07-02) — Made `jeopi update` failures diagnosable: a registry 404 on the update check now names the phantom package and prints the manual `bun install -g jeopi-cli` recovery (globals built before the `jeopi`…
-- **[16.2.19]** (2026-07-02) — Fixed the startup update notice never appearing: the version check queried the nonexistent `jeopi` npm package (renamed CLI ships as `jeopi-cli`), so the 404 silently suppressed the "New version X is…
-- **[16.2.18]** (2026-07-02) — Fixed release CI after the jeopi rebrand by asserting the raw SSE dropped-record debug marker uses `jeopi-debug-dropped`.
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->

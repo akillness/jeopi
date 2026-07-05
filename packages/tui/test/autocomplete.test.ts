@@ -539,6 +539,38 @@ describe("trySyncSlashCompletion", () => {
 		expect(result!.items.map(i => i.value)).toEqual(["setup", "usage"]);
 	});
 
+	it("ranks commands by priority when the bare `/` prefix ties every score", async () => {
+		const provider = new CombinedAutocompleteProvider(
+			[
+				{ name: "settings", description: "Open settings" },
+				{ name: "resume", priority: 92, description: "Resume a previous session" },
+				{ name: "new", priority: 96, description: "Start a new session" },
+			],
+			"/tmp",
+		);
+		const result = await provider.getSuggestions(["/"], 0, 1);
+		expect(result).not.toBeNull();
+		// Priority orders the tie (all commands score 1 with an empty prefix);
+		// the un-prioritized "settings" (defaults to 0) sorts last.
+		expect(result!.items.map(i => i.value)).toEqual(["new", "resume", "settings"]);
+	});
+
+	it("never lets priority override a genuinely better text match", async () => {
+		const provider = new CombinedAutocompleteProvider(
+			[
+				{ name: "resume", priority: 92, description: "Resume a previous session" },
+				{ name: "re", description: "Low priority but an exact match" },
+			],
+			"/tmp",
+		);
+		const result = provider.trySyncSlashCompletion("/re");
+		expect(result).not.toBeNull();
+		// "re" is an exact name match (score 1000); "resume" only starts with "re"
+		// (score 900). Priority is a tiebreaker within the same score tier, not
+		// an override of match quality.
+		expect(result!.items.map(i => i.value)).toEqual(["re", "resume"]);
+	});
+
 	it("keeps registry order for same-prefix commands so /set still applies settings", () => {
 		const provider = new CombinedAutocompleteProvider(
 			[

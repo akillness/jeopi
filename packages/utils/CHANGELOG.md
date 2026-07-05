@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.24] - 2026-07-03
+
 ### Added
 
 - Added `getPluginTrustStorePath()`, resolving `~/.jeopi/plugin-trust.json` — backs the coding-agent plugin trust-on-first-use gate.

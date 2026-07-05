@@ -16,6 +16,8 @@ export interface BuiltinSlashCommand {
 	name: string;
 	aliases?: string[];
 	description: string;
+	/** Ranking boost for the empty-prefix `/` menu and tied fuzzy matches (higher shows first); flows straight through to `jeopi-tui`'s `SlashCommand.priority`. Commands without one default to 0. */
+	priority?: number;
 	/** Subcommands for dropdown completion (e.g. /mcp add, /mcp list). */
 	subcommands?: SubcommandDef[];
 	/** Static inline hint when command takes a simple argument (no subcommands). */
