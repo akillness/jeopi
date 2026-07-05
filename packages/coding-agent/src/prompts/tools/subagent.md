@@ -8,7 +8,7 @@ Controls the background subagents you spawned with `task`. Results deliver thems
 - **`cancel`**: Stop subagents that have hung, stalled, or are no longer needed. Requires `id`/`ids`. Works whether the subagent is still on its first run or was later resumed.
 - **`steer`**: Send a message to a specific subagent (`id` + `message`). Delivered as steering to a running subagent, or wakes an idle/parked one with a real turn. Add `pause: true` to also ask it to stop at its next safe boundary after handling the message.
 - **`pause`**: Ask a running subagent to stop at its next safe boundary and go idle. Non-running subagents are a no-op — nothing to pause.
-- **`resume`**: Wake a subagent with a follow-up. A `running` or `queued` subagent is a no-op (nothing to resume). Any other subagent needs `message` — it has no pending work to continue on its own, but its session and full context are still alive, so a follow-up message continues it exactly where it left off.
+- **`resume`**: Wake a subagent with a follow-up. A `running` or `queued` subagent is a no-op (nothing to resume). A `paused` subagent (you asked it to stop) resumes even without `message` — it continues with a default "keep going" nudge, since you already know why it stopped. Any other subagent (`completed`/`failed`/`cancelled` on its own) needs an explicit `message` — it has no known pending work, but its session and full context are still alive, so a follow-up message continues it exactly where it left off.
 
 # Filtering Output
 

@@ -21,6 +21,7 @@ const ENV_KEYS = [
 	"UMANS_AI_CODING_PLAN_API_KEY",
 	"LLAMA_CPP_API_KEY",
 	"WANDB_API_KEY",
+	"TENCENT_API_KEY",
 ] as const;
 const originalEnv = new Map(ENV_KEYS.map(key => [key, Bun.env[key]]));
 
@@ -47,6 +48,8 @@ describe("provider registry auth surface", () => {
 		expect(getEnvApiKey("umans")).toBe("umans-env");
 		Bun.env.LLAMA_CPP_API_KEY = "llama-env";
 		expect(getEnvApiKey("llama.cpp")).toBe("llama-env");
+		Bun.env.TENCENT_API_KEY = "tencent-env";
+		expect(getEnvApiKey("tencent")).toBe("tencent-env");
 		// Legacy search-tool key preserved (not a registry provider def).
 		expect(getEnvApiKey("exa")).toBe("exa-env");
 	});
@@ -67,6 +70,7 @@ describe("provider registry auth surface", () => {
 		expect(ids).toContain("kagi");
 		expect(ids).toContain("umans");
 		expect(ids).toContain("llama.cpp");
+		expect(ids).toContain("tencent");
 		// openai has no interactive login flow.
 		expect(ids).not.toContain("openai");
 	});

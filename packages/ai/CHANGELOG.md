@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added the `tencent` provider registry def (`registry/tencent.ts`): API-key login validated against Tencent Cloud MaaS's Anthropic Messages endpoint (`tokenhub-intl.tencentcloudmaas.com/v1/messages`), registered in the `ALL` provider list. Env fallback: `TENCENT_API_KEY`. Verified live: full inference round-trip (GLM-5.2, Hunyuan MT2 Plus) succeeds end-to-end through `streamAnthropic`; DeepSeek/Kimi ids on the same test key correctly surfaced a clean `402` (quota exhausted) rather than an error.
+- `createApiKeyLogin`'s `anthropic-messages` validation now accepts an optional `acceptableErrorStatuses` list: HTTP statuses that still prove the key is valid (e.g. a billing/quota gate only a real, authenticated key would reach) and should pass validation instead of being treated as an invalid key. Discovered live while validating the `tencent` login: a real, correctly-authenticated key with no active billing got HTTP 402, which the login flow was previously rejecting as "invalid key" — `tencent`'s validation now sets `acceptableErrorStatuses: [402]`; other providers are unaffected (opt-in, defaults to none).
+
 ## [16.2.24] - 2026-07-03
 
 ### Added

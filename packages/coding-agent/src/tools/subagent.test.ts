@@ -186,6 +186,26 @@ describe("SubagentTool", () => {
 		const afterResume = await tool.execute("c4", { action: "list" });
 		expect(afterResume.details?.subagents[0].status).not.toBe("paused");
 	});
+	it("resume without a message succeeds on a paused subagent (GJC parity) but still requires one once terminal", async () => {
+		const { resolve } = registerPendingTaskJob(manager, "Main", "Sub1");
+		const fakeSession = { deliverIrcMessage: async () => "injected" as const } as unknown as AgentSession;
+		registry.register({ id: "Sub1", displayName: "Sub1", kind: "sub", session: fakeSession, status: "running" });
+		const tool = new SubagentTool(makeSession({ agentId: "Main", registry, manager }));
+
+		await tool.execute("c1", { action: "pause", id: "Sub1" });
+		resolve("stopped early");
+		await manager.getJob("Sub1")?.promise;
+		registry.setStatus("Sub1", "idle");
+
+		// No `message` — a paused subagent has known intent (we asked it to stop),
+		// so resume proceeds with a default continuation body instead of throwing.
+		const resumed = await tool.execute("c2", { action: "resume", id: "Sub1" });
+		expect(resumed.isError).toBeFalsy();
+		expect(resumed.details?.receipt?.outcome).toBe("injected");
+
+		// Once genuinely terminal again (no outstanding pause), resume still needs a message.
+		await expect(tool.execute("c3", { action: "resume", id: "Sub1" })).rejects.toThrow(ToolError);
+	});
 
 	it("a subagent that goes idle while running is never mistaken for paused", async () => {
 		const { resolve } = registerPendingTaskJob(manager, "Main", "Sub1");

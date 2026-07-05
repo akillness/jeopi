@@ -138,10 +138,16 @@ export function buildSessionContext(
 		};
 	}
 
-	// Walk from leaf to root, collecting path
+	// Walk from leaf to root, collecting path. `seen` guards against a corrupt/
+	// cyclic parentId chain (e.g. A.parentId === B, B.parentId === A) looping
+	// forever and growing `path` unbounded — the same OOM class the sibling
+	// walks in session-manager.ts (`pathTo`) and session-loader.ts
+	// (`collectActiveBranchIds`) already guard against.
 	const path: SessionEntry[] = [];
+	const seen = new Set<string>();
 	let current: SessionEntry | undefined = leaf;
-	while (current) {
+	while (current && !seen.has(current.id)) {
+		seen.add(current.id);
 		path.push(current);
 		current = current.parentId ? byId.get(current.parentId) : undefined;
 	}

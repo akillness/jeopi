@@ -181,6 +181,8 @@ export interface SlashCommand {
 	name: string;
 	aliases?: string[];
 	description?: string;
+	/** Ranking boost for the empty-prefix `/` menu and tied fuzzy matches; higher shows first. Commands without a priority default to 0. */
+	priority?: number;
 	argumentHint?: string;
 	/** Dynamic display-only description for slash-command autocomplete. Must be synchronous and side-effect free. */
 	getAutocompleteDescription?: () => string | undefined;
@@ -286,63 +288,74 @@ function scoreCommandTextMatch(lowerPrefix: string, lowerTarget: string): number
 }
 
 function buildSlashCommandCompletions(commands: CommandEntry[], lowerPrefix: string): AutocompleteItem[] {
-	return commands
-		.flatMap(cmd => {
-			const name = getCommandName(cmd);
-			if (!name) return [];
-			const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
-			const staticDesc = getStaticCommandDescription(cmd);
-			let fullDescMemo: string | undefined;
-			let fullDescComputed = false;
-			// Resolve the (possibly live) display description lazily, only once a
-			// candidate actually matches — getAutocompleteDescription reads live
-			// session state and must not run for every command on each keystroke.
-			const resolveFullDesc = (): string | undefined => {
-				if (!fullDescComputed) {
-					const displayDesc = getAutocompleteCommandDescription(cmd);
-					fullDescMemo = hint ? (displayDesc ? `${hint} - ${displayDesc}` : hint) : displayDesc;
-					fullDescComputed = true;
-				}
-				return fullDescMemo;
-			};
-			const candidates: Array<AutocompleteItem & { score: number }> = [];
+	return (
+		commands
+			.flatMap(cmd => {
+				const name = getCommandName(cmd);
+				if (!name) return [];
+				const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
+				const staticDesc = getStaticCommandDescription(cmd);
+				let fullDescMemo: string | undefined;
+				let fullDescComputed = false;
+				// Resolve the (possibly live) display description lazily, only once a
+				// candidate actually matches — getAutocompleteDescription reads live
+				// session state and must not run for every command on each keystroke.
+				const resolveFullDesc = (): string | undefined => {
+					if (!fullDescComputed) {
+						const displayDesc = getAutocompleteCommandDescription(cmd);
+						fullDescMemo = hint ? (displayDesc ? `${hint} - ${displayDesc}` : hint) : displayDesc;
+						fullDescComputed = true;
+					}
+					return fullDescMemo;
+				};
+				const candidates: Array<AutocompleteItem & { score: number; priority: number }> = [];
+				const priority = "priority" in cmd && typeof cmd.priority === "number" ? cmd.priority : 0;
 
-			const isSkillCommand = name.startsWith("skill:");
-			const nameScore =
-				lowerPrefix.length === 0 && isSkillCommand ? 950 : scoreCommandTextMatch(lowerPrefix, name.toLowerCase());
-			const lowerDesc = staticDesc.toLowerCase();
-			const descScore =
-				lowerDesc && fuzzyMatch(lowerPrefix, lowerDesc) ? fuzzyScore(lowerPrefix, lowerDesc) * 0.5 : 0;
-			const primaryScore = Math.max(nameScore, descScore);
-			if (primaryScore > 0) {
-				const fullDesc = resolveFullDesc();
-				candidates.push({
-					value: name,
-					label: "name" in cmd ? cmd.name : cmd.label,
-					score: primaryScore,
-					...(fullDesc && { description: fullDesc }),
-				});
-			}
-
-			if (lowerPrefix.length > 0) {
-				for (const alias of getCommandAliases(cmd)) {
-					if (alias === name) continue;
-					const aliasScore = scoreCommandTextMatch(lowerPrefix, alias.toLowerCase());
-					if (aliasScore === 0) continue;
+				const isSkillCommand = name.startsWith("skill:");
+				const nameScore =
+					lowerPrefix.length === 0 && isSkillCommand
+						? 950
+						: scoreCommandTextMatch(lowerPrefix, name.toLowerCase());
+				const lowerDesc = staticDesc.toLowerCase();
+				const descScore =
+					lowerDesc && fuzzyMatch(lowerPrefix, lowerDesc) ? fuzzyScore(lowerPrefix, lowerDesc) * 0.5 : 0;
+				const primaryScore = Math.max(nameScore, descScore);
+				if (primaryScore > 0) {
 					const fullDesc = resolveFullDesc();
 					candidates.push({
-						value: alias,
-						label: alias,
-						score: aliasScore,
+						value: name,
+						label: "name" in cmd ? cmd.name : cmd.label,
+						score: primaryScore,
+						priority,
 						...(fullDesc && { description: fullDesc }),
 					});
 				}
-			}
 
-			return candidates;
-		})
-		.sort((a, b) => b.score - a.score)
-		.map(({ score: _, ...rest }) => rest);
+				if (lowerPrefix.length > 0) {
+					for (const alias of getCommandAliases(cmd)) {
+						if (alias === name) continue;
+						const aliasScore = scoreCommandTextMatch(lowerPrefix, alias.toLowerCase());
+						if (aliasScore === 0) continue;
+						const fullDesc = resolveFullDesc();
+						candidates.push({
+							value: alias,
+							label: alias,
+							score: aliasScore,
+							priority,
+							...(fullDesc && { description: fullDesc }),
+						});
+					}
+				}
+
+				return candidates;
+			})
+			// Score ranks fuzzy-match quality first (exact/prefix/contains/subsequence);
+			// `priority` only breaks ties within the same score tier — most visibly the
+			// empty-prefix `/` menu, where every command scores 1 and priority alone
+			// decides display order (e.g. `/help`, `/new`, `/resume` surface first).
+			.sort((a, b) => b.score - a.score || b.priority - a.priority)
+			.map(({ score: _score, priority: _priority, ...rest }) => rest)
+	);
 }
 
 function hasPromptTextBeforeSlash(

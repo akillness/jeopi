@@ -56,6 +56,7 @@ import {
 	gitLabDuoWorkflowModelManagerOptions,
 	zaiModelManagerOptions,
 } from "./special";
+import { TENCENT_DEFAULT_MODEL, tencentModelManagerOptions } from "./tencent";
 
 export const CATALOG_PROVIDERS = [
 	{
@@ -339,6 +340,12 @@ export const CATALOG_PROVIDERS = [
 		createModelManagerOptions: (config: ModelManagerConfig) => syntheticModelManagerOptions(config),
 		dynamicModelsAuthoritative: true,
 		catalogDiscovery: { label: "Synthetic" },
+	},
+	{
+		id: "tencent",
+		defaultModel: TENCENT_DEFAULT_MODEL,
+		envVars: ["TENCENT_API_KEY"],
+		createModelManagerOptions: (config: ModelManagerConfig) => tencentModelManagerOptions(config),
 	},
 	{
 		id: "together",

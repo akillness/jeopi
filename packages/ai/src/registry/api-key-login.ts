@@ -26,6 +26,10 @@ type AnthropicMessagesValidation = {
 	provider: string;
 	baseUrl: string;
 	model: string;
+	/** HTTP error statuses that still prove the key is valid (e.g. a billing/quota
+	 *  gate that only a real, recognized key would reach) and should be treated as
+	 *  successful validation rather than an invalid-key failure. */
+	acceptableErrorStatuses?: readonly number[];
 };
 
 type ModelsEndpointValidation = {
@@ -92,6 +96,7 @@ export function createApiKeyLogin(config: ApiKeyLoginConfig): (options: OAuthCon
 					apiKey: trimmed,
 					baseUrl: config.validation.baseUrl,
 					model: config.validation.model,
+					acceptableErrorStatuses: config.validation.acceptableErrorStatuses,
 					signal: options.signal,
 					fetch: options.fetch,
 				});

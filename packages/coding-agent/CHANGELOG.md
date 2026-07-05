@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- `resume` on a target that finished entirely on its own (not `paused`) now requires an explicit `message`; only a `paused` target can resume without one (continues with a default nudge, since the caller already knows why it stopped) — this is the exact distinction the canonical gajae-code `subagent` tool draws.
+- Added `priority` to the builtin slash-command spec (ported from gajae-code's `SlashCommand.priority`): the bare `/` autocomplete menu ties every command's match score at 1, and previously fell back to raw registry-array order under the stable sort — `priority` now breaks that tie (higher first), so `/new`(96), `/resume`(92), `/session`(88), `/goal`(84), `/compact`(72), `/retry`(70), `/copy`(55), `/dump`(54), `/export`(50), and `/settings`(40) surface in the same relative order as the canonical tool. Priority never overrides an actual text match — it only decides ties within the same fuzzy-match score tier, so typing a query still ranks by relevance first.
+- Fixed a latent OOM: `buildSessionContext`'s leaf→root parent-chain walk had no cycle guard, unlike the two sibling walks in `session-manager.ts` (`pathTo`) and `session-loader.ts` (`collectActiveBranchIds`) — a corrupt/cyclic `parentId` chain (two entries pointing at each other) would loop forever and grow the collected path unbounded instead of terminating. Ported from gajae-code's #1193/#1195 parent/child tree-walk cycle guards.
+
 ## [16.2.24] - 2026-07-03
 
 ### Breaking Changes

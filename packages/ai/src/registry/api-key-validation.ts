@@ -16,6 +16,10 @@ type AnthropicCompatibleValidationOptions = {
 	model: string;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	/** HTTP error statuses that still prove the key is valid (e.g. a billing/quota
+	 *  gate that only a real, recognized key would reach) and should be treated as
+	 *  successful validation rather than an invalid-key failure. */
+	acceptableErrorStatuses?: readonly number[];
 };
 
 type ModelListValidationOptions = {
@@ -106,7 +110,7 @@ export async function validateAnthropicCompatibleApiKey(options: AnthropicCompat
 		signal,
 	});
 
-	if (response.ok) {
+	if (response.ok || options.acceptableErrorStatuses?.includes(response.status)) {
 		return;
 	}
 
