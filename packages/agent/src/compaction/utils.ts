@@ -227,7 +227,16 @@ export function serializeConversation(messages: Message[], dialect?: Dialect): s
 		const processed: Message[] = [];
 		for (const msg of messages) {
 			if (msg.role === "assistant") {
-				const content = msg.content.filter(block => block.type !== "toolCall" || !uselessCallIds.has(block.id));
+				// Thinking/redactedThinking blocks are dropped before serialization: they add
+				// little to a summarization prompt and replaying a model's own prior reasoning
+				// as plaintext transcript text is a reasoning_extraction refusal trigger on
+				// Anthropic targets (mirrors the intentional drop in hindsight/transcript.ts).
+				const content = msg.content.filter(
+					block =>
+						block.type !== "thinking" &&
+						block.type !== "redactedThinking" &&
+						(block.type !== "toolCall" || !uselessCallIds.has(block.id)),
+				);
 				if (content.length > 0) processed.push(content.length === msg.content.length ? msg : { ...msg, content });
 				continue;
 			}
@@ -262,23 +271,19 @@ export function serializeConversation(messages: Message[], dialect?: Dialect): s
 			if (content) parts.push(`[User]: ${content}`);
 		} else if (msg.role === "assistant") {
 			const textParts: string[] = [];
-			const thinkingParts: string[] = [];
 			const toolCalls: ToolCall[] = [];
 
 			for (const block of msg.content) {
 				if (block.type === "text") {
 					textParts.push(block.text);
-				} else if (block.type === "thinking") {
-					thinkingParts.push(block.thinking);
 				} else if (block.type === "toolCall") {
 					if (uselessCallIds.has(block.id)) continue;
 					toolCalls.push(block);
 				}
+				// thinking / redactedThinking blocks are intentionally dropped — see the
+				// dialect-branch comment above for why replaying them is unsafe.
 			}
 
-			if (thinkingParts.length > 0) {
-				parts.push(`[Think]: ${thinkingParts.join("\n")}`);
-			}
 			if (textParts.length > 0) {
 				parts.push(`[Assistant]: ${textParts.join("\n")}`);
 			}

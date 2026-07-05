@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `serializeConversation` (compaction / branch-summary transcript rendering) no longer replays assistant `thinking`/`redactedThinking` blocks as plaintext (`<thinking>...</thinking>` via the dialect renderer, or `[Think]: ...` in the legacy no-dialect form) inside the `<conversation>` summarization prompt. Replaying a model's own prior reasoning as plaintext to an Anthropic-dialect summarizer is a `reasoning_extraction` classifier-refusal trigger, and compaction had no refusal-degrade fallback (unlike the coding-agent advisor, which strips thinking after a first refusal). Mirrors the existing intentional thinking-drop in the hindsight/mnemopi transcript extractor.
+
 ## [16.2.14] - 2026-07-02
 
 ### Added

@@ -1593,6 +1593,14 @@ export class AgentSession {
 	#retryAttempt = 0;
 	/** Rung-4 classifier-refusal resend streak (post fallback-ladder). */
 	#refusalBackoff: { startedAt: number; attempt: number } | undefined = undefined;
+	/**
+	 * One-shot latch: `reasoning_extraction` classifier refusals are payload-shape-bound
+	 * (see advisor/runtime.ts `#includeThinking` degrade) — resending the identical batch
+	 * predictably re-refuses. Set the first time `#handleRetryableError` strips unsigned
+	 * thinking/redactedThinking from active context and resends on the same model; never
+	 * reset, mirroring the advisor's permanent-for-the-session degrade.
+	 */
+	#reasoningExtractionDegraded = false;
 	#retryPromise: Promise<void> | undefined = undefined;
 	#retryResolve: (() => void) | undefined = undefined;
 	#activeRetryFallback: ActiveRetryFallbackState | undefined = undefined;
@@ -12681,6 +12689,36 @@ export class AgentSession {
 		const stopType = message.stopDetails?.type;
 		return stopType === "refusal" || stopType === "sensitive";
 	}
+	/**
+	 * Strip unsigned `thinking` and every `redactedThinking` block from assistant
+	 * messages. Used once as a `reasoning_extraction` classifier-refusal degrade:
+	 * unlike {@link renderDemotedThinking}'s plain-text fallback (still a plaintext
+	 * reasoning replay for dialects outside the Fable/Mythos carve-out), dropping the
+	 * block outright removes the trigger instead of reformatting it. Signed thinking
+	 * is left untouched — it replays natively via the provider's structured thinking
+	 * block and is never demoted to plaintext.
+	 * @returns a rewritten array, or `undefined` if no message needed stripping.
+	 */
+	#stripUnsignedThinkingForRefusalDegrade(messages: readonly AgentMessage[]): AgentMessage[] | undefined {
+		let changed = false;
+		const next: AgentMessage[] = [];
+		for (const message of messages) {
+			if (message.role !== "assistant") {
+				next.push(message);
+				continue;
+			}
+			const content = message.content.filter(
+				block => block.type !== "redactedThinking" && (block.type !== "thinking" || !!block.thinkingSignature),
+			);
+			if (content.length === message.content.length) {
+				next.push(message);
+				continue;
+			}
+			changed = true;
+			if (content.length > 0) next.push({ ...message, content });
+		}
+		return changed ? next : undefined;
+	}
 
 	#getRetryFallbackChains(): RetryFallbackChains {
 		const configuredChains = this.settings.get("retry.fallbackChains");
@@ -13099,6 +13137,33 @@ export class AgentSession {
 		}
 
 		const errorMessage = message.errorMessage || "Unknown error";
+		// `reasoning_extraction` is payload-shape-bound (see advisor/runtime.ts): resending
+		// the identical batch predictably re-refuses, unlike probabilistic classifier flags
+		// where backoff/fallback genuinely help. Degrade once — strip unsigned
+		// thinking/redactedThinking from active context and resend immediately on the same
+		// model — before falling through to the generic fallback-pin / backoff ladder below,
+		// which would otherwise retry the unchanged, re-refusing payload.
+		if (
+			classifierRefusal &&
+			message.stopDetails?.category === "reasoning_extraction" &&
+			!this.#reasoningExtractionDegraded
+		) {
+			this.#reasoningExtractionDegraded = true;
+			const stripped = this.#stripUnsignedThinkingForRefusalDegrade(this.agent.state.messages);
+			if (stripped) this.agent.replaceMessages(stripped);
+			this.#removeAssistantMessageFromActiveContext(message, "reasoning-extraction-degrade");
+			await this.#emitSessionEvent({
+				type: "auto_retry_start",
+				attempt: this.#retryAttempt,
+				maxAttempts: retrySettings.maxRetries,
+				delayMs: 0,
+				errorMessage,
+				errorId: message.errorId,
+			});
+			this.#scheduleAgentContinue({ delayMs: 1, generation });
+			return true;
+		}
+
 		const id = this.#classifyRetryMessage(message);
 		const staleOpenAIResponsesReplayError = AIError.is(id, AIError.Flag.StaleResponsesItem);
 		const parsedRetryAfterMs = this.#parseRetryAfterMsFromError(errorMessage);

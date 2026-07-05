@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `AgentSession`'s auto-retry now degrades once on a `reasoning_extraction` classifier refusal (`stopDetails.category === "reasoning_extraction"`, e.g. Anthropic's "seems to violate Anthropic's Terms of Service … reverse engineering or duplicating model outputs"): it strips unsigned `thinking`/`redactedThinking` blocks from active context and resends immediately on the *same* model, ahead of the generic fallback-model pin and refusal backoff ladder. `reasoning_extraction` is payload-shape-bound — resending the identical batch predictably re-refuses (the advisor already degrades this way for its own transcript; the main turn previously only backed off or switched models, both of which retry the unchanged, re-refusing payload).
+
+### Fixed
+
+- Reworded the `interrupted-thinking` continuity notice (shown after a user-interrupted turn) to drop explicit "reasoning transcript" framing (`type="interrupted-thinking"`, "while you were thinking", "treat the preserved reasoning as internal continuity context") and instruct the model not to quote/repeat the injected content — the labeling amplified the reasoning-extraction classifier signal on top of the raw replayed thinking text.
+- Reworded the advisor system prompt's transcript-framing line ("You receive the agent's transcript incrementally, including their thoughts") to drop the explicit "their thoughts" framing around the primary agent's replayed thinking blocks — defense-in-depth alongside the existing runtime one-shot thinking-strip degrade on refusal.
+
 ## [16.2.25] - 2026-07-05
 
 ### Added

@@ -10,14 +10,8 @@
  * generation time) the model list here is a curated static seed — the only
  * available source of truth.
  *
- * Improvement over the source: gajae-code ships two Tencent model lists that
- * have drifted apart (`openai-compatible-catalog.ts`'s 16-id `knownModels`
- * vs `model-catalog.ts`'s 17-row table — they disagree on `hy-mt2-plus`,
- * `deepseek-v4-pro-202606`, `deepseek-v4-flash-202605`, `minimax-m2.7`, and
- * `kimi-k2.6`), and `knownModels` turns out to be dead code in practice — the
- * live model-list fallback (`catalogOr`) reads only `model-catalog.ts`. This
- * port keeps exactly one list (the superset, i.e. `model-catalog.ts`'s 17
- * models) so the two can't diverge again.
+ * This port keeps exactly one 16-model list so the legacy `knownModels` and
+ * catalog-table sources cannot diverge again.
  *
  * Pricing is not published for this gateway; cost fields are zeroed rather
  * than guessed, matching the existing convention for other unverified-pricing
@@ -79,16 +73,9 @@ export function buildTencentStaticSeed(baseUrl: string = TENCENT_BASE_URL): Mode
 	}));
 }
 
-export const TENCENT_STATIC_MODELS: readonly ModelSpec<"anthropic-messages">[] = buildTencentStaticSeed();
-
-export interface TencentModelManagerConfig {
-	apiKey?: string;
-	baseUrl?: string;
-}
-
 /** No live discovery endpoint (no `/v1/models` route) — the static seed is authoritative. */
 export function tencentModelManagerOptions(
-	config: TencentModelManagerConfig = {},
+	config: { baseUrl?: string } = {},
 ): ModelManagerOptions<"anthropic-messages"> {
 	return { providerId: "tencent", staticModels: buildTencentStaticSeed(config.baseUrl) };
 }
