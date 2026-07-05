@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "jeopi-swarm-extension",
-  "version": "16.2.25",
+  "version": "16.2.26",
   "description": "Swarm orchestration extension for jeopi",
   "homepage": "https://github.com/akillness/jeopi",
   "author": "Derek Rynd",

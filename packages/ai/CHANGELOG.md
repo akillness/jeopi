@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.26] - 2026-07-05
+
 ### Fixed
 
 - `renderDemotedThinking`'s classifier-safe markdown-italic prose form (avoids Anthropic's `reasoning_extraction` refusal when replaying a prior turn's unsigned reasoning as plaintext) was keyed off a hand-rolled `claude-fable`-only regex, missing `claude-mythos-5` — a real first-party Anthropic model the rest of the catalog already treats as classifier-equivalent to Fable (`isAnthropicFableOrMythosModel`). Unsigned Mythos thinking replayed cross-model/branch-handoff was demoted to a raw `<thinking>...</thinking>` text block instead, which can trip the same reasoning-extraction classifier Fable's carve-out exists to avoid. Now uses the canonical `isAnthropicFableOrMythosModel` classifier for both.

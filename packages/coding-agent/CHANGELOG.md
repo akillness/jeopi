@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.26] - 2026-07-05
+
 ### Added
 
 - `AgentSession`'s auto-retry now degrades once on a `reasoning_extraction` classifier refusal (`stopDetails.category === "reasoning_extraction"`, e.g. Anthropic's "seems to violate Anthropic's Terms of Service … reverse engineering or duplicating model outputs"): it strips unsigned `thinking`/`redactedThinking` blocks from active context and resends immediately on the *same* model, ahead of the generic fallback-model pin and refusal backoff ladder. `reasoning_extraction` is payload-shape-bound — resending the identical batch predictably re-refuses (the advisor already degrades this way for its own transcript; the main turn previously only backed off or switched models, both of which retry the unchanged, re-refusing payload).

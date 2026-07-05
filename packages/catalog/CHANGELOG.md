@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.26] - 2026-07-05
+
 ### Removed
 
 - Removed the unused Tencent static-model eager export; callers should use `buildTencentStaticSeed()` so base-URL overrides stay lazy.
