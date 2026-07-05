@@ -85,6 +85,7 @@ import {
 	type PlanApprovalDetails,
 	resolveApprovedPlan,
 	resolvePlanTitle,
+	shouldAutoApprovePlan,
 } from "../plan-mode/approved-plan";
 import planModeApprovedPrompt from "../prompts/system/plan-mode-approved.md" with { type: "text" };
 import planModeCompactInstructionsPrompt from "../prompts/system/plan-mode-compact-instructions.md" with {
@@ -3123,24 +3124,34 @@ export class InteractiveMode implements InteractiveModeContext {
 		let editedContent: string | undefined;
 		let feedback = "";
 
-		const choice = await this.showPlanReview(
-			planContent,
-			"Plan mode - next step",
-			["Approve and execute", "Approve and compact context", keepContextLabel, "Refine plan"],
-			{
-				helpText,
-				onExternalEditor: () => void this.#openPlanInExternalEditor(planFilePath),
-				onPlanEdited: content => {
-					editedContent = content;
-					void Bun.write(this.#resolvePlanFilePath(planFilePath), content);
-				},
-				onFeedbackChange: value => {
-					feedback = value;
-				},
-				disabledIndices: keepContextDisabled ? [PLAN_KEEP_CONTEXT_OPTION_INDEX] : undefined,
-			},
-			{ slider },
-		);
+		// Autonomous planning→execution handoff: when `plan.autoApprove` is enabled
+		// the plan-review popup (a human-in-the-loop approval wait) is skipped and
+		// the plan is approved-and-executed as written, so planning flows straight
+		// into implementation with no operator confirmation. The popup is otherwise
+		// still shown so a human keeps the plan gate.
+		const choice = shouldAutoApprovePlan({
+			autoApprove: this.settings.get("plan.autoApprove"),
+			planExists: details.planExists,
+		})
+			? "Approve and execute"
+			: await this.showPlanReview(
+					planContent,
+					"Plan mode - next step",
+					["Approve and execute", "Approve and compact context", keepContextLabel, "Refine plan"],
+					{
+						helpText,
+						onExternalEditor: () => void this.#openPlanInExternalEditor(planFilePath),
+						onPlanEdited: content => {
+							editedContent = content;
+							void Bun.write(this.#resolvePlanFilePath(planFilePath), content);
+						},
+						onFeedbackChange: value => {
+							feedback = value;
+						},
+						disabledIndices: keepContextDisabled ? [PLAN_KEEP_CONTEXT_OPTION_INDEX] : undefined,
+					},
+					{ slider },
+				);
 
 		if (choice === "Approve and execute" || choice === "Approve and compact context" || choice === keepContextLabel) {
 			try {
