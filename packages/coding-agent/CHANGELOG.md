@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.25] - 2026-07-05
+
 ### Added
 
 - `resume` on a target that finished entirely on its own (not `paused`) now requires an explicit `message`; only a `paused` target can resume without one (continues with a default nudge, since the caller already knows why it stopped) — this is the exact distinction the canonical gajae-code `subagent` tool draws.

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.25] - 2026-07-05
+
 ### Added
 
 - Added the `tencent` provider registry def (`registry/tencent.ts`): API-key login validated against Tencent Cloud MaaS's Anthropic Messages endpoint (`tokenhub-intl.tencentcloudmaas.com/v1/messages`), registered in the `ALL` provider list. Env fallback: `TENCENT_API_KEY`. Verified live: full inference round-trip (GLM-5.2, Hunyuan MT2 Plus) succeeds end-to-end through `streamAnthropic`; DeepSeek/Kimi ids on the same test key correctly surfaced a clean `402` (quota exhausted) rather than an error.
