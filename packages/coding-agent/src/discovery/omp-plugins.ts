@@ -1,10 +1,10 @@
 /**
- * OMP extension-package sub-discovery provider.
+ * jeopi extension-package sub-discovery provider.
  *
  * When a user configures an extension via `extensions:` (in settings) or
  * `--extension`/`-e` (on the CLI), the docs promise that the package's
  * sibling directories — `skills/`, `hooks/pre|post/`, `tools/`, `commands/`,
- * `rules/`, `prompts/`, and `.mcp.json` — are picked up by omp's standard
+ * `rules/`, `prompts/`, and `.mcp.json` — are picked up by jeopi's standard
  * discovery surfaces. The native `jeopi` provider in `builtin.ts` only walks
  * `.jeopi/` and `~/.jeopi/agent/`, so without this provider those sub-trees are
  * silently ignored.
@@ -32,7 +32,7 @@ import { buildRuleFromMarkdown, createSourceMeta, loadFilesFromDir, scanSkillsFr
 import { listOmpExtensionRoots, type OmpExtensionRoot } from "./omp-extension-roots";
 
 const PROVIDER_ID = "omp-plugins";
-const DISPLAY_NAME = "OMP Extension Packages";
+const DISPLAY_NAME = "jeopi Extension Packages";
 const DESCRIPTION =
 	"Sub-discovery (skills, hooks, tools, commands, rules, prompts, .mcp.json) inside extension packages";
 const PRIORITY = 90;

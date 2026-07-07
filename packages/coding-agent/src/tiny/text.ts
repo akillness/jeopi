@@ -47,20 +47,23 @@ export function formatTitleUserMessage(message: string): string {
 export interface TitleConversationTurn {
 	role: "user" | "assistant";
 	text?: string;
-	thinking?: string;
 }
 
-/** Format recent user/assistant context for title generation after a todo replan. */
+/**
+ * Format recent user/assistant context for title generation after a todo
+ * replan. Assistant `thinking` is intentionally never included: the
+ * replan-refresh title model falls back to the session's own current model
+ * when no `tiny`/`commit`/`smol` role is configured, so replaying prior
+ * reasoning as plaintext here is a `reasoning_extraction` classifier-refusal
+ * trigger on Anthropic targets (mirrors the thinking-drop in compaction,
+ * memories, and the hindsight transcript extractor).
+ */
 export function formatTitleConversationContext(turns: readonly TitleConversationTurn[]): string {
 	const formattedTurns: string[] = [];
 	for (const turn of turns) {
-		const sections: string[] = [];
 		const text = turn.text?.trim();
-		if (text) sections.push(text);
-		const thinking = turn.role === "assistant" ? turn.thinking?.trim() : undefined;
-		if (thinking) sections.push(`<thinking>\n${thinking}\n</thinking>`);
-		if (sections.length === 0) continue;
-		formattedTurns.push(`<${turn.role}>\n${sections.join("\n\n")}\n</${turn.role}>`);
+		if (!text) continue;
+		formattedTurns.push(`<${turn.role}>\n${text}\n</${turn.role}>`);
 	}
 	if (formattedTurns.length === 0) return "";
 	return prepareTitleInput(`<conversation>\n${formattedTurns.join("\n\n")}\n</conversation>`);

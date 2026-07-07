@@ -249,6 +249,73 @@ describe("memories runtime", () => {
 		expect(phase2Prompt?.systemPrompt?.[0]).toContain("memory-stage-two consolidator");
 	});
 
+	test("drops thinking/redactedThinking blocks from the stage1 extraction prompt", async () => {
+		// Regression: `extractPersistableMessages` used to push the raw assistant
+		// message object (including `thinking`/`redactedThinking` content blocks)
+		// straight into `JSON.stringify` for `response_items_json`, replaying a
+		// model's own prior reasoning as plaintext back into the stage1 prompt —
+		// a documented Anthropic `reasoning_extraction` refusal trigger.
+		const fx = await createFixture();
+		const rolloutPath = path.join(fx.sessionDir, "thread-b.jsonl");
+		const rolloutRows = [
+			{ type: "session", id: "thread-b", cwd: fx.agentDir },
+			{ type: "message", message: { role: "user", content: "please investigate the flaky test" } },
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "secret chain-of-thought about the flaky test" },
+						{ type: "redactedThinking", data: "opaque-redacted-blob" },
+						{ type: "text", text: "The flaky test fails because of a race condition." },
+					],
+				},
+			},
+		];
+		await fs.writeFile(rolloutPath, `${rolloutRows.map(row => JSON.stringify(row)).join("\n")}\n`);
+
+		const completeSpy = vi
+			.spyOn(ai, "completeSimple")
+			.mockResolvedValueOnce({
+				stopReason: "end_turn",
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({ rollout_summary: "", rollout_slug: null, raw_memory: "" }),
+					},
+				],
+				usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
+			} as any)
+			.mockResolvedValueOnce({
+				stopReason: "end_turn",
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({ memory_md: "", memory_summary: "", skills: [] }),
+					},
+				],
+			} as any);
+
+		startMemoryStartupTask({
+			session: fx.session,
+			settings: fx.settings,
+			modelRegistry: fx.modelRegistry,
+			agentDir: fx.agentDir,
+			taskDepth: 0,
+		});
+
+		await settle(fx.whenSettled, "phase1->phase2 pipeline (thinking-drop regression)");
+
+		const stage1Call = completeSpy.mock.calls[0];
+		const stage1Messages = stage1Call?.[1]?.messages;
+		const stage1UserText = (stage1Messages?.[0]?.content as Array<{ type: string; text?: string }>)?.[0]?.text ?? "";
+		expect(stage1UserText).not.toContain("secret chain-of-thought");
+		expect(stage1UserText).not.toContain("opaque-redacted-blob");
+		expect(stage1UserText).not.toContain("redactedThinking");
+		expect(stage1UserText).not.toContain('"type":"thinking"');
+		expect(stage1UserText).toContain("The flaky test fails because of a race condition.");
+	});
+
 	test("clamps stage1 and phase2 reasoning effort against the model's supported range", async () => {
 		// Regression for #1480: memory pipeline hardcoded `Effort.Low`/`Effort.Medium`,
 		// which `requireSupportedEffort` rejects on models whose supported range starts

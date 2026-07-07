@@ -715,7 +715,21 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 				options?.streamFirstEventTimeoutMs ?? getStreamFirstEventTimeoutMs(undefined, 300_000);
 			const callerSignal = options?.signal;
 			const toolNames = new Set(context.tools?.map(t => t.name) ?? []);
-			const isFlashLeakModel = model.id.includes("flash");
+			// Cloud Code Assist (both `google-gemini-cli` and `google-antigravity`,
+			// covering Gemini and Claude-on-antigravity ids alike) can leak its raw
+			// tool-planning JSON (`{"thought": "…", "call": "read", "paths": […]}`,
+			// mirroring jeopi's own tool-argument shapes) into the visible text
+			// channel instead of emitting a structured `functionCall`. This was
+			// first captured and fixed for `gemini-3.5-flash`, but the gate on
+			// `model.id.includes("flash")` left every non-flash id (including the
+			// `google-antigravity` default model `gemini-3.1-pro`, other Gemini-3
+			// pro/flash-agent tiers, and Claude-on-antigravity ids) unprotected —
+			// so the same leak still renders straight into the TUI as raw JSON
+			// text on every occurrence for those models. `isPlanningLeakPrefix`/
+			// `isPlanningLeakObject` are narrow, shape-specific heuristics (they
+			// only fire on a leading `{"thought"…}`-style object), so buffering is
+			// safe to apply unconditionally across this whole provider surface
+			// rather than gating it to one model family.
 
 			let started = false;
 			let sawFinishReason = false;
@@ -899,7 +913,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 											bufferedTextSignature,
 											part.thoughtSignature,
 										);
-									} else if (isFlashLeakModel && part.text.trimStart().startsWith("{")) {
+									} else if (part.text.trimStart().startsWith("{")) {
 										isBuffering = true;
 										textBuffer = part.text;
 										bufferedTextSignature = part.thoughtSignature;

@@ -196,6 +196,28 @@ describe("kimi think tags (<think>…</think>)", () => {
 	});
 });
 
+describe("anthropic/xml scanner tolerates a one-typo thinking tag name", () => {
+	it("routes <thinke> to thinking (missing-ing typo)", () => {
+		const events = scan("anthropic", "<thinke>plan</thinke>Here is the answer.", {
+			options: { parseThinking: true },
+		});
+		expect(thinkingText(events)).toBe("plan");
+		expect(visibleText(events)).toBe("Here is the answer.");
+	});
+
+	it("shares the same scanner and behavior on the xml dialect", () => {
+		const events = scan("xml", "<thinke>plan</thinke>Here is the answer.", { options: { parseThinking: true } });
+		expect(thinkingText(events)).toBe("plan");
+		expect(visibleText(events)).toBe("Here is the answer.");
+	});
+
+	it("does not treat an unrelated tag name as thinking", () => {
+		const events = scan("anthropic", "<thing>not thinking</thing>text", { options: { parseThinking: true } });
+		expect(thinkingBoundaries(events)).toBe(0);
+		expect(visibleText(events)).toBe("<thing>not thinking</thing>text");
+	});
+});
+
 describe("every dialect round-trips thinking (no missing thinking element)", () => {
 	const dialects: Dialect[] = [
 		"anthropic",

@@ -4,7 +4,7 @@
 #
 # Used by both the orchestrator (CMD: `python -m robomp serve`) and the
 # sibling gh-proxy (compose command: `python -m robomp.proxy serve`). The
-# proxy role does NOT need a $PI_ROOT pi checkout — it never runs omp.
+# proxy role does NOT need a $PI_ROOT pi checkout — it never runs jeopi.
 set -euo pipefail
 
 # Shared git metadata under /data/workspaces/_pool is intentionally group

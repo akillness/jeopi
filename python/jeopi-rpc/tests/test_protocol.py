@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from omp_rpc import (
+from jeopi_rpc import (
     AgentEndEvent,
     ExtensionUiRequest,
     SessionState,

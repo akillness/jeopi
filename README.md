@@ -62,7 +62,7 @@ git clone https://github.com/akillness/jeopi.git && cd jeopi
 bun run setup   # installs deps, builds natives, links the global `jeopi` command
 ```
 
-macOS · Linux · Windows · bun ≥ 1.3.14. Upgrading from `omp`? Run `jeopi config migrate-legacy` once to move `~/.jeopi` to `~/.jeopi` — then `/login` once, keep it forever. jeopi is published as unscoped npm packages — CLI: `jeopi-cli` (binary command: `jeopi`), libraries: `jeopi-*` — fully independent of the `@oh-my-pi` scope, while legacy `@oh-my-pi/pi-*` plugin imports keep resolving through the built-in compat shim.
+macOS · Linux · Windows · bun ≥ 1.3.14. Upgrading from `omp`? Run `jeopi config migrate-legacy` once to move `~/.omp` to `~/.jeopi` — then `/login` once, keep it forever. jeopi is published as unscoped npm packages — CLI: `jeopi-cli` (binary command: `jeopi`), libraries: `jeopi-*` — fully independent of the `@oh-my-pi` scope, while legacy `@oh-my-pi/pi-*` plugin imports keep resolving through the built-in compat shim.
 
 ## The spec-first spine
 
@@ -348,7 +348,7 @@ Stealth's on by default, so pages see a normal user instead of a headless bot. T
 
 Setting-gated, off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `rewind`, `search_tool_bm25`, `retain`, `recall`, `reflect`. Flip them on once, scoped per project.
 
-[Full reference →](https://omp.sh/docs/tools)
+[Full reference →](docs/tools/)
 
 ## Forty-plus providers, hundreds of models, _one /model away_.
 
@@ -381,7 +381,7 @@ Ollama `local` · Ollama Cloud · LM Studio `local` · llama.cpp `local` · vLLM
 - **Path-scoped models** — Scope `enabledModels` and `disabledProviders` entries to a `path:` prefix to pin a different model set on one repo without touching the global config. Scoped entries cover the path and everything under it.
 - **Round-robin credentials** — Stack API keys per provider and the runtime rotates with session affinity and per-credential backoff. Useful when one key would burn its quota by lunch.
 
-Full provider & routing reference at [omp.sh/docs/providers](https://omp.sh/docs/providers).
+Full provider & routing reference at [docs/providers.md](docs/providers.md).
 
 ## Eighteen backends. _One tool the agent already knows_.
 
@@ -433,7 +433,7 @@ Vuln lookups answer with vendor data, not blog summaries.
 - **OSV** — open source vuln feed
 - **CISA KEV** — known exploited vulns
 
-[`web_search` reference ↗](https://omp.sh/docs/tools#web_search)
+[`web_search` reference ↗](docs/tools/web_search.md)
 
 ## Roughly **~55,000** lines of Rust, doing the work other harnesses shell out for.
 
@@ -534,7 +534,7 @@ The [Agent Client Protocol](https://github.com/zed-industries/agent-client-proto
 | `write`                       | `fs/write_text_file`                |
 | `edit, bash`                  | `session/request_permission`        |
 
-Full reference: [omp.sh/docs/sdk](https://omp.sh/docs/sdk).
+Full reference: [docs/sdk.md](docs/sdk.md).
 
 ## A harness worth keeping is one you _don't_ outgrow.
 

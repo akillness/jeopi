@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+	formatTitleConversationContext,
 	formatTitleUserMessage,
 	isLowSignalTitleInput,
 	MAX_TITLE_INPUT_CHARS,
@@ -201,5 +202,28 @@ describe("isLowSignalTitleInput", () => {
 		]) {
 			expect(isLowSignalTitleInput(msg)).toBe(false);
 		}
+	});
+});
+
+describe("formatTitleConversationContext", () => {
+	it("never emits assistant thinking, even if a caller smuggles it onto the turn shape", () => {
+		const md = formatTitleConversationContext([
+			{ role: "user", text: "why is the build failing" },
+			// `TitleConversationTurn` has no `thinking` field; cast simulates a caller
+			// bypassing the type to attach one anyway (e.g. a stale/reverted call site).
+			{
+				role: "assistant",
+				text: "Let me check the CI logs.",
+				thinking: "The user is frustrated, I should reverse-engineer their CI config first.",
+			} as unknown as Parameters<typeof formatTitleConversationContext>[0][number],
+		]);
+		expect(md).toContain("why is the build failing");
+		expect(md).toContain("Let me check the CI logs.");
+		expect(md).not.toContain("thinking");
+		expect(md).not.toContain("reverse-engineer");
+	});
+
+	it("drops turns with no text and returns empty string when nothing remains", () => {
+		expect(formatTitleConversationContext([{ role: "user", text: "  " }, { role: "assistant" }])).toBe("");
 	});
 });

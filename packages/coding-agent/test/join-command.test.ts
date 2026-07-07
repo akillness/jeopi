@@ -1,5 +1,5 @@
 /**
- * `omp join <link>` must route to the registered `join` subcommand instead of
+ * `jeopi join <link>` must route to the registered `join` subcommand instead of
  * being rewritten to `launch join <link>` and forwarded to the LLM as an
  * initial prompt (same failure mode as #1496).
  */

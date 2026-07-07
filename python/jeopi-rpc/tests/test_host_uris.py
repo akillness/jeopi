@@ -5,8 +5,8 @@ import textwrap
 import time
 import unittest
 
-from omp_rpc import RpcClient, host_uri
-from omp_rpc.host_uris import normalize_read_result
+from jeopi_rpc import RpcClient, host_uri
+from jeopi_rpc.host_uris import normalize_read_result
 
 
 URI_SERVER = textwrap.dedent(

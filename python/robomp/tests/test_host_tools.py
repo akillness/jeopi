@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
-from omp_rpc import HostToolContext, RpcCommandError
+from jeopi_rpc import HostToolContext, RpcCommandError
 
 from robomp import host_tools
 from robomp.db import Database

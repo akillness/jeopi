@@ -9,6 +9,7 @@ import {
 	renderLegacyTextTranscript,
 	stringifyJson,
 } from "./rendering";
+import { isThinkingTagName } from "./thinking";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -22,7 +23,6 @@ const MAX_PARTIAL_TAG_LENGTH = 256;
 const MAX_PARAMETER_VALUE_LENGTH = 1_000_000;
 
 const WRAPPER_TAGS: Readonly<Record<string, true>> = { function_calls: true, tool_calls: true };
-const THINKING_TAGS: Record<string, true> = { thinking: true, think: true, scratchpad: true };
 const BASE_TAG_PREFIXES = [
 	"<function_calls",
 	"</function_calls",
@@ -217,7 +217,7 @@ export class AnthropicInbandScanner implements InbandScanner {
 			this.#startInvoke(tag, "section", events);
 			return true;
 		}
-		if (this.#parseThinking && !tag.closing && THINKING_TAGS[tag.localName] === true) {
+		if (this.#parseThinking && !tag.closing && isThinkingTagName(tag.localName)) {
 			this.#startThinking(tag, "section", events);
 		}
 		return true;
@@ -480,7 +480,7 @@ export class AnthropicInbandScanner implements InbandScanner {
 
 	#isThinkingOpen(tag: ParsedTag): boolean {
 		if (!this.#parseThinking || tag.closing) return false;
-		return THINKING_TAGS[tag.localName] === true;
+		return isThinkingTagName(tag.localName);
 	}
 
 	#relevantPrefixes(): readonly string[] {

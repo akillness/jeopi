@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     # opening a PR — continue" reminder prompts into the same omp session.
     # Set to 0 to disable.
     task_completion_max_reminders: int = Field(2, alias="ROBOMP_TASK_COMPLETION_MAX_REMINDERS")
-    omp_command: str = Field("omp", alias="ROBOMP_OMP_COMMAND")
+    jeopi_command: str = Field("jeopi", alias="ROBOMP_JEOPI_COMMAND")
 
     # Graceful shutdown (Phase B). On SIGTERM the dispatcher stops claiming
     # new work, then waits up to `drain` seconds for in-flight events to

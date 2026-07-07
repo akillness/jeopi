@@ -34,7 +34,7 @@ Native `extension-module` discovery comes from:
 - User directory: `~/.jeopi/agent/extensions`
 - Native legacy/settings JSON entries: `<cwd>/.jeopi/settings.json#extensions` and `~/.jeopi/agent/settings.json#extensions`
 
-The project root is the native provider's `.jeopi` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `omp --profile <name>` it becomes `~/.jeopi/profiles/<name>/agent/extensions` (and it honors `PI_CODING_AGENT_DIR`). See [Profiles](./config-usage.md#profiles).
+The project root is the native provider's `.jeopi` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `jeopi --profile <name>` it becomes `~/.jeopi/profiles/<name>/agent/extensions` (and it honors `PI_CODING_AGENT_DIR`). See [Profiles](./config-usage.md#profiles).
 
 Notes:
 
@@ -51,7 +51,7 @@ Hook-capability loading already applies its own hook-specific disabled ids, so t
 
 After hook discovery, `discoverAndLoadExtensions()` appends extension entry points from enabled installed plugins via `getAllPluginExtensionPaths(cwd)`.
 
-Plugin extension entries come from package `omp.extensions` / `pi.extensions` manifests, including enabled feature entries.
+Plugin extension entries come from package `jeopi.extensions` / `omp.extensions` / `pi.extensions` manifests, including enabled feature entries.
 
 ### 4) Explicitly configured paths
 
@@ -139,13 +139,13 @@ It is used directly as a module entry candidate.
 
 Resolution order:
 
-1. `package.json` in that directory with `omp.extensions` (or legacy `pi.extensions`) -> use declared entries
+1. `package.json` in that directory with `jeopi.extensions` (or legacy `pi.extensions`) -> use declared entries
 2. `index.ts`
 3. `index.js`
 4. Otherwise scan one level for extension entries:
    - direct `*.ts` / `*.js`
    - subdir `index.ts` / `index.js`
-   - subdir `package.json` with `omp.extensions` / `pi.extensions`
+   - subdir `package.json` with `jeopi.extensions` / `pi.extensions`
 
 Rules and constraints:
 
@@ -254,7 +254,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 
 ```json
 {
-  "omp": {
+  "jeopi": {
     "extensions": ["./src/check-a.ts", "./src/check-b.js"]
   }
 }

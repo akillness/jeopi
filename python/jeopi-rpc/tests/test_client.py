@@ -10,7 +10,7 @@ import threading
 import time
 import unittest
 
-from omp_rpc import RpcClient, RpcCommandError, RpcConcurrencyError, RpcError, host_tool
+from jeopi_rpc import RpcClient, RpcCommandError, RpcConcurrencyError, RpcError, host_tool
 
 
 FAKE_SERVER = textwrap.dedent(
@@ -1078,7 +1078,7 @@ class StopUnblocksPromptAndWaitTests(unittest.TestCase):
     """
 
     def test_stop_during_prompt_unblocks_waiter(self) -> None:
-        from omp_rpc import RpcProcessExitError
+        from jeopi_rpc import RpcProcessExitError
 
         client = RpcClient(
             command=[sys.executable, "-u", "-c", HANGING_SERVER],

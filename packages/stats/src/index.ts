@@ -106,10 +106,10 @@ async function main(): Promise<void> {
 
 	if (values.help) {
 		console.log(`
-omp-stats - jeopi AI Usage Statistics Dashboard
+jeopi-stats - jeopi AI Usage Statistics Dashboard
 
 Usage:
-  omp-stats [options]
+  jeopi-stats [options]
 
 Options:
   -p, --port <port>  Port for the dashboard server (default: 3847)
@@ -118,10 +118,10 @@ Options:
   -h, --help         Show this help message
 
 Examples:
-  omp-stats              # Start dashboard server
-  omp-stats --json       # Print stats as JSON
-  omp-stats --port 8080  # Start on custom port
-  omp-stats --sync       # Sync and show summary
+  jeopi-stats              # Start dashboard server
+  jeopi-stats --json       # Print stats as JSON
+  jeopi-stats --port 8080  # Start on custom port
+  jeopi-stats --sync       # Sync and show summary
 `);
 		return;
 	}

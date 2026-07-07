@@ -38,7 +38,7 @@ export interface DiscoverAuthStorageOptions {
 	sourceLabel?: string;
 }
 
-/** Path to the local bearer token file. Created by `omp auth-broker token`. */
+/** Path to the local bearer token file. Created by `jeopi auth-broker token`. */
 export function getAuthBrokerTokenFilePath(): string {
 	return path.join(getConfigRootDir(), "auth-broker.token");
 }

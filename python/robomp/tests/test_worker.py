@@ -2,7 +2,7 @@
 
 These tests swap `robomp.worker.RpcClient` for a recording fake so we can
 observe the `extra_args` and `set_todos` decisions the driver takes based on
-whether the workspace's omp session directory already holds a JSONL transcript.
+whether the workspace's jeopi session directory already holds a JSONL transcript.
 """
 
 from __future__ import annotations
@@ -546,9 +546,9 @@ async def test_run_rpc_hard_timeout_stops_client_and_fails(
     assert fake.stop_calls == 1
     # `_cancel_hook` (used by both manual cancel and hard timeout) MUST also call
     # `_mark_closed` to unblock `_wait_for_agent_end` — `stop()` alone leaves
-    # `_closed_error` unset (omp_rpc bug), so the worker would hang otherwise.
+    # `_closed_error` unset (jeopi_rpc bug), so the worker would hang otherwise.
     assert len(fake.mark_closed_calls) == 1
-    from omp_rpc import RpcProcessExitError
+    from jeopi_rpc import RpcProcessExitError
 
     assert isinstance(fake.mark_closed_calls[0], RpcProcessExitError)
 
@@ -559,7 +559,7 @@ async def test_run_rpc_cancel_hook_stops_and_marks_closed(
 ) -> None:
     """The cancel hook registered with `register_cancel_hook` must call both
     `client.stop()` AND `client._mark_closed()`. The latter is the workaround for
-    an upstream omp_rpc bug where `stop()` does not set `_closed_error`, leaving
+    an upstream jeopi_rpc bug where `stop()` does not set `_closed_error`, leaving
     `_wait_for_agent_end` blocked until timeout."""
     captured: list = []
     monkeypatch.setattr("robomp.worker.register_cancel_hook", lambda hook: captured.append(hook))
@@ -585,7 +585,7 @@ async def test_run_rpc_cancel_hook_stops_and_marks_closed(
     hook()  # Simulate the API/worker firing the cancel
     assert fake.stop_calls == pre_stop + 1
     assert len(fake.mark_closed_calls) == 1
-    from omp_rpc import RpcProcessExitError
+    from jeopi_rpc import RpcProcessExitError
 
     assert isinstance(fake.mark_closed_calls[0], RpcProcessExitError)
     assert "cancelled by operator" in str(fake.mark_closed_calls[0])

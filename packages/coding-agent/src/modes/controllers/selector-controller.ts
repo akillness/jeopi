@@ -4,7 +4,7 @@ import { getOAuthProviders } from "jeopi-ai/oauth";
 import type { OAuthProvider } from "jeopi-ai/oauth/types";
 import type { Component, OverlayHandle } from "jeopi-tui";
 import { Input, Loader, Spacer, setTuiTight, Text } from "jeopi-tui";
-import { getAgentDbPath, getAgentDir, getProjectDir, normalizePathForComparison } from "jeopi-utils";
+import { formatNumber, getAgentDbPath, getAgentDir, getProjectDir, normalizePathForComparison } from "jeopi-utils";
 import {
 	type AdvisorConfigScope,
 	discoverAdvisorConfigs,
@@ -633,8 +633,22 @@ export class SelectorController {
 							if (switched) {
 								this.ctx.statusLine.invalidate();
 								this.ctx.updateEditorBorderColor();
+								this.ctx.showStatus(`Default model: ${selector ?? model.id}`);
+							} else {
+								// `setModel` deliberately skips the live switch (while still
+								// persisting the role) when the session's current context token
+								// count already exceeds the candidate's context window — sending
+								// on that model would just fail with a context-overflow error.
+								// This is exactly the moment a user hits a usage/token limit and
+								// reaches for /model to escape it, so the picker must say the
+								// active model did NOT change instead of the generic success
+								// status — otherwise the switch looks silently ignored.
+								this.ctx.showError(
+									`Default model set to ${selector ?? model.id} for future sessions, but NOT applied now: ` +
+										`current context (${formatNumber(currentContextTokens)} tokens) exceeds its ` +
+										`${formatNumber(model.contextWindow ?? 0)}-token window. Compact (/compact) or start a new session to switch now.`,
+								);
 							}
-							this.ctx.showStatus(`Default model: ${selector ?? model.id}`);
 							// Don't call done() - selector stays open for role assignment
 						} else {
 							// Other roles (smol, slow): just update settings, not current model

@@ -791,17 +791,21 @@ export function serializeConversation(messages: Message[], options?: SerializeOp
 							.join("");
 			if (content) parts.push(`# User${HEADING_MARKER}\n${stripDimMarkers(content)}`);
 		} else if (msg.role === "assistant") {
-			// Stream blocks in content order: buffer thinking/text, then flush a
-			// `# Assistant` block (thinking as italics above the text) right before
-			// each tool call, so text or thinking after a call stays after it.
-			let pendingThinking: string[] = [];
+			// Stream blocks in content order: buffer text, then flush a
+			// `# Assistant` block right before each tool call, so text after a
+			// call stays after it. Thinking/redactedThinking blocks are dropped
+			// entirely (never buffered, never rasterized into a frame image):
+			// this archive gets rendered into ImageContent frames that re-enter
+			// the conversation history sent back to the model, and an image
+			// depicting a model's own prior natural-language reasoning is a
+			// plausible reasoning_extraction refusal trigger even though it's
+			// pixels, not text tokens (mirrors the plaintext drop in
+			// packages/agent/src/compaction/utils.ts serializeConversation).
 			let pendingText: string[] = [];
 			const flushAssistant = () => {
 				const sections: string[] = [];
-				if (pendingThinking.length > 0) sections.push(`_${pendingThinking.join("\n")}_`);
 				if (pendingText.length > 0) sections.push(pendingText.join("\n"));
 				if (sections.length > 0) parts.push(`# Assistant${HEADING_MARKER}\n${sections.join("\n\n")}`);
-				pendingThinking = [];
 				pendingText = [];
 			};
 
@@ -809,9 +813,6 @@ export function serializeConversation(messages: Message[], options?: SerializeOp
 				if (block.type === "text") {
 					const text = stripDimMarkers(block.text);
 					if (text.trim()) pendingText.push(text);
-				} else if (block.type === "thinking") {
-					const thinking = stripDimMarkers(block.thinking);
-					if (thinking.trim()) pendingThinking.push(thinking);
 				} else if (block.type === "toolCall") {
 					if (uselessCallIds.has(block.id)) continue;
 					flushAssistant();

@@ -1,4 +1,4 @@
-"""Host tools exposed to the agent through `omp_rpc.host_tool`.
+"""Host tools exposed to the agent through `jeopi_rpc.host_tool`.
 
 The agent uses these for any side effect that touches GitHub, the
 reproduction transcript store, or the orchestrator's bookkeeping.
@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NoReturn
 
-from omp_rpc import HostTool, HostToolContext, RpcCommandError, host_tool
+from jeopi_rpc import HostTool, HostToolContext, RpcCommandError, host_tool
 
 from robomp import persona
 from robomp.config import Settings
@@ -292,7 +292,7 @@ def ensure_workspace_dependencies(bindings: ToolBindings) -> None:
     A per-issue worktree is a bare source checkout (``git worktree add`` off
     the shared clone pool): it has the repo's ``package.json``/``bun.lock`` but
     no ``node_modules``. With bun's ``hoisted`` linker the workspace links
-    (``@oh-my-pi/pi-*``) only exist after an install, so without one any
+    (``jeopi-*``) only exist after an install, so without one any
     ``bun test``/``bun check`` the agent runs fails instantly with "Cannot find
     package" — the agent then reports it could not verify. We install before
     the agent starts, mirroring how the natives cache pre-populates ``.node``

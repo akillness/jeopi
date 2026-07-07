@@ -328,19 +328,19 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 
 	replaceAuthCredentialsForProvider(_provider: string, _credentials: AuthCredential[]): StoredAuthCredential[] {
 		throw new AIError.AuthBrokerError(
-			"RemoteAuthCredentialStore is read-only on the client. Use `omp auth-broker login <provider>` to mutate credentials.",
+			"RemoteAuthCredentialStore is read-only on the client. Use `jeopi auth-broker login <provider>` to mutate credentials.",
 		);
 	}
 
 	upsertAuthCredentialForProvider(_provider: string, _credential: AuthCredential): StoredAuthCredential[] {
 		throw new AIError.AuthBrokerError(
-			"RemoteAuthCredentialStore is read-only on the client. Use `omp auth-broker login <provider>` to mutate credentials.",
+			"RemoteAuthCredentialStore is read-only on the client. Use `jeopi auth-broker login <provider>` to mutate credentials.",
 		);
 	}
 
 	deleteAuthCredentialsForProvider(_provider: string, _disabledCause: string): void {
 		throw new AIError.AuthBrokerError(
-			"RemoteAuthCredentialStore is read-only on the client. Use `omp auth-broker logout <provider>` to mutate credentials.",
+			"RemoteAuthCredentialStore is read-only on the client. Use `jeopi auth-broker logout <provider>` to mutate credentials.",
 		);
 	}
 

@@ -32,6 +32,27 @@ function createModel(provider: "google-gemini-cli" | "google-antigravity"): Mode
 	});
 }
 
+/** Non-flash model id (e.g. the `google-antigravity` default `gemini-3.1-pro`) — the planning-leak buffer must not be gated to `flash`-named ids. */
+function createNonFlashModel(provider: "google-gemini-cli" | "google-antigravity"): Model<"google-gemini-cli"> {
+	return buildModel({
+		id: "gemini-3.1-pro",
+		name: provider,
+		api: "google-gemini-cli",
+		provider,
+		baseUrl: "https://example.com",
+		reasoning: false,
+		input: ["text"],
+		cost: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+		},
+		contextWindow: 200000,
+		maxTokens: 8192,
+	});
+}
+
 function createContext(): Context {
 	return {
 		messages: [{ role: "user", content: "implement token refresh", timestamp: Date.now() }],
@@ -598,6 +619,50 @@ describe("Google Gemini CLI alignment", () => {
 
 			// A fully-discarded planning leak leaves no residual content — no empty
 			// text block survives (the central healing wrapper strips empties too).
+			expect(result.content).toHaveLength(0);
+			expect(result.stopReason).toBe("stop");
+
+			const textDeltaEvents = events.filter(e => e.type === "text_delta");
+			expect(textDeltaEvents).toHaveLength(0);
+		});
+
+		it("intercepts a planning leak on a non-flash antigravity model (e.g. gemini-3.1-pro), not just flash ids", async () => {
+			// Regression guard for the `google-antigravity` default model
+			// (`gemini-3.1-pro`) and every other non-`flash` Cloud Code Assist id:
+			// the buffer used to gate on `model.id.includes("flash")`, so this
+			// exact leak rendered straight into the TUI as raw JSON on pro/opus/
+			// Claude-on-antigravity ids instead of being intercepted.
+			const sseChunks = [
+				'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"{\\n  \\"thought\\": \\"let us do something\\",\\n  \\"call\\": \\"read\\",\\n  \\"paths\\": [\\"src/main.ts\\"]\\n}"}]},"finishReason":"STOP"}]}}\n\n',
+			];
+
+			const fetchMock: FetchImpl = async () => {
+				const stream = new ReadableStream({
+					async start(controller) {
+						const encoder = new TextEncoder();
+						for (const chunk of sseChunks) {
+							controller.enqueue(encoder.encode(chunk));
+						}
+						controller.close();
+					},
+				});
+				return new Response(stream, {
+					status: 200,
+					headers: { "Content-Type": "text/event-stream" },
+				});
+			};
+
+			const model = createNonFlashModel("google-antigravity");
+			const events: AssistantMessageEvent[] = [];
+			const stream = streamGoogleGeminiCli(model, createContext(), {
+				apiKey: JSON.stringify({ token: "token", projectId: "proj-123" }),
+				fetch: fetchMock,
+			});
+			for await (const event of stream) {
+				events.push(event);
+			}
+			const result = await stream.result();
+
 			expect(result.content).toHaveLength(0);
 			expect(result.stopReason).toBe("stop");
 

@@ -27,14 +27,14 @@ while [ -L "$self" ]; do
 done
 scripts_dir=$(CDPATH= cd -- "$(dirname -- "$self")" && pwd -P)
 cli=$scripts_dir/../src/cli.ts
-preload=$scripts_dir/omp.ts
+preload=$scripts_dir/jeopi-preload.ts
 timing_preload=$scripts_dir/../../utils/src/module-timer.ts
 
-launch_dir=${OMP_DEV_LAUNCH_DIR:-${HOME}/.jeopi/.dev-cwd}
+launch_dir=${JEOPI_DEV_LAUNCH_DIR:-${HOME}/.jeopi/.dev-cwd}
 mkdir -p "$launch_dir"
 
-OMP_LAUNCH_CWD=$PWD
-export OMP_LAUNCH_CWD
+JEOPI_LAUNCH_CWD=$PWD
+export JEOPI_LAUNCH_CWD
 cd "$launch_dir"
 if [ -n "${PI_TIMING:-}" ]; then
 	exec bun --preload "$preload" --preload "$timing_preload" "$cli" "$@"

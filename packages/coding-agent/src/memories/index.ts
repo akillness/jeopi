@@ -698,10 +698,32 @@ function extractPersistableMessages(payload: string): AgentMessage[] {
 		if (!maybeMessage || typeof maybeMessage !== "object") continue;
 		const message = maybeMessage as AgentMessage;
 		if (shouldPersistResponseItemForMemories(message)) {
-			messages.push(message);
+			messages.push(dropThinkingContentForMemories(message));
 		}
 	}
 	return messages;
+}
+
+/**
+ * Drop `thinking`/`redactedThinking` content blocks from an assistant message
+ * before it is JSON-serialized into the stage-one extraction prompt. The raw
+ * message object (not just its extracted text) is embedded verbatim as
+ * `response_items_json` in `stage_one_input.md`, so any reasoning block left
+ * in `content` would be replayed as plaintext JSON back to the model — a
+ * documented Anthropic `reasoning_extraction` refusal trigger. Dropped, not
+ * reformatted (mirrors `hindsight/transcript.ts` and `compaction/utils.ts`).
+ */
+function dropThinkingContentForMemories(message: AgentMessage): AgentMessage {
+	const role = (message as { role?: string }).role;
+	if (role !== "assistant") return message;
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return message;
+	const filtered = content.filter(block => {
+		const type = (block as { type?: string }).type;
+		return type !== "thinking" && type !== "redactedThinking";
+	});
+	if (filtered.length === content.length) return message;
+	return { ...message, content: filtered } as AgentMessage;
 }
 
 async function runStage1Job(options: {

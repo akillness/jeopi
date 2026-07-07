@@ -1472,17 +1472,6 @@ function textFromContent(content: unknown): string {
 	return parts.join("\n\n");
 }
 
-function thinkingFromContent(content: unknown): string {
-	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const block of content) {
-		if (!isRecord(block) || block.type !== "thinking" || typeof block.thinking !== "string") continue;
-		const thinking = block.thinking.trim();
-		if (thinking) parts.push(thinking);
-	}
-	return parts.join("\n\n");
-}
-
 function toolCallOpFromMessage(message: AgentMessage, toolCallId: string): string | undefined {
 	if (message.role !== "assistant" || !Array.isArray(message.content)) return undefined;
 	for (const block of message.content) {
@@ -1492,12 +1481,21 @@ function toolCallOpFromMessage(message: AgentMessage, toolCallId: string): strin
 	return undefined;
 }
 
+/**
+ * Title context turns carry `text` only — no `thinking`. The replan-refresh
+ * title model resolves through the `tiny`/`commit`/`smol` roles but falls back
+ * to the session's own current model (`getTitleModel` in title-generator.ts)
+ * when no such role is configured, which can be the same Anthropic model the
+ * primary turn used. Replaying prior assistant thinking as plaintext back to
+ * that model is a `reasoning_extraction` classifier-refusal trigger (see the
+ * intentional thinking-drop in compaction/utils.ts, memories/index.ts, and the
+ * hindsight/mnemopi transcript extractor) — dropped here for the same reason.
+ */
 function titleConversationTurnFromMessage(message: AgentMessage): TitleConversationTurn | undefined {
 	if (message.role !== "user" && message.role !== "assistant") return undefined;
 	const text = textFromContent(message.content);
-	const thinking = message.role === "assistant" ? thinkingFromContent(message.content) : undefined;
-	if (!text && !thinking) return undefined;
-	return { role: message.role, ...(text ? { text } : {}), ...(thinking ? { thinking } : {}) };
+	if (!text) return undefined;
+	return { role: message.role, text };
 }
 
 export class AgentSession {
@@ -15195,7 +15193,7 @@ export class AgentSession {
 	 * @returns Path to exported file
 	 */
 	async exportToHtml(outputPath?: string): Promise<string> {
-		// Public HTML export ships in the omp brand palette (collab-web
+		// Public HTML export ships in the jeopi brand palette (collab-web
 		// pink/purple), matching my.omp.sh — not the host's terminal theme.
 		// Callers who want a themed export can pass `palette: "theme"` with
 		// `themeName` directly to `exportSessionToHtml`.

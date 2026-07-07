@@ -481,6 +481,34 @@ describe("StreamMarkupHealing thinking pattern", () => {
 		expect(text).toBe("visible");
 	});
 
+	it("heals a leaked <thinke> section (one-typo tolerance, e.g. #jeopi-thinke)", () => {
+		const { text, thinking } = heal("<thinke>plan the fix</thinke>visible");
+		expect(thinking).toBe("plan the fix");
+		expect(text).toBe("visible");
+	});
+
+	it("heals a typo'd thinking tag split across streamed chunks", () => {
+		const healing = new StreamMarkupHealing({ pattern: "thinking" });
+		const events = [
+			...healing.feedEvents("before <thin"),
+			...healing.feedEvents("ke>hidden reasoning</thin"),
+			...healing.feedEvents("ke>after"),
+			...healing.flushEvents(),
+		];
+		expect(events).toEqual([
+			{ type: "text", text: "before " },
+			{ type: "thinking", thinking: "hidden reasoning" },
+			{ type: "text", text: "after" },
+		]);
+	});
+
+	it("does not treat an unrelated bare tag as thinking despite sharing a prefix", () => {
+		expect(heal("see <thing>not thinking</thing> end")).toEqual({
+			text: "see <thing>not thinking</thing> end",
+			thinking: "",
+		});
+	});
+
 	it("passes a bare '<' in idle prose through without holding it back", () => {
 		expect(heal("if a < b:\n    return a")).toEqual({ text: "if a < b:\n    return a", thinking: "" });
 	});

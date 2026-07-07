@@ -279,7 +279,12 @@ describe("AgentSession eager todo enforcement", () => {
 		expect(session.getTodoPhases()[0]?.tasks[0]?.content).toBe("List all git worktrees in the current repository");
 	});
 
-	it("refreshes an auto title on todo init from recent user, assistant, and thinking context", async () => {
+	it("refreshes an auto title on todo init from recent user/assistant text, never assistant thinking", async () => {
+		// Assistant thinking is intentionally excluded from the replan title context:
+		// the replan-refresh title model falls back to the session's own current
+		// model when no tiny/commit/smol role is configured, so replaying prior
+		// reasoning as plaintext here would be a `reasoning_extraction`
+		// classifier-refusal trigger on Anthropic targets.
 		await recreateSession({ "title.refreshOnReplan": true });
 		await session.setSessionName("Old auto title", "auto");
 		const priorUser: AgentMessage = {
@@ -323,8 +328,9 @@ describe("AgentSession eager todo enforcement", () => {
 		const titleInput = request?.messages?.[0]?.content;
 		expect(titleInput).toContain("fix parser recovery");
 		expect(titleInput).toContain("I found the parser recovery path.");
-		expect(titleInput).toContain("The recovery heuristic should drive the replan title.");
 		expect(titleInput).toContain("replan parser diagnostics");
+		expect(titleInput).not.toContain("The recovery heuristic should drive the replan title.");
+		expect(titleInput).not.toContain("thinking");
 	});
 
 	it("forwards the configured title system prompt to the replan refresh path", async () => {

@@ -1,12 +1,12 @@
 /**
- * omp auth-gateway HTTP server.
+ * jeopi auth-gateway HTTP server.
  *
  * Accepts any provider-format request (OpenAI chat-completions, Anthropic
  * messages, OpenAI Responses) and dispatches through pi-ai's `streamSimple()`
  * — which handles credential injection, anthropic-beta headers, codex
  * websocket transport, and all the per-provider intricacies. The gateway is
- * pure protocol translation: foreign wire → omp Context → pi-ai stream() →
- * omp events → foreign wire.
+ * pure protocol translation: foreign wire → jeopi Context → pi-ai stream() →
+ * jeopi events → foreign wire.
  *
  * Endpoints:
  *   GET  /healthz                          → unauth; ok + version

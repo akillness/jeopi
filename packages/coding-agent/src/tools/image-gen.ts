@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { type } from "arktype";
-import { type ApiKey, type FetchImpl, getEnvApiKey, type Model, withAuth } from "jeopi-ai";
+import { type ApiKey, type FetchImpl, getEnvApiKey, getOpenRouterHeaders, type Model, withAuth } from "jeopi-ai";
 import { ProviderHttpError } from "jeopi-ai/error";
 import {
 	CODEX_BASE_URL,
@@ -1394,9 +1394,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							headers: {
 								"Content-Type": "application/json",
 								Authorization: `Bearer ${key}`,
-								"HTTP-Referer": "https://omp.sh/",
-								"X-OpenRouter-Title": "Oh-My-Pi",
-								"X-OpenRouter-Categories": "cli-agent",
+								...getOpenRouterHeaders(),
 							},
 							body: JSON.stringify(requestBody),
 							signal: requestSignal,

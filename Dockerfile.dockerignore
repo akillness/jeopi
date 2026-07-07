@@ -1,4 +1,4 @@
-# Build context for the pi-root `Dockerfile` (oh-my-pi/pi:dev). Shadows
+# Build context for the pi-root `Dockerfile` (jeopi/pi:dev). Shadows
 # .dockerignore for this file only. Robomp uses Dockerfile.robomp +
 # Dockerfile.robomp.dockerignore alongside.
 
@@ -52,7 +52,7 @@ packages/natives/native/.build/
 packages/natives/native/pi_natives.darwin-*.node
 packages/natives/native/pi_natives.dev.node
 packages/ai/test/.temp-images/
-python/omp-rpc/src/omp_rpc.egg-info/
+python/jeopi-rpc/src/jeopi_rpc.egg-info/
 python/robomp/data/
 python/robomp/.cache/
 python/robomp/src/robomp/static/

@@ -1,7 +1,7 @@
 /**
  * Builtin Provider (.jeopi)
  *
- * Primary provider for OMP native configs. Supports all capabilities.
+ * Primary provider for jeopi native configs. Supports all capabilities.
  */
 import * as path from "node:path";
 import { YAML } from "bun";
@@ -36,8 +36,8 @@ import {
 } from "./helpers";
 
 const PROVIDER_ID = "native";
-const DISPLAY_NAME = "OMP";
-const DESCRIPTION = "Native OMP configuration from ~/.jeopi and .jeopi/";
+const DISPLAY_NAME = "jeopi";
+const DESCRIPTION = "Native jeopi configuration from ~/.jeopi and .jeopi/";
 const PRIORITY = 100;
 
 const PATHS = SOURCE_PATHS.native;
@@ -375,7 +375,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	}
 
 	// Top-level RULES.md is a sticky always-apply rule. Documented in
-	// https://omp.sh/docs/context-files as the file that gets "re-injected near
+	// docs/context-files.md (or `jeopi read omp://context-files.md`) as the file that gets "re-injected near
 	// the current turn so they keep hold across long conversations".
 	// User scope:    ~/.jeopi/agent/RULES.md
 	// Project scope: nearest .jeopi/RULES.md walking up from cwd to repoRoot

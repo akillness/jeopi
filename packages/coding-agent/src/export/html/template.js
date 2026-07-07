@@ -7,7 +7,7 @@
       //
       // Two boot paths share this template:
       //  - Static export: session JSON rides base64-embedded in #session-data.
-      //  - Share viewer: share-loader.js sets `window.__OMP_SESSION_DATA__` to
+      //  - Share viewer: share-loader.js sets `window.__JEOPI_SESSION_DATA__` to
       //    a promise resolving to the session JSON (fetched + decrypted).
       // The entire app lives in bootSession(); its body keeps the original
       // one-level indentation to avoid a whole-file reindent.
@@ -721,13 +721,13 @@
       // TOOL CALL RENDERING
       // ============================================================
       //
-      // Tool calls render through the bundled <omp-tool-view> web component
+      // Tool calls render through the bundled <jeopi-tool-view> web component
       // (tool-views.generated.js — the same React renderers collab-web uses).
       // Payloads are handed over via a global store keyed by data-key, which
       // survives innerHTML serialization and cloneNode round trips.
 
       const TOOL_VIEW_DATA = new Map();
-      globalThis.__OMP_TOOL_VIEW_DATA = TOOL_VIEW_DATA;
+      globalThis.__JEOPI_TOOL_VIEW_DATA = TOOL_VIEW_DATA;
       let toolViewSeq = 0;
 
       function renderToolCall(call, sctx) {
@@ -743,7 +743,7 @@
             openAgent: (id) => openSubSession(joinKey(sctx.prefix, id)),
           },
         });
-        return '<omp-tool-view class="tool-execution ' + statusClass + '" data-key="' + key + '" open></omp-tool-view>';
+        return '<jeopi-tool-view class="tool-execution ' + statusClass + '" data-key="' + key + '" open></jeopi-tool-view>';
       }
 
       // ============================================================
@@ -1619,7 +1619,7 @@
         messages.appendChild(div);
       }
 
-      const pending = window.__OMP_SESSION_DATA__;
+      const pending = window.__JEOPI_SESSION_DATA__;
       if (pending && typeof pending.then === 'function') {
         pending.then(bootSession, showLoadError);
       } else {

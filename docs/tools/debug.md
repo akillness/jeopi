@@ -114,7 +114,7 @@ Streaming/UI behavior:
 - The interactive selector is UI-driven instead of model-driven. It swaps TUI components, appends status lines to the chat pane, opens files in external viewers, or writes archives/temp files.
 
 Side-channel artifacts outside the model tool result:
-- `createReportBundle()` writes `omp-report-<timestamp>.tar.gz` under the reports dir and returns the filesystem path to the UI handler.
+- `createReportBundle()` writes `jeopi-report-<timestamp>.tar.gz` under the reports dir and returns the filesystem path to the UI handler.
 - `#handleWorkReport()` writes `/tmp/work-profile-<Date.now()>.svg` before opening it.
 - `RawSseViewerComponent` and `DebugLogViewerComponent` can copy captured text to the clipboard.
 

@@ -677,24 +677,24 @@ describe("serializeConversation", () => {
 		expect(out).not.toContain(`${INTENT_FIELD}=`);
 	});
 
-	it("folds thinking into the assistant block as italics above the text", () => {
+	it("drops thinking blocks entirely instead of rendering them into the archive", () => {
 		const out = snapcompact.serializeConversation([
 			createAssistantMessage([
 				{ type: "thinking", thinking: "weigh options" },
 				{ type: "text", text: "the answer" },
 			]),
 		]);
-		expect(out).toBe("# Assistant ¶\n_weigh options_\n\nthe answer");
+		expect(out).toBe("# Assistant ¶\nthe answer");
 	});
 
-	it("gives a thinking-only turn its own assistant heading before the tool calls", () => {
+	it("drops a thinking-only turn instead of giving it its own assistant heading", () => {
 		const out = snapcompact.serializeConversation([
 			createAssistantMessage([
 				{ type: "thinking", thinking: "plan first" },
 				{ type: "toolCall", id: "c1", name: "read", arguments: { path: "a.ts" } },
 			]),
 		]);
-		expect(out).toBe('# Assistant ¶\n_plan first_\n\n# Tool call ¶\nread(path="a.ts")');
+		expect(out).toBe('# Tool call ¶\nread(path="a.ts")');
 	});
 
 	it("renders an orphan tool result (call outside the window) standalone", () => {

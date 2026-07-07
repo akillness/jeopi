@@ -26,16 +26,16 @@ Local observability dashboard for AI usage statistics.
 
 ```bash
 # Start dashboard server (default: http://localhost:3847)
-omp stats
+jeopi stats
 
 # Custom port
-omp stats --port 8080
+jeopi stats --port 8080
 
 # Print summary to console
-omp stats --summary
+jeopi stats --summary
 
 # Output as JSON (for scripting)
-omp stats --json
+jeopi stats --json
 ```
 
 ### Programmatic

@@ -945,6 +945,62 @@ describe("ACP agent", () => {
 		await Bun.sleep(0);
 	});
 
+	it("never replays developer messages and skips display:false custom/hookMessage on session/load", async () => {
+		const harness = await createHarness();
+		const stored = new FakeAgentSession(harness.cwdA);
+		harness.sessions.push(stored);
+		stored.sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "hello" }],
+			timestamp: Date.now(),
+		});
+		stored.sessionManager.appendMessage({
+			role: "developer",
+			content: [{ type: "text", text: "<system-reminder>internal reminder</system-reminder>" }],
+			timestamp: Date.now(),
+		});
+		stored.sessionManager.appendMessage({
+			role: "custom",
+			customType: "todo-error-reminder",
+			content: [{ type: "text", text: "<system-reminder>hidden custom reminder</system-reminder>" }],
+			display: false,
+			timestamp: Date.now(),
+		});
+		stored.sessionManager.appendMessage({
+			role: "custom",
+			customType: "advisor",
+			content: [{ type: "text", text: "visible advisor note" }],
+			display: true,
+			timestamp: Date.now(),
+		});
+		await stored.sessionManager.ensureOnDisk();
+		await stored.sessionManager.flush();
+
+		const loaded = await harness.agent.loadSession({
+			sessionId: stored.sessionId,
+			cwd: harness.cwdA,
+			mcpServers: [],
+		});
+		expectAcpStructure(zLoadSessionResponse, loaded);
+
+		const userChunkTexts = harness.updates
+			.filter(
+				update => update.sessionId === stored.sessionId && update.update.sessionUpdate === "user_message_chunk",
+			)
+			.map(update => {
+				const content = update.update.sessionUpdate === "user_message_chunk" ? update.update.content : undefined;
+				return content?.type === "text" ? content.text : "";
+			});
+
+		expect(userChunkTexts.some(text => text.includes("hello"))).toBe(true);
+		expect(userChunkTexts.some(text => text.includes("visible advisor note"))).toBe(true);
+		expect(userChunkTexts.some(text => text.includes("internal reminder"))).toBe(false);
+		expect(userChunkTexts.some(text => text.includes("hidden custom reminder"))).toBe(false);
+
+		harness.abortController.abort();
+		await Bun.sleep(0);
+	});
+
 	it("replays messageIds and returns turn usage for prompts", async () => {
 		const harness = await createHarness();
 		const stored = new FakeAgentSession(harness.cwdA);

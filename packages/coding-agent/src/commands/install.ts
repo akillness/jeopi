@@ -2,7 +2,7 @@
  * `jeopi install <target>` — top-level convenience over `jeopi plugin install` /
  * `jeopi plugin link`.
  *
- * The docs (omp.sh/docs/extension-authoring) advertise
+ * The docs (docs/extensions.md, or `jeopi read omp://extensions.md`) advertise
  *
  *   jeopi install ./my-extension
  *

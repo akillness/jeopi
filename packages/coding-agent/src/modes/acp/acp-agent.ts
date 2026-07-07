@@ -177,6 +177,8 @@ type ReplayableMessage = {
 	toolName?: string;
 	details?: unknown;
 	isError?: boolean;
+	/** `custom`/`hookMessage` visibility flag; absent (e.g. `user`/`developer`) means no gate. */
+	display?: boolean;
 };
 
 type ReplayableToolItem = {
@@ -1906,12 +1908,16 @@ export class AcpAgent implements Agent {
 		if (message.role === "assistant") {
 			return this.#replayAssistantMessage(sessionId, message, cwd, replayedToolCallIds, replayedToolCallArgs);
 		}
-		if (
-			message.role === "user" ||
-			message.role === "developer" ||
-			message.role === "custom" ||
-			message.role === "hookMessage"
-		) {
+		// `developer` carries jeopi-internal reminders/nudges (e.g. `<system-reminder>`
+		// todo nudges) — the TUI never renders these (blanked to empty text in both the
+		// live and history-rebuild paths; see chat-transcript-builder.ts / ui-helpers.ts),
+		// so ACP replay must not surface them to the client either. `custom`/`hookMessage`
+		// carry the same `display` gate the TUI checks (`#appendCustomMessage` /
+		// ui-helpers.ts's `if (message.display)`) — a hidden one (e.g. the resolve-preview
+		// reminder, the todo-error reminder) must stay hidden on replay too.
+		const replayableAsUserChunk =
+			message.role === "user" || ((message.role === "custom" || message.role === "hookMessage") && message.display);
+		if (replayableAsUserChunk) {
 			return this.#wrapReplayContent(
 				sessionId,
 				this.#extractReplayContent(message.content, undefined),

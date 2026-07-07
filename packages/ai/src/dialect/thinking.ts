@@ -14,17 +14,92 @@ type Tag = { readonly open: string; readonly close: string; readonly fenced?: bo
  * emits and what models leak in practice. Attributed or namespaced XML thinking
  * tags (`<thinking signature="…">`, `antml:thinking`) are recovered by the owned
  * anthropic-dialect parser, not this text-channel healing fallback.
+ *
+ * `<think>`/`<thinking>`/`<scratchpad>` are additionally matched with one-typo
+ * tolerance ({@link isThinkingTagName}) — weaker models occasionally hallucinate
+ * a near-miss spelling (`<thinke>`, `<thinkin>`) consistently for both the open
+ * and close tag on long turns; without this the whole malformed pair leaks
+ * verbatim into the visible channel instead of collapsing into a thinking block.
  */
 const TAGS: readonly Tag[] = [
-	{ open: "<think>", close: "</think>" }, // deepseek, glm, hermes, kimi, qwen3 (and anthropic/minimax/xml)
-	{ open: "<thinking>", close: "</thinking>" }, // anthropic, minimax, xml
-	{ open: "<scratchpad>", close: "</scratchpad>" }, // anthropic
 	{ open: "```thinking\n", close: "```", fenced: true }, // gemini fenced thinking
 	{ open: "<|channel>thought\n", close: "<channel|>" }, // gemma reasoning channel
 	{ open: "<|start|>assistant<|channel|>analysis<|message|>", close: "<|end|>" }, // harmony analysis (rendered)
 	{ open: "<|channel|>analysis<|message|>", close: "<|end|>" }, // harmony analysis (bare leak)
 ];
 const OPENS = TAGS.map(tag => tag.open);
+/** Longest bare `<name>` this scanner ever recognizes; bounds partial-tag holding. */
+const MAX_BARE_TAG_NAME_LENGTH = 20;
+const BARE_TAG_OPEN_PATTERN = /<([A-Za-z][A-Za-z0-9]{0,19})>/g;
+const BARE_TAG_PARTIAL_PATTERN = /<(?:[A-Za-z][A-Za-z0-9]{0,19})?$/;
+
+/**
+ * True for the canonical thinking tag names, plus names within one character
+ * edit of `think`/`thinking`/`scratchpad` that also share that name's prefix —
+ * the shape of a real hallucinated typo (`thinke`, `thinkin`, `scratchpaid`),
+ * not an unrelated short word (`thing`, `thin`, `chink` all fail the prefix
+ * guard despite being edit-distance 1 from `think`).
+ */
+export function isThinkingTagName(name: string): boolean {
+	const lower = name.toLowerCase();
+	if (lower === "thinking" || lower === "think" || lower === "scratchpad") return true;
+	if (lower.startsWith("think") && levenshteinAtMost(lower, "think", 1)) return true;
+	if (lower.startsWith("thinking") && levenshteinAtMost(lower, "thinking", 1)) return true;
+	if (lower.startsWith("scratchpad") && levenshteinAtMost(lower, "scratchpad", 1)) return true;
+	return false;
+}
+
+/** Bounded Levenshtein distance check; avoids the full DP once `max` is exceeded. */
+function levenshteinAtMost(a: string, b: string, max: number): boolean {
+	if (Math.abs(a.length - b.length) > max) return false;
+	const prev = new Array<number>(b.length + 1);
+	const curr = new Array<number>(b.length + 1);
+	for (let j = 0; j <= b.length; j++) prev[j] = j;
+	for (let i = 1; i <= a.length; i++) {
+		curr[0] = i;
+		let rowMin = curr[0]!;
+		for (let j = 1; j <= b.length; j++) {
+			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+			curr[j] = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
+			rowMin = Math.min(rowMin, curr[j]!);
+		}
+		if (rowMin > max) return false;
+		for (let j = 0; j <= b.length; j++) prev[j] = curr[j]!;
+	}
+	return prev[b.length]! <= max;
+}
+
+/**
+ * Earliest bare `<name>` tag (no attributes) whose name passes
+ * {@link isThinkingTagName}, paired with its matching `</name>` close. Runs
+ * alongside the literal {@link TAGS} idioms so `<think>`/`<thinking>`/
+ * `<scratchpad>` and their one-typo variants share a single fuzzy path.
+ */
+function findBareThinkingOpen(buffer: string): (Tag & { index: number }) | undefined {
+	for (const match of buffer.matchAll(BARE_TAG_OPEN_PATTERN)) {
+		const name = match[1]!;
+		if (!isThinkingTagName(name)) continue;
+		return { open: match[0], close: `</${name}>`, index: match.index };
+	}
+	return undefined;
+}
+
+/**
+ * Holds back a buffer tail shaped like an unterminated bare tag (`<`,
+ * optionally followed by letters/digits, no `>` yet) so a diverging spelling
+ * isn't flushed as visible text one character before its typo would have
+ * matched {@link isThinkingTagName} — e.g. `<thinke` must survive until the
+ * closing `>` arrives and resolves it. Bounded by
+ * {@link MAX_BARE_TAG_NAME_LENGTH} so an angle bracket in ordinary prose
+ * can't stall the stream indefinitely.
+ */
+function bareTagPartialHold(buffer: string): number {
+	const openIndex = buffer.lastIndexOf("<");
+	if (openIndex === -1) return 0;
+	const tail = buffer.slice(openIndex);
+	if (tail.length > MAX_BARE_TAG_NAME_LENGTH + 1) return 0;
+	return BARE_TAG_PARTIAL_PATTERN.test(tail) ? tail.length : 0;
+}
 
 export class ThinkingInbandScanner implements InbandScanner {
 	#buffer = "";
@@ -89,7 +164,9 @@ export class ThinkingInbandScanner implements InbandScanner {
 
 			const tag = findEarliestOpen(this.#buffer);
 			if (!tag) {
-				const hold = final ? 0 : partialSuffixOverlapAny(this.#buffer, OPENS);
+				const hold = final
+					? 0
+					: Math.max(partialSuffixOverlapAny(this.#buffer, OPENS), bareTagPartialHold(this.#buffer));
 				const emit = this.#buffer.slice(0, this.#buffer.length - hold);
 				if (emit.length > 0) events.push({ type: "text", text: emit });
 				this.#buffer = this.#buffer.slice(this.#buffer.length - hold);
@@ -118,5 +195,7 @@ function findEarliestOpen(buffer: string): (Tag & { index: number }) | undefined
 		const index = buffer.indexOf(tag.open);
 		if (index !== -1 && (!best || index < best.index)) best = { ...tag, index };
 	}
+	const bare = findBareThinkingOpen(buffer);
+	if (bare && (!best || bare.index < best.index)) best = bare;
 	return best;
 }

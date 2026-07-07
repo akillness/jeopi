@@ -1,24 +1,24 @@
 # syntax=docker/dockerfile:1.7-labs
 ###############################################################################
-# oh-my-pi — pi image
+# jeopi — pi image
 #
 # Stages:
 #   natives-builder — Rust + Bun → pi_natives.linux-<arch>.node
-#   wheel-builder   — omp_rpc Python wheel
-#   pi-base         — python + bun + rustup launcher + natives + omp_rpc
-#                     + /usr/local/bin/omp shim
+#   wheel-builder   — jeopi_rpc Python wheel
+#   pi-base         — python + bun + rustup launcher + natives + jeopi_rpc
+#                     + /usr/local/bin/jeopi shim
 #   pi-runtime      — pi-base + pi source + bun install      (DEFAULT, runnable)
 #
 # Build:
-#     docker build -t oh-my-pi/pi:dev .                          # default = pi-runtime
-#     docker build --target pi-base -t oh-my-pi/pi-base:dev .    # base for derived images
+#     docker build -t jeopi/pi:dev .                          # default = pi-runtime
+#     docker build --target pi-base -t jeopi/pi-base:dev .    # base for derived images
 #
 # Run:
-#     docker run --rm oh-my-pi/pi:dev --help
-#     docker run --rm -it -v "$PWD":/work oh-my-pi/pi:dev cli    # interactive omp
+#     docker run --rm jeopi/pi:dev --help
+#     docker run --rm -it -v "$PWD":/work jeopi/pi:dev cli    # interactive jeopi
 #
 # Consume as a base in another Dockerfile (see Dockerfile.robomp):
-#     ARG PI_BASE=oh-my-pi/pi:dev
+#     ARG PI_BASE=jeopi/pi:dev
 #     FROM ${PI_BASE} AS pi-base
 ###############################################################################
 
@@ -79,7 +79,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     cp packages/natives/native/pi_natives.linux-*.node /out/
 
 ############################
-# 2) wheel-builder — omp-rpc wheel
+# 2) wheel-builder — jeopi-rpc wheel
 ############################
 FROM python:3.12-slim-bookworm AS wheel-builder
 
@@ -90,11 +90,11 @@ RUN apt-get update \
 RUN pip install --upgrade pip build
 
 WORKDIR /src
-COPY python/omp-rpc /src
+COPY python/jeopi-rpc /src
 RUN python -m build --wheel --outdir /out
 
 ############################
-# 3) pi-base — python + bun + rustup + natives + omp_rpc + omp shim
+# 3) pi-base — python + bun + rustup + natives + jeopi_rpc + jeopi shim
 #
 # Sharable runtime base. Derived images (pi-runtime below, Dockerfile.robomp)
 # extend this and overlay their own source tree. Default PI_ROOT=/work/pi is
@@ -137,11 +137,11 @@ RUN curl -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh \
 # pi-natives addon: pi's loader probes /opt/bun/bin as a fallback path.
 COPY --from=natives-builder /out/pi_natives.linux-*.node /opt/bun/bin/
 
-# omp-rpc Python wheel.
+# jeopi-rpc Python wheel.
 COPY --from=wheel-builder /out/*.whl /tmp/wheels/
-RUN pip install /tmp/wheels/omp_rpc-*.whl && rm -rf /tmp/wheels
+RUN pip install /tmp/wheels/jeopi_rpc-*.whl && rm -rf /tmp/wheels
 
-# `omp` shim — runs the coding-agent CLI against $PI_ROOT via Bun. Derived
+# `jeopi` shim — runs the coding-agent CLI against $PI_ROOT via Bun. Derived
 # images override PI_ROOT to point at wherever their pi source lives.
 RUN printf '%s\n' \
     '#!/usr/bin/env bash' \
@@ -152,13 +152,13 @@ RUN printf '%s\n' \
     '  exit 127' \
     'fi' \
     'exec bun "$PI_ROOT/packages/coding-agent/src/cli.ts" "$@"' \
-    > /usr/local/bin/omp \
-    && chmod +x /usr/local/bin/omp
+    > /usr/local/bin/jeopi \
+    && chmod +x /usr/local/bin/jeopi
 
 ############################
 # 4) pi-runtime — pi-base + pi source + bun install (DEFAULT)
 #
-# A self-contained, runnable omp image. `docker run oh-my-pi/pi:dev --help`
+# A self-contained, runnable jeopi image. `docker run jeopi/pi:dev --help`
 # Just Works without a host checkout.
 ############################
 FROM pi-base AS pi-runtime
@@ -188,5 +188,5 @@ COPY . /pi/
 # package.json's `prepare` script normally handles this on a vanilla install.
 RUN bun --cwd=packages/coding-agent run gen:docs
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/omp"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/jeopi"]
 CMD ["--help"]

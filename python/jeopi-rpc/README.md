@@ -1,12 +1,12 @@
-# omp-rpc
+# jeopi-rpc
 
-Typed Python bindings for the `omp --mode rpc` protocol used by the coding agent.
+Typed Python bindings for the `jeopi --mode rpc` protocol used by the coding agent.
 
 This package wraps the newline-delimited JSON RPC transport exposed by the CLI and
 provides:
 
 - typed command methods for the stable RPC surface
-- typed startup options for common `omp --mode rpc` flags such as thinking level,
+- typed startup options for common `jeopi --mode rpc` flags such as thinking level,
   tool selection, prompt appends, provider session IDs, and headless session toggles
 - typed protocol models for state, bash results, compaction, and session stats
 - a process-backed client that manages request correlation over stdio
@@ -17,7 +17,7 @@ provides:
 ## Basic Usage
 
 ```python
-from omp_rpc import RpcClient
+from jeopi_rpc import RpcClient
 
 with RpcClient(provider="anthropic", model="claude-sonnet-4-5") as client:
     state = client.get_state()
@@ -31,7 +31,7 @@ The wrapper also exposes the common RPC startup flags directly, so scripts do no
 need to build `extra_args` by hand:
 
 ```python
-from omp_rpc import RpcClient
+from jeopi_rpc import RpcClient
 
 with RpcClient(
     model="openrouter/anthropic/claude-sonnet-4.6",
@@ -49,7 +49,7 @@ For orchestration hosts, the wrapper also exposes typed event hooks and a simple
 way to seed todos before the first prompt:
 
 ```python
-from omp_rpc import MessageUpdateEvent, RpcClient
+from jeopi_rpc import MessageUpdateEvent, RpcClient
 
 def on_message_update(event: MessageUpdateEvent) -> None:
     assistant_event = event.assistant_message_event
@@ -74,14 +74,14 @@ phases, and `get_state().todo_phases` returns the typed current todo state.
 By default the client runs:
 
 ```bash
-omp --mode rpc
+jeopi --mode rpc
 ```
 
 You can also point it at a custom command, which is useful inside this repo while
 developing against the Bun entrypoint:
 
 ```python
-from omp_rpc import RpcClient
+from jeopi_rpc import RpcClient
 
 with RpcClient(
     command=[
@@ -107,7 +107,7 @@ typed signature:
 ```python
 from typing import TypedDict
 
-from omp_rpc import RpcClient, host_tool
+from jeopi_rpc import RpcClient, host_tool
 
 
 class EchoArgs(TypedDict):
@@ -149,7 +149,7 @@ Registered schemes are routed through the agent's `read` (and `write`) tools
 over the same RPC transport — handlers do the actual I/O on the Python side:
 
 ```python
-from omp_rpc import RpcClient, host_uri
+from jeopi_rpc import RpcClient, host_uri
 
 rows: dict[str, str] = {"42": "id=42\nname=Alice\n"}
 
@@ -228,7 +228,7 @@ allows:
 For long-lived hosts, retained event and stderr history is bounded by default:
 
 ```python
-from omp_rpc import RpcClient
+from jeopi_rpc import RpcClient
 
 with RpcClient(max_event_history=20_000, max_stderr_chunks=256) as client:
     ...
@@ -251,7 +251,7 @@ If a host explicitly needs reasoning text too, use the `*_with_thinking`
 helpers:
 
 ```python
-from omp_rpc import assistant_text, assistant_text_with_thinking
+from jeopi_rpc import assistant_text, assistant_text_with_thinking
 
 visible = assistant_text(message)
 full = assistant_text_with_thinking(message)

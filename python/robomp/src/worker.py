@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from omp_rpc import (
+from jeopi_rpc import (
     MessageUpdateEvent,
     RpcClient,
     RpcError,
@@ -176,9 +176,9 @@ def _stage_agent_home() -> None:
 
 
 def _build_extra_env(settings: Settings) -> dict[str, str]:
-    """Build the env overlay passed to the omp subprocess.
+    """Build the env overlay passed to the jeopi subprocess.
 
-    `omp_rpc` merges this dict on top of `os.environ`, so overlaying empty
+    `jeopi_rpc` merges this dict on top of `os.environ`, so overlaying empty
     strings for the sensitive keys is what actually masks them in the
     child — `del` on the parent's env would not help us here.
     """
@@ -352,7 +352,7 @@ def _drive_turn(
 
 
 def _has_prior_session(session_dir: Path) -> bool:
-    """Return True iff `session_dir` already contains an omp JSONL transcript.
+    """Return True iff `session_dir` already contains a jeopi JSONL transcript.
 
     pi's `coding-agent` writes one `*.jsonl` per session into `--session-dir`.
     The presence of any such file is the signal that `--continue` will pick
@@ -485,7 +485,7 @@ def _run_rpc_blocking(
     rpc_env.update(_safe_directory_env(bindings.workspace.repo_dir))
     rpc_env.update(_git_identity_env(inputs.settings.resolved_author_name, inputs.settings.git_author_email))
     # Bare worktrees have no node_modules; install (idempotently) so the agent
-    # can resolve workspace packages (@oh-my-pi/pi-*) and actually run tests.
+    # can resolve workspace packages (`jeopi-*`) and actually run tests.
     host_tools.ensure_workspace_dependencies(bindings)
     resuming = _has_prior_session(bindings.workspace.session_dir)
     extra_args: tuple[str, ...] = ("--continue",) if resuming else ()
@@ -531,7 +531,7 @@ def _run_rpc_blocking(
     )
 
     with RpcClient(
-        executable=settings.omp_command,
+        executable=settings.jeopi_command,
         cwd=bindings.workspace.repo_dir,
         session_dir=bindings.workspace.session_dir,
         env=rpc_env,
@@ -550,12 +550,12 @@ def _run_rpc_blocking(
         group=inputs.slot_uid if inputs.slot_uid is not None else None,
         extra_groups=["omp"] if inputs.slot_uid is not None else None,
     ) as client:
-        # Arm cancellation: from this point the API can kill the omp subprocess
+        # Arm cancellation: from this point the API can kill the jeopi subprocess
         # out from under us, which makes `prompt_and_wait` raise an `RpcError`
         # we'll let propagate. The `with` exit calls `client.stop()` again, but
         # it's idempotent.
         #
-        # NOTE: omp_rpc.RpcClient.stop() has a bug where it sets `_stopping=True`
+        # NOTE: jeopi_rpc.RpcClient.stop() has a bug where it sets `_stopping=True`
         # before the stdout reader loop notices the closed pipe, so the reader's
         # `if not self._stopping` guard skips `_mark_closed()` entirely.
         # `_wait_for_agent_end` then blocks on `_event_condition` until the hard

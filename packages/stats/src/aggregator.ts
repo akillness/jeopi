@@ -27,7 +27,7 @@ import { getSessionEntry, listAllSessionFiles, type ParseSessionResult, parseSes
 import type { SyncWorkerRequest, SyncWorkerResponse } from "./sync-worker";
 // Coding-agent binary/bundle workers route through the CLI entrypoint with a
 // hidden argv mode, so the compiled binary and npm bundle only need one
-// JavaScript entry. Standalone source `omp-stats` keeps using this package's
+// JavaScript entry. Standalone source `jeopi-stats` keeps using this package's
 // own sync-worker source file.
 import type { BehaviorDashboardStats, DashboardStats, MessageStats, RequestDetails } from "./types";
 
@@ -89,9 +89,9 @@ interface WorkerHandle {
 
 /**
  * Create a fresh sync worker. When the process was started from a
- * self-dispatching CLI entry (omp in source, npm-bundle, or compiled form),
+ * self-dispatching CLI entry (jeopi in source, npm-bundle, or compiled form),
  * re-enter that entry with a worker argv selector; otherwise (standalone
- * omp-stats, bun test, SDK embedding) load the worker module directly, so this
+ * jeopi-stats, bun test, SDK embedding) load the worker module directly, so this
  * package keeps zero runtime dependency on `jeopi`.
  */
 function createSyncWorker(): Worker {
