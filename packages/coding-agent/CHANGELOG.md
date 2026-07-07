@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.27] - 2026-07-07
+
 ### Fixed
 
 - The background memory-consolidation pipeline (`memories/index.ts`) JSON-serialized full raw assistant message objects — including `thinking`/`redactedThinking` content blocks — verbatim into the stage-one extraction prompt sent to the model, independently of the already-fixed `hindsight`/`compaction` transcript paths. Added `dropThinkingContentForMemories` to strip those blocks before serialization, closing another `reasoning_extraction` classifier-refusal trigger.

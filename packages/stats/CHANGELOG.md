@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.27] - 2026-07-07
+
 ### Fixed
 
 - The standalone `jeopi-stats` binary's own `--help` output printed `omp-stats` as the command name in its usage/examples — a leftover from before the package's bin was renamed. `README.md`'s CLI examples had the same stale `omp stats` (missing the `jeopi` product name and using the wrong invocation form). Fixed both to `jeopi-stats`/`jeopi stats` respectively. Also renamed the internal `localStorage` theme-preference key, the embedded-client temp-directory prefix, and doc comments from `omp-stats*` to `jeopi-stats*` for consistency (theme preference silently falls back to the OS default on the one-time key change; no persisted data loss).

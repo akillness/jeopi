@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.27] - 2026-07-07
+
 ### Fixed
 
 - `tool-render/`'s `<omp-tool-view>` web component and its `defineToolViewElement`/`JeopiToolViewElement` export carried pre-npm-independence `omp` naming (`OmpToolViewElement`, default tag `omp-tool-view`, doc comments referencing `my.omp.sh`). Renamed to `<jeopi-tool-view>`/`JeopiToolViewElement`; the `globalThis.__OMP_TOOL_VIEW_DATA` payload store the element reads via `data-key` is now a compiler-checked `declare global` (`__JEOPI_TOOL_VIEW_DATA`) instead of an inline-cast `globalThis` member access.

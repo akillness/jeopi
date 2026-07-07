@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.27] - 2026-07-07
+
 ### Fixed
 
 - Leaked reasoning healing (`ThinkingInbandScanner`, and the owned `AnthropicInbandScanner`/`xml` dialect scanner) required an exact `<think>`/`<thinking>`/`<scratchpad>` tag name, so a model that consistently hallucinates a one-character-off spelling for both its open and close tag (e.g. `<thinke>...</thinke>`) leaked the entire block — tag and body — into the visible reply verbatim instead of collapsing into a thinking section. Both scanners now recognize any bare `<name>` whose name is within one character edit of a canonical thinking tag name and shares its prefix (`thinke`, `thinkin`, `scratchpaid`, …), while unrelated short words (`thing`, `thin`, `<div>`, …) are unaffected.

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.27] - 2026-07-07
+
 ### Fixed
 
 - `serializeConversation` no longer renders assistant `thinking` blocks as italic prose into the archived conversation text before it gets rasterized into frame images. Those frame images are resent to the model as part of the persisted compaction summary on every later turn, so baking a prior turn's own reasoning into pixels was still a `reasoning_extraction` classifier-refusal trigger on Anthropic targets even though it's not literal text tokens (mirrors the plaintext-drop fix already applied to `packages/agent/src/compaction/utils.ts`). `redactedThinking` blocks were already dropped implicitly and needed no change.
