@@ -101,6 +101,45 @@ describe("formatSessionHistoryMarkdown", () => {
 		expect(output).not.toContain("## assistant");
 	});
 
+	it("disguises thinking through renderDemotedThinking when demoteThinkingForModelId targets Fable/Mythos", () => {
+		const thinking = "weigh the two approaches before picking one";
+		const messages = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking },
+					{ type: "text", text: "done" },
+				],
+				timestamp: 1,
+			},
+		];
+		const output = formatSessionHistoryMarkdown(messages, {
+			includeThinking: true,
+			demoteThinkingForModelId: "claude-fable-5",
+		});
+		// The literal "_thinking:_" label is the reasoning_extraction trigger this
+		// option exists to avoid — Fable/Mythos render as markdown-italic prose instead.
+		expect(output).not.toContain("_thinking:_");
+		expect(output).toContain(`_Hmm. ${thinking}_`);
+		expect(output).toContain("done");
+	});
+
+	it("still elides thinking when includeThinking is unset even if demoteThinkingForModelId is provided", () => {
+		const messages = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: "should never render" },
+					{ type: "text", text: "done" },
+				],
+				timestamp: 1,
+			},
+		];
+		const output = formatSessionHistoryMarkdown(messages, { demoteThinkingForModelId: "claude-fable-5" });
+		expect(output).not.toContain("should never render");
+		expect(output).not.toContain("_Hmm.");
+	});
+
 	it("renders an orphan toolResult (truncated history) as its own line", () => {
 		const output = formatSessionHistoryMarkdown([
 			{

@@ -502,6 +502,35 @@ describe("StreamMarkupHealing thinking pattern", () => {
 		]);
 	});
 
+	it("heals a malformed open (dropped '>') paired with a well-formed close — reported leak pattern", () => {
+		// Reported failure: a model emits `<thinke` (typo, and the closing '>'
+		// never arrives — the model goes straight into its reasoning text) then
+		// later emits a perfectly well-formed `</thinking>`. Neither `<thinke`
+		// nor the mismatched-spelling close it implies were ever recognized as a
+		// tag, so both leaked verbatim into the visible channel around the
+		// reasoning they were meant to hide.
+		const { text, thinking } = heal("jeo\n<thinke\nreal reasoning here\n</thinking>\n\nvisible reply");
+		expect(thinking).toBe("\nreal reasoning here\n");
+		expect(text).toBe("jeo\n\n\nvisible reply");
+		expect(text).not.toContain("<thinke");
+		expect(text).not.toContain("</thinking>");
+	});
+
+	it("heals the same malformed-open/well-formed-close pattern split across streamed chunks", () => {
+		const { text, thinking } = heal("jeo\n<thin", "ke\nreal reason", "ing here\n</thi", "nking>\n\nvisible reply");
+		expect(thinking).toBe("\nreal reasoning here\n");
+		expect(text).toBe("jeo\n\n\nvisible reply");
+	});
+
+	it("does not treat a bare '<' followed by ordinary prose as an unterminated thinking open", () => {
+		// Guards against the new unterminated-open detector over-firing on
+		// ordinary code/prose containing '<' followed by a short word.
+		expect(heal("if a < thing_value:\n    return a")).toEqual({
+			text: "if a < thing_value:\n    return a",
+			thinking: "",
+		});
+	});
+
 	it("does not treat an unrelated bare tag as thinking despite sharing a prefix", () => {
 		expect(heal("see <thing>not thinking</thing> end")).toEqual({
 			text: "see <thing>not thinking</thing> end",

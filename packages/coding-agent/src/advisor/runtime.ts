@@ -21,7 +21,7 @@ export interface AdvisorAgent {
 	 * turn `Agent.#runLoop` records on its internal state.
 	 */
 	rollbackTo?(count: number): void;
-	readonly state: { messages: AgentMessage[]; error?: string };
+	readonly state: { messages: AgentMessage[]; error?: string; model?: { id: string } };
 }
 
 export interface AdvisorRuntimeHost {
@@ -116,7 +116,12 @@ export class AdvisorRuntime {
 	 * `false` exactly once, the first time a classifier refusal is caught — see
 	 * the `#drain` catch block. That single flip is sufficient to both change
 	 * future renders AND guard against re-triggering the degrade path, so no
-	 * separate one-shot flag is needed alongside it.
+	 * separate one-shot flag is needed alongside it. When the render target is a
+	 * Fable/Mythos model, {@link formatSessionHistoryMarkdown}'s
+	 * `demoteThinkingForModelId` (wired from `agent.state.model.id` in
+	 * {@link AdvisorRuntime.#renderDelta}) already disguises the rendered thinking
+	 * before the first send, so this latch mainly guards other/unforeseen
+	 * classifier triggers on the first turn.
 	 */
 	#includeThinking: boolean;
 
@@ -243,6 +248,7 @@ export class AdvisorRuntime {
 		const formattedDelta = obfuscator?.hasSecrets() ? obfuscateAdvisorDelta(obfuscator, delta) : delta;
 		const md = formatSessionHistoryMarkdown(formattedDelta, {
 			includeThinking: this.#includeThinking,
+			demoteThinkingForModelId: this.agent.state.model?.id,
 			includeToolIntent: true,
 			watchedRoles: true,
 			expandPrimaryContext: true,

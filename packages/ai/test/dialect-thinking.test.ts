@@ -216,6 +216,34 @@ describe("anthropic/xml scanner tolerates a one-typo thinking tag name", () => {
 		expect(thinkingBoundaries(events)).toBe(0);
 		expect(visibleText(events)).toBe("<thing>not thinking</thing>text");
 	});
+
+	it("does not let an unterminated open (no '>') swallow content up to a later legitimate close (data-loss regression)", () => {
+		// A malformed open (dropped '>' before the model's actual reasoning) must
+		// not parse as one tag whose "attributes" span everything up to the next
+		// '>' anywhere in the buffer, including a later well-formed close tag.
+		// That would silently discard the reasoning between them and mislabel
+		// whatever follows the close as thinking. Reported failure mode: a
+		// malformed `<thinke` open (Korean deployment-notes reasoning follows,
+		// no '>' ever arrives for it) paired with a clean `</thinking>` close.
+		const events = scan(
+			"anthropic",
+			"jeo\n<thinke\nreal reasoning that must not vanish\n</thinking>\n\nvisible reply",
+			{ options: { parseThinking: true } },
+		);
+		const allText = visibleText(events);
+		expect(allText).toContain("real reasoning that must not vanish");
+		expect(allText).toContain("visible reply");
+		// Neither destroyed nor reclassified as hidden thinking.
+		expect(thinkingText(events)).toBe("");
+	});
+
+	it("still parses a well-formed multi-attribute open normally (guard does not reject legitimate single-line attrs)", () => {
+		const events = scan("anthropic", "<thinking foo=\"bar\" baz='qux'>plan</thinking>answer", {
+			options: { parseThinking: true },
+		});
+		expect(thinkingText(events)).toBe("plan");
+		expect(visibleText(events)).toBe("answer");
+	});
 });
 
 describe("every dialect round-trips thinking (no missing thinking element)", () => {

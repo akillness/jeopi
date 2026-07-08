@@ -1381,6 +1381,49 @@ describe("advisor", () => {
 			expect(strippedNotices).toHaveLength(1);
 		});
 
+		it("never sends the literal reasoning_extraction-triggering label when the advisor's own model is Fable/Mythos (no refusal, no degrade)", async () => {
+			const promptInputs: string[] = [];
+			const strippedNotices: number[] = [];
+			const agent: AdvisorAgent = {
+				prompt: async input => {
+					promptInputs.push(input);
+				},
+				abort: () => {},
+				reset: () => {},
+				state: { messages: [], model: { id: "claude-fable-5" } },
+			};
+			const thinking = "secret chain of thought the classifier flags";
+			const messages: AgentMessage[] = [
+				{ role: "user", content: "do the thing", timestamp: 1 } as AgentMessage,
+				{
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking },
+						{ type: "text", text: "done" },
+					],
+					timestamp: 2,
+				} as AgentMessage,
+			];
+			const host: AdvisorRuntimeHost = {
+				snapshotMessages: () => messages,
+				enqueueAdvice: () => {},
+				notifyThinkingStripped: () => strippedNotices.push(1),
+			};
+			const runtime = new AdvisorRuntime(agent, host, 0);
+
+			runtime.onTurnEnd(messages);
+			await runtime.waitForCatchup(5000, 1);
+
+			// Sent once, on the first attempt — the disguised form carries the
+			// reasoning content but never the literal "_thinking:_" label, so
+			// there is nothing for the classifier to catch and no degrade fires.
+			expect(promptInputs).toHaveLength(1);
+			expect(promptInputs[0]).not.toContain("_thinking:_");
+			expect(promptInputs[0]).toContain(thinking);
+			expect(strippedNotices).toHaveLength(0);
+			expect(runtime.backlog).toBe(0);
+		});
+
 		it("skips the degrade path when thinking is disabled at construction and falls through to the watchdog", async () => {
 			const promptInputs: string[] = [];
 			const strippedNotices: number[] = [];

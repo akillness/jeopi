@@ -8,6 +8,7 @@
  */
 import type { AgentMessage } from "jeopi-agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "jeopi-ai";
+import { renderDemotedThinking } from "jeopi-ai/dialect";
 import { escapeXmlText } from "jeopi-utils";
 import { INTENT_FIELD } from "jeopi-wire";
 import type {
@@ -25,6 +26,18 @@ export interface HistoryFormatOptions {
 	title?: string;
 	/** Render assistant thinking blocks (default: elided). */
 	includeThinking?: boolean;
+	/**
+	 * When rendering thinking (requires `includeThinking`), disguise it through
+	 * {@link renderDemotedThinking} for this target model id instead of the literal
+	 * `_thinking:_ ` label. Anthropic's `reasoning_extraction` classifier can flag a
+	 * transcript that replays a *different* model's prior thinking back at a
+	 * Fable/Mythos model labeled as "thinking" — this is the same trigger
+	 * `renderDemotedThinking` already avoids for cross-model/cross-turn replay in the
+	 * wire layer. Omitted for the human-facing `history://` dump, where the explicit
+	 * label is more useful than the disguise and there is no live model on the other
+	 * end to refuse it.
+	 */
+	demoteThinkingForModelId?: string;
 	/** Render tool intent comment before tool call lines. */
 	includeToolIntent?: boolean;
 	/** Render watched-session roles as inline `**agent**:` / `**user**:` labels (collapsing consecutive same-role messages) instead of `## ` headings, so a primary transcript embedded inside an advisor turn stays visually distinct. */
@@ -309,7 +322,11 @@ export function formatSessionHistoryMarkdown(messages: unknown[], opts?: History
 							toolCallLine(block.name, block.arguments, result, opts?.includeToolIntent, opts?.expandEditDiffs),
 						);
 					} else if (opts?.includeThinking && block.type === "thinking" && block.thinking.trim()) {
-						body.push(`_thinking:_ ${block.thinking}`);
+						body.push(
+							opts.demoteThinkingForModelId
+								? renderDemotedThinking(opts.demoteThinkingForModelId, block.thinking).trimEnd()
+								: `_thinking:_ ${block.thinking}`,
+						);
 					}
 					// redactedThinking elided entirely (no readable text)
 				}

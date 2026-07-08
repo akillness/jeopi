@@ -494,6 +494,23 @@ export class AnthropicInbandScanner implements InbandScanner {
 
 const ALL_TAG_PREFIXES = [...BASE_TAG_PREFIXES, ...ANTHROPIC_THINKING_TAG_PREFIXES] as const;
 
+/**
+ * Parse one `<...>` span already isolated by `#peekTag` (buffer up to and
+ * including its first `>`).
+ *
+ * The `attrs` capture (`[^>]*` with `/s`, so it also matches newlines) has no
+ * bound on its own past "not another `>`" — an unterminated open tag whose
+ * name/spelling never resolves before the *next* legitimate `>` elsewhere in
+ * the buffer (e.g. a later `</thinking>`) would otherwise parse as one tag
+ * whose bogus "attributes" span silently swallows everything in between,
+ * including real content and that legitimate close tag. Reject the match
+ * when the attrs span contains a newline or an embedded `<`: real attribute
+ * lists here (e.g. `signature="…"`) are always single-line with no nested
+ * tags, so either is conclusive proof `raw` isn't one coherent tag. The
+ * caller (`#peekTag` returning `undefined`) then falls through to emitting
+ * the leading `<` as one visible character and rescanning — malformed input
+ * leaks as text instead of corrupting parser state.
+ */
 function parseTag(raw: string): ParsedTag | undefined {
 	const match = /^<\s*(\/?)\s*(?:(?<prefix>[A-Za-z_][\w.-]*):)?(?<localName>[A-Za-z_][\w.-]*)(?<attrs>[^>]*)>$/s.exec(
 		raw,
@@ -501,6 +518,7 @@ function parseTag(raw: string): ParsedTag | undefined {
 	const localName = match?.groups?.localName;
 	if (!match || !localName) return undefined;
 	const attrsText = match.groups?.attrs ?? "";
+	if (attrsText.includes("\n") || attrsText.includes("<")) return undefined;
 	return {
 		raw,
 		localName: localName.toLowerCase(),
