@@ -1,6 +1,6 @@
 # jeopi-wire
 
-Shared TypeScript wire contracts for omp collab live sessions.
+Shared TypeScript wire contracts for jeopi collab live sessions.
 
 The package contains only JSON-safe protocol shapes and constants. It has no runtime dependencies and is consumed by both the host CLI (`jeopi`) and browser guest (`jeopi-collab-web`).
 

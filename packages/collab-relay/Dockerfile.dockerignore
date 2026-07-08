@@ -1,0 +1,48 @@
+# Build context for packages/collab-relay/Dockerfile. Shadows the root
+# .dockerignore for this file only (Docker/Depot picks up
+# <dockerfile-path>.dockerignore in preference to a bare .dockerignore).
+#
+# Mirrors Dockerfile.dockerignore's heavy-exclusion list. `target/` (Rust
+# build output, >10 GB) and `node_modules/` alone take the context from
+# ~14 GB down to ~200 MB; the Dockerfile's own layered COPYs already limit
+# what source actually reaches the image. `python/` and `crates/` are kept
+# reachable (unlike the root ignore file): root package.json's workspaces
+# list includes `python/robomp/web`, and the natives-builder stage needs
+# `crates/*/Cargo.toml` + `crates/` to compile `pi-natives`.
+
+target/
+**/node_modules
+dist/
+runs/
+
+.fallow/
+.worktrees/
+.wt/
+.opencode/
+.pi_config/
+.jeopi/plugins/
+
+.git/
+.npm/
+.vscode/
+.zed/
+.idea/
+
+.DS_Store
+*.swp
+*.swo
+*~
+*.tmp
+
+*.log
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
+CPU.*
+
+*.tsbuildinfo
+coverage/
+.nyc_output/
+__pycache__/
+
+.env

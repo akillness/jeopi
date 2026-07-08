@@ -1,0 +1,8 @@
+{
+	"extends": "../tsconfig.workspace.json",
+	"include": ["src", "scripts", "test"],
+	"compilerOptions": {
+		"noEmit": true,
+		"types": ["bun"]
+	}
+}

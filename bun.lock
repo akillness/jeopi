@@ -119,6 +119,16 @@
         "sherpa-onnx-node": "1.13.2",
       },
     },
+    "packages/collab-relay": {
+      "name": "jeopi-collab-relay",
+      "version": "0.1.0",
+      "dependencies": {
+        "jeopi-wire": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+      },
+    },
     "packages/collab-web": {
       "name": "jeopi-collab-web",
       "version": "15.11.7",
@@ -1119,6 +1129,8 @@
     "jeopi-catalog": ["jeopi-catalog@workspace:packages/catalog"],
 
     "jeopi-cli": ["jeopi-cli@workspace:packages/coding-agent"],
+
+    "jeopi-collab-relay": ["jeopi-collab-relay@workspace:packages/collab-relay"],
 
     "jeopi-collab-web": ["jeopi-collab-web@workspace:packages/collab-web"],
 

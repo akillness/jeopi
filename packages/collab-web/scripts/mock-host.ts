@@ -6,7 +6,7 @@
  *
  * Replays a scripted streaming turn on every guest prompt, ticks subagent
  * progress on the bus every 2s, and answers fetch-transcript with byte slices
- * of the fixture JSONL — exactly the frames a real `omp /collab` host emits.
+ * of the fixture JSONL — exactly the frames a real `jeopi /collab` host emits.
  */
 
 import type { AgentSnapshot, HostFrame, SessionEntry, SessionState, WireFrame } from "jeopi-wire";

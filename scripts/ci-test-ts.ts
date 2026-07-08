@@ -94,6 +94,7 @@ const nativeAndIntegrationPackages = [
 	"packages/natives",
 	"packages/tui",
 	"packages/collab-web",
+	"packages/collab-relay",
 	"packages/typescript-edit-benchmark",
 ];
 

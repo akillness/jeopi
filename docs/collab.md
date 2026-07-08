@@ -118,6 +118,8 @@ The relay is a small content-blind Go service. It keeps no state beyond live con
 - `POST /s` / `GET /s/<id>` / `GET /s/<id>/raw` — `/share` blob upload, viewer page, and blob fetch,
 - `GET /healthz` — liveness.
 
+A self-hostable Bun-based alternative implementing the same contract also ships in this repo as `packages/collab-relay` (see its README for build/run/deploy instructions) — not the default, but available if you want to run your own relay instead of the public one.
+
 
 ## Architecture notes
 
