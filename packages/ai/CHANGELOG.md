@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.28] - 2026-07-08
+
 ### Fixed
 
 - `ThinkingInbandScanner` (leaked-reasoning healer for OpenAI-compatible/Ollama providers) only recognized a bare thinking tag once its closing `>` arrived — a model that drops the `>` entirely (`<thinke\n<reasoning text>`, going straight into its reasoning instead of finishing the tag) never resolved as an open at all: `bareTagPartialHold` holds the unterminated run only while the buffer stays within `MAX_BARE_TAG_NAME_LENGTH`, then gives up and flushes it as visible text once the reasoning that follows pushes the buffer past that bound. A well-formed close tag emitted later (`</thinking>`) then had no open to pair with either, so it also leaked verbatim — both the malformed open and the clean close ended up in the visible channel, sandwiching the reasoning they were meant to hide. Added `findUnterminatedBareThinkingOpen`: once a `<name` run is proven complete (immediately followed by anything other than `>`) and the name passes the existing one-typo thinking-name check, it's treated as an open with a `</thinking>` fallback close accepted alongside its own derived close — covering opens and closes that diverge independently within the same turn, matching the pattern actually observed in practice.

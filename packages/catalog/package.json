@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "jeopi-catalog",
-	"version": "16.2.27",
+	"version": "16.2.28",
 	"description": "Model catalog for jeopi: bundled model database, provider discovery descriptors, model identity, classification, and equivalence",
 	"homepage": "https://github.com/akillness/jeopi",
 	"author": "Can Boluk",

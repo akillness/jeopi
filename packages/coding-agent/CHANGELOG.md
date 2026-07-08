@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.28] - 2026-07-08
+
 ### Fixed
 
 - The advisor's live transcript delta (`AdvisorRuntime#renderDelta` → `formatSessionHistoryMarkdown`) rendered the primary agent's thinking blocks with a literal `_thinking:_ ` label on every turn, including the very first one — a `reasoning_extraction` classifier-refusal trigger on Fable/Mythos advisor targets that the existing reactive degrade (strip thinking, re-prime, resend) could only recover from *after* eating one refusal. Added `demoteThinkingForModelId` to `formatSessionHistoryMarkdown`/`HistoryFormatOptions`, wired from the advisor's own live model id (`AdvisorAgent.state.model?.id`, now exposed on the interface): when set, thinking renders through `renderDemotedThinking` (the same classifier-safe markdown-italic disguise the wire layer already uses for cross-model/cross-turn thinking replay) instead of the labeled form, so a Fable/Mythos advisor never sends the trigger in the first place. The reactive one-shot latch in `#drain`'s catch block is unchanged and still covers other/unforeseen classifier signals. Human-facing consumers of `formatSessionHistoryMarkdown` (`history://` dumps, `/dump advisor`) are unaffected — they never pass `demoteThinkingForModelId` and keep the explicit label.

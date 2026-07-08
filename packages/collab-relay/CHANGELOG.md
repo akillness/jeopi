@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.28] - 2026-07-08
+
 ### Added
 
 - Initial release: a self-hostable production relay implementing the full `docs/collab.md` contract — WebSocket room forwarding (`src/rooms.ts`, hardened over `collab-web`'s dev-only `local-relay.ts` with `maxRooms`/`maxGuestsPerRoom` capacity limits), a disk-backed `/share` blob store with size cap + TTL GC sweep (`src/share-store.ts`), static serving of the built `collab-web` SPA with `index.html` fallback (`src/static.ts`), and `GET /healthz`. `scripts/build.ts` builds `collab-web` and generates the standalone share-viewer page into one deployable `dist/web`. Not wired up as jeopi's default relay (that stays the upstream `wss://my.omp.sh` for now) — deploy this and point `collab.relayUrl`/`share.serverUrl` at it to self-host instead.
