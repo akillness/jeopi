@@ -76,6 +76,22 @@ describe("startRelayServer", () => {
 		expect(upload.status).toBe(413);
 	});
 
+	it("rejects a share upload that would exceed the total-bytes cap with 503", async () => {
+		handle = await startRelayServer({
+			port: 0,
+			hostname: "127.0.0.1",
+			webRoot,
+			dataDir,
+			shareMaxBytes: 1024,
+			shareMaxTotalBytes: 8,
+		});
+		const first = await fetch(`${baseUrl()}/s`, { method: "POST", body: new Uint8Array(6) });
+		expect(first.status).toBe(200);
+
+		const second = await fetch(`${baseUrl()}/s`, { method: "POST", body: new Uint8Array(5) });
+		expect(second.status).toBe(503);
+	});
+
 	it("returns 404 for a raw fetch of an unknown share id", async () => {
 		handle = await startRelayServer({ port: 0, hostname: "127.0.0.1", webRoot, dataDir });
 		const res = await fetch(`${baseUrl()}/s/doesnotexist000000/raw`);

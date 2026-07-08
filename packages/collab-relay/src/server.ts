@@ -16,7 +16,7 @@
  */
 import { loadConfig, type RelayConfig } from "./config";
 import { RoomManager, type RoomSocketData } from "./rooms";
-import { ShareStore, ShareStoreNotFoundError, ShareStoreSizeError } from "./share-store";
+import { ShareStore, ShareStoreCapacityError, ShareStoreNotFoundError, ShareStoreSizeError } from "./share-store";
 import { StaticServer } from "./static";
 
 const ROOM_PATH_RE = /^\/r\/([A-Za-z0-9_-]{10,64})$/;
@@ -35,6 +35,7 @@ export async function startRelayServer(overrides?: Partial<RelayConfig>): Promis
 	const shareStore = new ShareStore({
 		dataDir: config.dataDir,
 		maxBytes: config.shareMaxBytes,
+		maxTotalBytes: config.shareMaxTotalBytes,
 		ttlMs: config.shareTtlMs,
 	});
 	const staticServer = new StaticServer({ webRoot: config.webRoot });
@@ -77,6 +78,7 @@ export async function startRelayServer(overrides?: Partial<RelayConfig>): Promis
 					return Response.json({ id });
 				} catch (err) {
 					if (err instanceof ShareStoreSizeError) return new Response(err.message, { status: 413 });
+					if (err instanceof ShareStoreCapacityError) return new Response(err.message, { status: 503 });
 					console.error("[relay] share upload failed:", err);
 					return new Response("upload failed", { status: 500 });
 				}

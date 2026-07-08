@@ -42,6 +42,7 @@ All env vars are optional — the server runs with zero configuration for local 
 | `RELAY_WEB_ROOT` | `dist/web` | Directory the built SPA + share-viewer.html live in |
 | `RELAY_DATA_DIR` | `.data` | Directory sealed share blobs persist to (mount a volume for durability) |
 | `RELAY_SHARE_MAX_BYTES` | `1000000` | Hard cap on an uploaded share blob (mirrors coding-agent's client-side cap) |
+| `RELAY_SHARE_MAX_TOTAL_BYTES` | `500000000` (500 MB) | Hard cap on the sum of all live share-blob bytes on disk; `POST /s` is unauthenticated by design, so this bounds disk exhaustion between GC sweeps |
 | `RELAY_SHARE_TTL_DAYS` | `30` | Share blobs older than this are swept by the periodic GC pass |
 | `RELAY_SHARE_GC_INTERVAL_MIN` | `60` | How often the GC sweep runs |
 | `RELAY_MAX_ROOMS` | `10000` | Max live rooms at once; a new host beyond this gets `503` |

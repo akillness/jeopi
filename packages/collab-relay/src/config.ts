@@ -28,6 +28,13 @@ export interface RelayConfig {
 	dataDir: string;
 	/** Hard cap on an uploaded share blob, mirrors coding-agent's `SERVER_MAX_SEALED_BYTES`. */
 	shareMaxBytes: number;
+	/**
+	 * Hard cap on the sum of all live (non-expired) share-blob bytes on disk.
+	 * `POST /s` is unauthenticated by design (matches the public-upload
+	 * contract in docs/collab.md), so this is the only backstop against an
+	 * attacker filling the data volume between GC sweeps.
+	 */
+	shareMaxTotalBytes: number;
 	/** Share blobs older than this are swept on the periodic GC pass. */
 	shareTtlMs: number;
 	/** How often the share-store GC sweep runs. */
@@ -50,6 +57,9 @@ export function loadConfig(): RelayConfig {
 		webRoot: path.resolve(envStr("RELAY_WEB_ROOT", "dist/web")),
 		dataDir,
 		shareMaxBytes: envInt("RELAY_SHARE_MAX_BYTES", 1_000_000),
+		// Default 500 MB — leaves headroom under fly.toml's default 1 GB
+		// volume mount for the app itself and GC sweep overhead.
+		shareMaxTotalBytes: envInt("RELAY_SHARE_MAX_TOTAL_BYTES", 500_000_000),
 		shareTtlMs: envInt("RELAY_SHARE_TTL_DAYS", 30) * 24 * 60 * 60 * 1000,
 		shareGcIntervalMs: envInt("RELAY_SHARE_GC_INTERVAL_MIN", 60) * 60 * 1000,
 		maxRooms: envInt("RELAY_MAX_ROOMS", 10_000),

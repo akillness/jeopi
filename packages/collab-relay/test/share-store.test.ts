@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ShareStore, ShareStoreNotFoundError, ShareStoreSizeError } from "../src/share-store";
+import { ShareStore, ShareStoreCapacityError, ShareStoreNotFoundError, ShareStoreSizeError } from "../src/share-store";
 
 let dataDir: string;
 let store: ShareStore;
 
 beforeEach(async () => {
 	dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "collab-relay-share-"));
-	store = new ShareStore({ dataDir, maxBytes: 16, ttlMs: 24 * 60 * 60 * 1000 });
+	store = new ShareStore({ dataDir, maxBytes: 16, maxTotalBytes: 1_000_000, ttlMs: 24 * 60 * 60 * 1000 });
 });
 
 afterEach(async () => {
@@ -60,5 +60,31 @@ describe("ShareStore", () => {
 		expect(removed).toBe(1);
 		await expect(store.get(staleId)).rejects.toBeInstanceOf(ShareStoreNotFoundError);
 		expect(await store.get(freshId)).toEqual(new Uint8Array([9]));
+	});
+
+	it("rejects a put that would exceed the store-wide total-bytes cap", async () => {
+		const capped = new ShareStore({ dataDir, maxBytes: 16, maxTotalBytes: 10, ttlMs: 24 * 60 * 60 * 1000 });
+		await capped.put(new Uint8Array(6));
+		await expect(capped.put(new Uint8Array(5))).rejects.toBeInstanceOf(ShareStoreCapacityError);
+		// A put that fits under the remaining headroom still succeeds.
+		await expect(capped.put(new Uint8Array(4))).resolves.toBeDefined();
+	});
+
+	it("seeds the total-bytes cap from existing disk contents on first use", async () => {
+		// Simulate a restart: blobs already on disk before the store is constructed.
+		await fs.writeFile(path.join(dataDir, "AAAAAAAAAAAAAAAAAAAAAA"), new Uint8Array(8));
+		const reopened = new ShareStore({ dataDir, maxBytes: 16, maxTotalBytes: 10, ttlMs: 24 * 60 * 60 * 1000 });
+		await expect(reopened.put(new Uint8Array(5))).rejects.toBeInstanceOf(ShareStoreCapacityError);
+	});
+
+	it("frees total-bytes headroom when the GC sweep removes expired blobs", async () => {
+		const capped = new ShareStore({ dataDir, maxBytes: 16, maxTotalBytes: 10, ttlMs: 24 * 60 * 60 * 1000 });
+		const staleId = await capped.put(new Uint8Array(8));
+		const staleMtime = new Date(Date.now() - 25 * 60 * 60 * 1000);
+		await fs.utimes(path.join(dataDir, staleId), staleMtime, staleMtime);
+		await expect(capped.put(new Uint8Array(5))).rejects.toBeInstanceOf(ShareStoreCapacityError);
+
+		await capped.collectExpired();
+		await expect(capped.put(new Uint8Array(5))).resolves.toBeDefined();
 	});
 });
