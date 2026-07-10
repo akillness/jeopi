@@ -627,10 +627,11 @@ jobs:
            with:
               node-version: "24"
               registry-url: "https://registry.npmjs.org"
-         # Keep npm aligned with trusted publishing setup (>= 11.16.0).
+         # Keep npm on the trusted-publishing-capable 11.x line; npm 12 currently
+         # emits opaque ResolveMessage failures from this Bun-driven publish script.
          - name: Ensure npm supports trusted publishing
            if: ${{ !inputs.skip_npm }}
-           run: npm install -g npm@latest
+           run: npm install -g npm@11.16.0
          - name: Cache bun dependencies
            uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
            with:
@@ -789,10 +790,11 @@ jobs:
            with:
               node-version: "24"
               registry-url: "https://registry.npmjs.org"
-         # Keep npm aligned with trusted publishing setup (>= 11.16.0).
+         # Keep npm on the trusted-publishing-capable 11.x line; npm 12 currently
+         # emits opaque ResolveMessage failures from this Bun-driven publish script.
          - name: Ensure npm supports trusted publishing
            if: env.HAS_NPM_AUTH == 'true'
-           run: npm install -g npm@latest
+           run: npm install -g npm@11.16.0
          - name: Cache bun dependencies
            if: env.HAS_NPM_AUTH == 'true'
            uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
