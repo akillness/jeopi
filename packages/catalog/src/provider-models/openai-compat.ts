@@ -2420,6 +2420,7 @@ export function lmStudioModelManagerOptions(
 	const references = createBundledReferenceMap<"openai-completions">("lm-studio" as any);
 	return {
 		providerId: "lm-studio",
+		dynamicModelsAuthoritative: true,
 		fetchDynamicModels: async () => {
 			const nativeMetadataPromise = fetchLmStudioNativeModelMetadata(baseUrl, config?.fetch, {
 				headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,

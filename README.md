@@ -370,7 +370,7 @@ Cursor `oauth` · GitHub Copilot `oauth` · GitLab Duo · Kimi Code `plan` · Mo
 
 ### Run it yourself
 
-OpenAI-compatible `/v1/models`. Local instances skip the key.
+OpenAI-compatible `/v1/models`, with local runtimes treated as live snapshots instead of stale catalog guesses. `jeopi models <provider>` and `/model` refresh LM Studio/Ollama/llama.cpp from the running server, replace removed entries, and keep local instances keyless by default.
 
 Ollama `local` · Ollama Cloud · LM Studio `local` · llama.cpp `local` · vLLM `local` · LiteLLM
 

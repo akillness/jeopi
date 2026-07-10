@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed LM Studio's catalog descriptor to treat live endpoint discovery as authoritative, so successful refreshes replace stale bundled/cache entries instead of merging them indefinitely.
+
 ## [16.2.26] - 2026-07-05
 
 ### Removed

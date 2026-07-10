@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed LM Studio model discovery so local `/v1/models` changes bypass fresh cache during live refresh and replace stale cached provider entries instead of leaving removed models visible.
+
 ## [16.2.28] - 2026-07-08
 
 ### Fixed

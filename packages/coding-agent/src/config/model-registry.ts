@@ -156,6 +156,17 @@ const AUTHORITATIVE_RUNTIME_CATALOG_PROVIDERS = new Set<string>(
 	),
 );
 
+function isAuthoritativeLocalDiscovery(providerConfig: DiscoveryProviderConfig): boolean {
+	switch (providerConfig.discovery.type) {
+		case "ollama":
+		case "llama.cpp":
+		case "lm-studio":
+			return true;
+		default:
+			return false;
+	}
+}
+
 function isAuthoritativeProjectCatalogModel(model: Model<Api>): boolean {
 	return (
 		model.provider === "google-vertex" &&
@@ -1334,7 +1345,21 @@ export class ModelRegistry {
 			this.#discoverBuiltInProviderModels(strategy, providerFilter),
 		]);
 		const discovered = [...configuredDiscovered, ...builtInDiscovery.models];
-		if (discovered.length === 0 && builtInDiscovery.authoritativeProviders.size === 0) {
+		const successfulAuthoritativeDiscoverableProviders = new Set<string>();
+		for (const providerConfig of selectedDiscoverableProviders) {
+			if (!isAuthoritativeLocalDiscovery(providerConfig)) {
+				continue;
+			}
+			const state = this.#providerDiscoveryStates.get(providerConfig.provider);
+			if (state && (state.status === "ok" || state.status === "empty") && !state.stale) {
+				successfulAuthoritativeDiscoverableProviders.add(providerConfig.provider);
+			}
+		}
+		if (
+			discovered.length === 0 &&
+			builtInDiscovery.authoritativeProviders.size === 0 &&
+			successfulAuthoritativeDiscoverableProviders.size === 0
+		) {
 			return;
 		}
 		const discoveredModels = this.#applyHardcodedModelPolicies(
@@ -1348,6 +1373,9 @@ export class ModelRegistry {
 		);
 		const authoritativeProviders = providersWithAuthoritativeProjectCatalog(discoveredModels);
 		for (const provider of builtInDiscovery.authoritativeProviders) {
+			authoritativeProviders.add(provider);
+		}
+		for (const provider of successfulAuthoritativeDiscoverableProviders) {
 			authoritativeProviders.add(provider);
 		}
 		const baseModels =
@@ -1385,9 +1413,9 @@ export class ModelRegistry {
 		const cacheProviderId = this.#configuredDiscoveryCacheProviderId(providerConfig);
 		const cached = readModelCache<Api>(cacheProviderId, 24 * 60 * 60 * 1000, Date.now, this.#cacheDbPath);
 		const cacheOlderThanConfig = cached !== null && this.#isDiscoveryCacheOlderThanModelsConfig(cached.updatedAt);
-		const bypassFreshCache = providerConfig.discovery.type === "llama.cpp" && strategy === "online-if-uncached";
-		const effectiveStrategy =
-			strategy === "online-if-uncached" && (cacheOlderThanConfig || bypassFreshCache) ? "online" : strategy;
+		const shouldForceOnlineDiscovery =
+			strategy === "online-if-uncached" && (cacheOlderThanConfig || isAuthoritativeLocalDiscovery(providerConfig));
+		const effectiveStrategy = shouldForceOnlineDiscovery ? "online" : strategy;
 		const requiresAuth = !this.#keylessProviders.has(providerConfig.provider);
 		if (requiresAuth) {
 			const apiKey = await this.#peekApiKeyForProvider(providerConfig.provider);
@@ -1450,7 +1478,10 @@ export class ModelRegistry {
 			provider: providerId,
 			status,
 			optional: providerConfig.optional ?? false,
-			stale: result.stale || status === "cached" || ((cacheOlderThanConfig || bypassFreshCache) && status !== "ok"),
+			stale:
+				result.stale ||
+				status === "cached" ||
+				(shouldForceOnlineDiscovery && status !== "ok" && status !== "empty"),
 			fetchedAt: discoveryError ? cached?.updatedAt : Date.now(),
 			models: result.models.map(model => model.id),
 			error: discoveryError,
@@ -1627,7 +1658,9 @@ export class ModelRegistry {
 	): Promise<BuiltInDiscoveryResult> {
 		try {
 			const manager = createModelManager({ ...options, cacheDbPath: this.#cacheDbPath });
-			const result = await manager.refresh(strategy);
+			const effectiveStrategy =
+				strategy === "online-if-uncached" && options.providerId === "lm-studio" ? "online" : strategy;
+			const result = await manager.refresh(effectiveStrategy);
 			const models = result.models.map(model =>
 				model.provider === options.providerId ? model : { ...model, provider: options.providerId },
 			);

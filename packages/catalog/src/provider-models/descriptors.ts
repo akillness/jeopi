@@ -218,6 +218,7 @@ export const CATALOG_PROVIDERS = [
 		envVars: ["LM_STUDIO_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => lmStudioModelManagerOptions(config),
 		allowUnauthenticated: true,
+		dynamicModelsAuthoritative: true,
 	},
 	{
 		id: "minimax",

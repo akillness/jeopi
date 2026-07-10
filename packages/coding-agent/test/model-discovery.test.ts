@@ -515,6 +515,136 @@ describe("ModelRegistry runtime discovery", () => {
 		expect(state?.error).toContain("connection refused");
 	});
 
+	test("uses built-in LM Studio model manager despite configured provider and fresh stale cache", async () => {
+		writeRawModelsJson({
+			"lm-studio": {
+				baseUrl: "http://127.0.0.1:1234/v1",
+				api: "openai-completions",
+				auth: "none",
+			},
+		});
+		writeModelCache(
+			"lm-studio",
+			Date.now(),
+			[
+				buildModel({
+					id: "stale-cached-model",
+					name: "stale-cached-model",
+					api: "openai-completions",
+					provider: "lm-studio",
+					baseUrl: "http://127.0.0.1:1234/v1",
+					reasoning: false,
+					input: ["text"],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 8192,
+					maxTokens: 4096,
+				}),
+			],
+			true,
+			"",
+			cacheDbPath,
+		);
+		let openAIModelListCalls = 0;
+		let nativeModelListCalls = 0;
+		const fetchMock: FetchImpl = async input => {
+			const url = String(input);
+			if (url === "http://127.0.0.1:1234/v1/models") {
+				openAIModelListCalls++;
+				return new Response(JSON.stringify({ data: [{ id: "live-local-model", object: "model" }] }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			if (url === "http://127.0.0.1:1234/api/v0/models") {
+				nativeModelListCalls++;
+				return new Response(
+					JSON.stringify({
+						data: [{ id: "live-local-model", type: "llm", max_context_length: 32768 }],
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		};
+		const registry = new ModelRegistry(authStorage, modelsJsonPath, { fetch: fetchMock });
+		expect(registry.find("lm-studio", "stale-cached-model")?.id).toBe("stale-cached-model");
+
+		await registry.refresh("online-if-uncached");
+
+		const lmStudioModels = getModelsForProvider(registry, "lm-studio");
+		expect(openAIModelListCalls).toBe(1);
+		expect(nativeModelListCalls).toBe(1);
+		expect(registry.find("lm-studio", "live-local-model")?.contextWindow).toBe(32768);
+		expect(registry.find("lm-studio", "stale-cached-model")).toBeUndefined();
+		expect(lmStudioModels.map(model => model.id)).toEqual(["live-local-model"]);
+	});
+
+	test("uses configured LM Studio discovery despite fresh stale cache", async () => {
+		writeRawModelsJson({
+			"lm-studio": {
+				baseUrl: "http://127.0.0.1:1234/v1",
+				api: "openai-completions",
+				auth: "none",
+				discovery: { type: "lm-studio" },
+			},
+		});
+		writeModelCache(
+			"lm-studio",
+			Date.now(),
+			[
+				buildModel({
+					id: "stale-cached-model",
+					name: "stale-cached-model",
+					api: "openai-completions",
+					provider: "lm-studio",
+					baseUrl: "http://127.0.0.1:1234/v1",
+					reasoning: false,
+					input: ["text"],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 8192,
+					maxTokens: 4096,
+				}),
+			],
+			true,
+			"",
+			cacheDbPath,
+		);
+		let openAIModelListCalls = 0;
+		let nativeModelListCalls = 0;
+		const fetchMock: FetchImpl = async input => {
+			const url = String(input);
+			if (url === "http://127.0.0.1:1234/v1/models") {
+				openAIModelListCalls++;
+				return new Response(JSON.stringify({ data: [{ id: "live-local-model", object: "model" }] }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			if (url === "http://127.0.0.1:1234/api/v0/models") {
+				nativeModelListCalls++;
+				return new Response(
+					JSON.stringify({
+						data: [{ id: "live-local-model", type: "llm", max_context_length: 32768 }],
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		};
+		const registry = new ModelRegistry(authStorage, modelsJsonPath, { fetch: fetchMock });
+		expect(registry.find("lm-studio", "stale-cached-model")?.id).toBe("stale-cached-model");
+
+		await registry.refresh("online-if-uncached");
+
+		const lmStudioModels = getModelsForProvider(registry, "lm-studio");
+		expect(openAIModelListCalls).toBe(1);
+		expect(nativeModelListCalls).toBe(1);
+		expect(registry.find("lm-studio", "live-local-model")?.contextWindow).toBe(32768);
+		expect(registry.find("lm-studio", "stale-cached-model")).toBeUndefined();
+		expect(lmStudioModels.map(model => model.provider)).toEqual(["lm-studio"]);
+		expect(lmStudioModels.map(model => model.id)).toEqual(["live-local-model"]);
+	});
+
 	test("reports unauthenticated discoverable providers without discarding cached models", async () => {
 		writeRawModelsJson({
 			"custom-local": {
