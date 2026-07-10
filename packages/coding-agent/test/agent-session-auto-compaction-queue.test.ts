@@ -104,7 +104,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 
 		const agent = new Agent({
 			initialState: {
-				model,
+				model: { ...model, contextWindow: 200000, maxTokens: 64000 },
 				systemPrompt: ["Test"],
 				tools: [],
 				messages: [],
