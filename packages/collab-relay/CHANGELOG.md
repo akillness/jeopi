@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.2.29] - 2026-07-10
+
 ### Fixed
 
 - `StaticServer.serve()`'s traversal guard checked `resolved.startsWith(webRoot)`, a string-prefix test rather than a path-boundary test: with `webRoot` `/app/dist/web`, a sibling directory `/app/dist/web-evil` also satisfies that prefix, so a request resolving into the sibling (e.g. an unnormalized `../web-evil/secret.txt`) would be served instead of rejected. Confirmed exploitable against `StaticServer.serve()` directly (the actual deployed HTTP path is unaffected — Bun's `Bun.serve()`/`new URL(req.url)` normalizes `..` segments before the handler runs, as does client-side `fetch()`), but `serve()` is a public method any other caller or runtime could reach with a raw pathname. Now requires an exact `resolved === webRoot` match or a `webRoot + path.sep` prefix.
