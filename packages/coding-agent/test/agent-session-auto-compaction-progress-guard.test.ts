@@ -82,14 +82,14 @@ describe("AgentSession auto-compaction progress guard", () => {
 			modelRegistry,
 		);
 
-		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5-20250929");
 		if (!model) {
 			throw new Error("Expected built-in anthropic model to exist");
 		}
 
 		const agent = new Agent({
 			initialState: {
-				model,
+				model: { ...model, contextWindow: 200000, maxTokens: 64000 },
 				systemPrompt: ["Test"],
 				tools: [],
 				messages: [],
@@ -109,6 +109,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 			settings: Settings.isolated({
 				// Auto-continue ON so the guarded auto-continue path is exercised.
 				"compaction.autoContinue": true,
+				"contextPromotion.enabled": false,
 			}),
 			modelRegistry,
 			extensionRunner,
@@ -132,7 +133,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 			content: [{ type: "text" as const, text: "Done." }],
 			api: "anthropic-messages" as const,
 			provider: "anthropic" as const,
-			model: "claude-sonnet-4-5",
+			model: "claude-sonnet-4-5-20250929",
 			stopReason: "stop" as const,
 			usage: {
 				input: 190000,
@@ -153,7 +154,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 			content: [{ type: "text" as const, text: "" }],
 			api: "anthropic-messages" as const,
 			provider: "anthropic" as const,
-			model: "claude-sonnet-4-5",
+			model: "claude-sonnet-4-5-20250929",
 			stopReason: "error" as const,
 			errorMessage: "prompt is too long: 250000 tokens > 200000 maximum",
 			usage: {
@@ -423,7 +424,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 				content: [{ type: "text", text: bigText }],
 				api: "anthropic-messages",
 				provider: "anthropic",
-				model: "claude-sonnet-4-5",
+				model: "claude-sonnet-4-5-20250929",
 				stopReason: "stop",
 				usage: {
 					input: 1000,
@@ -677,7 +678,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 			content: [{ type: "text" as const, text: "unfinished" }],
 			api: "anthropic-messages" as const,
 			provider: "anthropic" as const,
-			model: "claude-sonnet-4-5",
+			model: "claude-sonnet-4-5-20250929",
 			stopReason: "length" as const,
 			usage: {
 				input: 10_000,
@@ -721,7 +722,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 				content: [{ type: "text", text: smallText }],
 				api: "anthropic-messages",
 				provider: "anthropic",
-				model: "claude-sonnet-4-5",
+				model: "claude-sonnet-4-5-20250929",
 				stopReason: "stop",
 				usage: {
 					input: 100,
@@ -776,7 +777,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 				content: [{ type: "text", text: smallText }],
 				api: "anthropic-messages",
 				provider: "anthropic",
-				model: "claude-sonnet-4-5",
+				model: "claude-sonnet-4-5-20250929",
 				stopReason: "stop",
 				usage: {
 					input: 100,
@@ -899,7 +900,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 			content: [{ type: "toolCall", id: bigCallId, name: "grep", arguments: { pattern: "TODO" } }],
 			api: "anthropic-messages",
 			provider: "anthropic",
-			model: "claude-sonnet-4-5",
+			model: "claude-sonnet-4-5-20250929",
 			stopReason: "toolUse",
 			usage: {
 				input: 0,
@@ -928,7 +929,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 				content: [{ type: "toolCall", id: smallId, name: "read", arguments: { path: `note-${i}.md` } }],
 				api: "anthropic-messages",
 				provider: "anthropic",
-				model: "claude-sonnet-4-5",
+				model: "claude-sonnet-4-5-20250929",
 				stopReason: "toolUse",
 				usage: {
 					input: 0,
@@ -991,7 +992,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 			content: [{ type: "text" as const, text: "continuing." }],
 			api: "anthropic-messages" as const,
 			provider: "anthropic" as const,
-			model: "claude-sonnet-4-5",
+			model: "claude-sonnet-4-5-20250929",
 			stopReason: "stop" as const,
 			usage: {
 				input: 5000,

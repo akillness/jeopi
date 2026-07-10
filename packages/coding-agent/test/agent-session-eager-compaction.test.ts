@@ -156,6 +156,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 			"todo.enabled": false,
 			"todo.eager": "default",
 			"todo.reminders": false,
+			"contextPromotion.enabled": false,
 			...settingsOverride,
 		});
 		const sessionManager = SessionManager.inMemory(tempDir.path());
@@ -190,7 +191,12 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		let session: AgentSession;
 		const agent = new Agent({
 			getApiKey: () => "test-key",
-			initialState: { model, systemPrompt: ["Test"], tools, messages: [] },
+			initialState: {
+				model: { ...model, contextWindow: 200000, maxTokens: 64000 },
+				systemPrompt: ["Test"],
+				tools,
+				messages: [],
+			},
 			convertToLlm,
 			getToolChoice: () => session?.nextToolChoiceDirective(),
 			streamFn: (_model, context, options) => {

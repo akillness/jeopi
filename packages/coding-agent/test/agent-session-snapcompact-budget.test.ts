@@ -2,9 +2,9 @@
  * Regression test for issue #3247.
  *
  * Snapcompact's bundled `MAX_FRAMES_DEFAULT = 80` × `FRAME_TOKEN_ESTIMATE = 5024`
- * ≈ 402k tokens worth of frames. On any sub-1M-token window (e.g. Claude
- * Sonnet 4.5's 200k), passing the default cap to `snapcompact.compact()` made
- * the post-render projection in `AgentSession` always overflow the budget,
+ * ≈ 402k tokens worth of frames. On any sub-1M-token window (for this test, a
+ * stable 200k-window Sonnet fixture), passing the default cap to
+ * `snapcompact.compact()` made the post-render projection in `AgentSession`
  * emit the "snapcompact could not bring the context under the limit" warning
  * on every threshold tick, and downgrade to an LLM summary. The fix sizes the
  * `maxFrames` cap from the live model window (window − reserve − non-message
@@ -49,15 +49,14 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) throw new Error("Expected bundled claude-sonnet-4-5 model");
-		// Sanity: the contract only holds for vision models with a window
-		// genuinely smaller than the snapcompact upper bound. If the bundled
-		// catalog ever raises Sonnet's window past 1M, this test no longer
-		// covers the failure mode the fix targets.
-		expect(model.input).toContain("image");
-		expect(model.contextWindow).toBeLessThan(1_000_000);
+		const testModel = { ...model, contextWindow: 200000, maxTokens: 64000 };
+		// Sanity: the contract uses a stable sub-1M vision-model fixture even if the
+		// live bundled Sonnet alias gains a larger context window.
+		expect(testModel.input).toContain("image");
+		expect(testModel.contextWindow).toBeLessThan(1_000_000);
 
 		const agent = new Agent({
-			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
+			initialState: { model: testModel, systemPrompt: ["Test"], tools: [], messages: [] },
 		});
 
 		// Seed a representative long-running session: many turn-pairs with

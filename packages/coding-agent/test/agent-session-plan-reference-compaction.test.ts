@@ -147,13 +147,19 @@ describe("AgentSession approved-plan reference re-injection after compaction (is
 			"todo.enabled": false,
 			"todo.eager": "default",
 			"todo.reminders": false,
+			"contextPromotion.enabled": false,
 		});
 		const sessionManager = SessionManager.inMemory(tempDir.path());
 
 		let session: AgentSession;
 		const agent = new Agent({
 			getApiKey: () => "test-key",
-			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
+			initialState: {
+				model: { ...model, contextWindow: 200000, maxTokens: 64000 },
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
 			convertToLlm,
 			getToolChoice: () => session?.nextToolChoiceDirective(),
 			streamFn: (_model, context) => {
