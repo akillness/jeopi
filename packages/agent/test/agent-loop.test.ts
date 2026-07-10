@@ -175,7 +175,7 @@ describe("agentLoop with AgentMessage", () => {
 
 		expect(mock.calls).toHaveLength(2);
 		expect(messages.map(m => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
-		const [user1, assistant1, user2, assistant2] = messages;
+		const [, assistant1, user2, assistant2] = messages;
 		expect((assistant1 as AssistantMessage).content).toEqual([{ type: "text", text: "truncated first half" }]);
 		expect((assistant1 as AssistantMessage).stopReason).toBe("length");
 		expect((user2 as UserMessage).role).toBe("user");

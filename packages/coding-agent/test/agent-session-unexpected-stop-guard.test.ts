@@ -233,8 +233,15 @@ describe("AgentSession unexpected stop guard", () => {
 
 	it("does not classify a stop whose reason is not stop", async () => {
 		const spy = vi.spyOn(unexpectedStopClassifier, "classifyUnexpectedStop").mockResolvedValue(true);
+		// A "length" stop with no tool calls now auto-continues (agent-core injects a
+		// synthetic continuation turn and re-samples), so the mock needs a second
+		// response. It ends "aborted" — also not a classification candidate — keeping
+		// this test focused on its contract: no classifier call for non-"stop" reasons.
 		const { session, mock } = await createHarness(
-			[{ content: ["I should continue but hit the length limit"], stopReason: "length" }],
+			[
+				{ content: ["I should continue but hit the length limit"], stopReason: "length" },
+				{ content: ["continuation cut short"], stopReason: "aborted" },
+			],
 			{
 				"features.unexpectedStopDetection": true,
 				"providers.unexpectedStopModel": "online",
@@ -245,7 +252,7 @@ describe("AgentSession unexpected stop guard", () => {
 		await session.waitForIdle();
 
 		expect(spy).not.toHaveBeenCalled();
-		expect(mock.calls).toHaveLength(1);
+		expect(mock.calls).toHaveLength(2);
 		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
 	});
 });
