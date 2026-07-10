@@ -1566,6 +1566,9 @@ export class AgentSession {
 	 *  used as the open barrier for the next build so two writers never share a file. */
 	#advisorRecorderClosed: Promise<void> = Promise.resolve();
 	#goalTurnCounter = 0;
+	/** Command text of in-flight bash/eval calls, keyed by toolCallId — consumed by the
+	 *  goal evidence gate at tool_execution_end to classify verification runs. */
+	#goalEvidenceCommands = new Map<string, string>();
 	#planReferenceSent = false;
 	#planReferencePath = "local://PLAN.md";
 	#clientBridge: ClientBridge | undefined;
@@ -3049,6 +3052,24 @@ export class AgentSession {
 		this.sessionManager.appendCustomEntry(TOOL_EXECUTION_START_CUSTOM_TYPE, data);
 	}
 
+	/** Feed successful tool executions to the goal completion-evidence gate.
+	 *  Mutations (edit/write/ast_edit) arm it; verification-signal bash/eval runs
+	 *  satisfy it. Failed executions prove nothing and are skipped. */
+	#recordGoalToolEvidence(event: Extract<AgentEvent, { type: "tool_execution_end" }>): void {
+		const command = this.#goalEvidenceCommands.get(event.toolCallId);
+		this.#goalEvidenceCommands.delete(event.toolCallId);
+		if (event.isError || event.toolName === "goal") return;
+		let outputHead: string | undefined;
+		if (command !== undefined) {
+			const content = (event.result as { content?: Array<{ type?: string; text?: string }> } | undefined)?.content;
+			if (Array.isArray(content)) {
+				const firstText = content.find(block => block?.type === "text" && typeof block.text === "string");
+				outputHead = firstText?.text;
+			}
+		}
+		this.#goalRuntime.recordToolEvidence(event.toolName, command !== undefined ? { command, outputHead } : undefined);
+	}
+
 	#recordSessionExit(reason: postmortem.Reason | "dispose"): void {
 		if (this.#exitRecorded) return;
 		this.#exitRecorded = true;
@@ -3434,6 +3455,16 @@ export class AgentSession {
 
 		if (event.type === "tool_execution_start") {
 			this.#recordToolExecutionStart(event);
+			// Stash bash/eval command text for the goal evidence gate; consumed at
+			// tool_execution_end. Bounded: entries are deleted on end, and the map
+			// is cleared at turn start.
+			if (event.toolName === "bash" || event.toolName === "eval") {
+				const command = (event.args as { command?: unknown; code?: unknown } | undefined) ?? {};
+				const text = typeof command.command === "string" ? command.command : command.code;
+				if (typeof text === "string" && text.length > 0) {
+					this.#goalEvidenceCommands.set(event.toolCallId, text);
+				}
+			}
 		}
 
 		try {
@@ -3445,6 +3476,7 @@ export class AgentSession {
 
 		if (event.type === "turn_start") {
 			this.#resetStreamingEditState();
+			this.#goalEvidenceCommands.clear();
 			// TTSR: Reset buffer on turn start
 			this.#ttsrManager?.resetBuffer();
 		}
@@ -3465,6 +3497,7 @@ export class AgentSession {
 			}
 		}
 		if (event.type === "tool_execution_end") {
+			this.#recordGoalToolEvidence(event);
 			if (event.toolName === "goal") {
 				await this.#goalRuntime.onGoalToolCompleted();
 			} else {

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Goal-mode completion is now evidence-gated at runtime (`goals/evidence-gate.ts`, jeo-code/gajae-code loop-engineering parity): a goal session that mutated project files via `edit`/`write`/`ast_edit` can no longer self-report `goal({op:"complete"})` unless a verification signal (test/build/typecheck/lint `bash`/`eval` run, matched on the command or its output head) succeeded AFTER the last mutation. The first violating `complete` is rejected once with a corrective message (missing vs. stale verification are distinguished); a repeat `complete` with no new mutation passes — the escape hatch for docs/config-only work. New mutations re-arm the gate. This closes the "gate theater" failure mode where `assertSubstantiveCompletionEvidence` only validated the completion *claim text*, never whether verification actually happened.
+
+### Changed
+
+- The goal continuation prompt's completion audit gained a "reinterpretation is a signal" self-detection item (Fable-5 prompt-hardening parity): catching yourself re-reading the objective so existing work counts as done is itself evidence the objective is not met as written.
+
 ## [16.2.29] - 2026-07-10
 
 ### Fixed

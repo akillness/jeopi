@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The agent loop now auto-continues a text response truncated by the output-token limit (`stopReason: "length"` with no tool calls, e.g. Sonnet 5 hitting `max_tokens` mid-answer): a synthetic "continue from where you were cut off" user turn is injected and the loop re-samples instead of silently stopping with a cut-off message. Capped at 8 consecutive continuations (`MAX_LENGTH_TRUNCATE_CONTINUATIONS`); any tool call resets the counter. Truncated turns that carry tool calls keep the existing abandoned-toolcall path.
+- Steering/aside dequeues at the turn boundary no longer overwrite already-queued pending messages (the injected length-continuation turn was previously dropped when steering arrived in the same window); they now append.
+
 ## [16.2.26] - 2026-07-05
 
 ### Fixed

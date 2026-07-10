@@ -34,7 +34,7 @@ jeopi keeps everything that makes oh-my-pi the most capable agent surface that s
 | **Planning** | plan agent | plan agent + **blocking `critic` gate**: `okay` / `iterate` / `reject` verdict, schema-enforced — and **runtime-enforced**: after a non-okay verdict the `task` tool refuses to spawn execution agents and `write`/`edit` lock the working tree until a fresh `okay` (or a new user message) |
 | **Review** | `reviewer` (patch bugs) | `reviewer` + **`architect`**: severity-rated structural verdict that is invalid without an `inspected[]` evidence list |
 | **Failure** | retry | **failure-lesson loop** — capture what the failure proved, change the next attempt, split stuck subgoals; no apology loops. Runtime 3-strike counter closes the critic-iterate loop before it can spin |
-| **"Done"** | tests pass | **artifact gate** — a criterion with no command + observed result is reported `unresolved`, never implied met |
+| **"Done"** | tests pass | **artifact gate** — a criterion with no command + observed result is reported `unresolved`, never implied met. Goal mode enforces it at runtime: `goal({op:"complete"})` after file mutations is **rejected unless a test/build/typecheck/lint run succeeded after the last mutation** (stale or missing verification each get a corrective bounce; docs-only work passes on explicit retry) |
 | **Pipeline** | ad-hoc | **`/jeo`**: interview → frozen seed → plan → critic gate → bounded execution → artifact-gated verification |
 | **Identity** | `omp` | `jeopi` binary; config directory renamed `~/.omp` → `~/.jeopi` (`jeopi config migrate-legacy` moves existing auth/sessions/settings over) |
 

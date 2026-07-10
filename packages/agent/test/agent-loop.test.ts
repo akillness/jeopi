@@ -10,7 +10,7 @@ import type {
 	AgentToolContext,
 	ToolCallContext,
 } from "jeopi-agent-core/types";
-import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "jeopi-ai";
+import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage, UserMessage } from "jeopi-ai";
 import { createMockModel, type MockResponse } from "jeopi-ai/providers/mock";
 import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
 import { INTENT_FIELD } from "jeopi-wire";
@@ -148,6 +148,58 @@ describe("agentLoop with AgentMessage", () => {
 
 		// Initial sample + MAX_PAUSED_TURN_CONTINUATIONS (8), then the loop stops
 		// cleanly instead of spinning on a backend that never stops pausing.
+		expect(mock.calls).toHaveLength(9);
+		expect(messages.at(-1)?.role).toBe("assistant");
+	});
+
+	it("continues text response when an assistant turn ends with length stopReason", async () => {
+		const context: AgentContext = { systemPrompt: ["You are helpful."], messages: [], tools: [] };
+		const secondCallRoles: string[] = [];
+		const mock = createMockModel({
+			responses: [
+				{ content: ["truncated first half"], stopReason: "length" },
+				context => {
+					secondCallRoles.push(...context.messages.map(m => m.role));
+					return { content: ["rest of response"] };
+				},
+			],
+		});
+		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
+
+		const events: AgentEvent[] = [];
+		const stream = agentLoop([createUserMessage("Hello")], context, config, undefined, mock.stream);
+		for await (const event of stream) {
+			events.push(event);
+		}
+		const messages = await stream.result();
+
+		expect(mock.calls).toHaveLength(2);
+		expect(messages.map(m => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
+		const [user1, assistant1, user2, assistant2] = messages;
+		expect((assistant1 as AssistantMessage).content).toEqual([{ type: "text", text: "truncated first half" }]);
+		expect((assistant1 as AssistantMessage).stopReason).toBe("length");
+		expect((user2 as UserMessage).role).toBe("user");
+		expect((user2 as UserMessage).content).toBe("Continue your response exactly from where it was cut off.");
+		expect((user2 as UserMessage).synthetic).toBe(true);
+		expect((assistant2 as AssistantMessage).content).toEqual([{ type: "text", text: "rest of response" }]);
+		expect(secondCallRoles).toEqual(["user", "assistant", "user"]);
+		expect(events.filter(e => e.type === "turn_start")).toHaveLength(2);
+	});
+
+	it("caps consecutive length continuations", async () => {
+		const context: AgentContext = { systemPrompt: ["You are helpful."], messages: [], tools: [] };
+		function* truncateForever(): Generator<MockResponse> {
+			while (true) {
+				yield { content: ["still working"], stopReason: "length" };
+			}
+		}
+		const mock = createMockModel({ responses: truncateForever() });
+		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
+
+		const messages = await agentLoop([createUserMessage("Hello")], context, config, undefined, mock.stream).result();
+
+		// Initial sample + MAX_LENGTH_TRUNCATE_CONTINUATIONS (8), then the loop stops
+		// cleanly instead of spinning on a backend that never stops truncating.
 		expect(mock.calls).toHaveLength(9);
 		expect(messages.at(-1)?.role).toBe("assistant");
 	});

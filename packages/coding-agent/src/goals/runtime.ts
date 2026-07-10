@@ -3,6 +3,7 @@ import goalBudgetLimitPrompt from "../prompts/goals/goal-budget-limit.md" with {
 import goalContinuationPrompt from "../prompts/goals/goal-continuation.md" with { type: "text" };
 import goalModeActivePrompt from "../prompts/goals/goal-mode-active.md" with { type: "text" };
 import { assertSubstantiveCompletionEvidence } from "./completion-evidence";
+import { GoalEvidenceTracker, isVerificationSignal, MUTATION_TOOL_NAMES } from "./evidence-gate";
 import type { Goal, GoalBudgetSteering, GoalModeState, GoalRuntimeEvent, GoalTokenUsage } from "./state";
 
 export interface GoalRuntimeHost {
@@ -117,6 +118,7 @@ function isAccountingStatus(goal: Goal): boolean {
 
 export class GoalRuntime {
 	readonly #host: GoalRuntimeHost;
+	readonly #evidence = new GoalEvidenceTracker();
 	#turnSnapshot: GoalTurnSnapshot | undefined;
 	#wallClock: GoalWallClockSnapshot;
 	#budgetReportedFor: string | undefined;
@@ -200,6 +202,28 @@ export class GoalRuntime {
 		this.#turnSnapshot = undefined;
 		this.#clearActiveAccounting();
 		this.#budgetReportedFor = undefined;
+	}
+
+	/** Deterministic completion-evidence tracker for the active goal (see evidence-gate.ts). */
+	get evidence(): GoalEvidenceTracker {
+		return this.#evidence;
+	}
+
+	/**
+	 * Record a successful tool execution as completion evidence for the active goal.
+	 * Mutation tools (edit/write/ast_edit) arm the completion gate; bash/eval runs
+	 * whose command or output head carries a verification signal (test/build/
+	 * typecheck/lint) satisfy it. No-op when no goal is accounting.
+	 */
+	recordToolEvidence(toolName: string, detail?: { command?: string; outputHead?: string }): void {
+		if (!this.#hasAccountingState()) return;
+		if (MUTATION_TOOL_NAMES[toolName]) {
+			this.#evidence.recordMutation();
+			return;
+		}
+		if (detail && isVerificationSignal(detail.command ?? "", detail.outputHead ?? "")) {
+			this.#evidence.recordVerification();
+		}
 	}
 
 	onTurnStart(turnId: string, baselineUsage: GoalTokenUsage): void {
@@ -393,6 +417,7 @@ export class GoalRuntime {
 			}
 			const state = this.#createGoalState(objective, input.tokenBudget);
 			this.#budgetReportedFor = undefined;
+			this.#evidence.reset();
 			this.#markActiveAccounting(state.goal);
 			await this.#commitState(state, { persist: "goal" });
 			return state;
@@ -411,6 +436,7 @@ export class GoalRuntime {
 			await this.#flushUsageLocked("suppressed");
 			const state = this.#createGoalState(objective, input.tokenBudget);
 			this.#budgetReportedFor = undefined;
+			this.#evidence.reset();
 			this.#markActiveAccounting(state.goal);
 			await this.#commitState(state, { persist: "goal" });
 			return state;
@@ -486,6 +512,15 @@ export class GoalRuntime {
 			}
 			if (state.goal.status === "dropped") {
 				throw new Error("cannot complete a dropped goal");
+			}
+			// Deterministic evidence gate (evidence-gate.ts): a goal session that
+			// mutated project files cannot self-report complete unless a verification
+			// signal was observed after the last mutation. First violation bounces
+			// once with a corrective message; a repeat complete with no new mutation
+			// passes (escape hatch for docs/config-only work).
+			const gate = this.#evidence.classifyCompletion();
+			if (gate.block) {
+				throw new Error(gate.message);
 			}
 			state.enabled = false;
 			state.goal.status = "complete";

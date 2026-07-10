@@ -16,6 +16,7 @@ import {
 	type ToolResultMessage,
 	type TSchema,
 	toolWireSchema,
+	type UserMessage,
 	validateToolArguments,
 } from "jeopi-ai";
 import {
@@ -83,6 +84,12 @@ const ABORTED: unique symbol = Symbol("agent-loop-aborted");
  * must not spin the loop forever. Resets whenever a turn carries tool calls.
  */
 const MAX_PAUSED_TURN_CONTINUATIONS = 8;
+
+/**
+ * Cap on consecutive re-samples triggered by output truncation stop
+ * (`stopReason === "length"`) without an intervening tool call.
+ */
+const MAX_LENGTH_TRUNCATE_CONTINUATIONS = 8;
 
 /**
  * Cap on consecutive forced escalations for a single soft tool requirement.
@@ -758,6 +765,7 @@ async function runLoopBody(
 		let harmonyRetryAttempt = 0;
 		let harmonyTruncateResumeCount = 0;
 		let pausedTurnContinuations = 0;
+		let lengthTruncateContinuations = 0;
 
 		// Soft tool requirement lifecycle (reminder → escalate; see SoftToolRequirement).
 		// `forcedToolChoice` carries a one-turn escalation into the next model call. It
@@ -1042,6 +1050,7 @@ async function runLoopBody(
 
 				if (toolCalls.length > 0) {
 					pausedTurnContinuations = 0;
+					lengthTruncateContinuations = 0;
 				} else if (
 					!hasMoreToolCalls &&
 					message.stopReason === "stop" &&
@@ -1054,6 +1063,22 @@ async function runLoopBody(
 					// working; the next round folds steering/asides in like any other
 					// mid-work turn.
 					pausedTurnContinuations++;
+					hasMoreToolCalls = true;
+				} else if (
+					!hasMoreToolCalls &&
+					message.stopReason === "length" &&
+					lengthTruncateContinuations < MAX_LENGTH_TRUNCATE_CONTINUATIONS &&
+					!deadlinePassed
+				) {
+					// Prompt the model to continue the truncated response
+					lengthTruncateContinuations++;
+					const continuationMessage: UserMessage = {
+						role: "user",
+						content: "Continue your response exactly from where it was cut off.",
+						synthetic: true,
+						timestamp: Date.now(),
+					};
+					pendingMessages = [continuationMessage];
 					hasMoreToolCalls = true;
 				}
 
@@ -1075,12 +1100,13 @@ async function runLoopBody(
 				if (hasMoreToolCalls) {
 					// Mid-work: fold any non-interrupting asides into the next turn alongside steering.
 					const asides = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
-					pendingMessages = asides.length > 0 ? [...steering, ...asides] : steering;
+					const basePending = asides.length > 0 ? [...steering, ...asides] : steering;
+					pendingMessages = [...pendingMessages, ...basePending];
 				} else {
 					// Stop boundary: only steering (live user input) forces another turn here. Leave
 					// asides for the outer drain below so a passive aside can't trigger an extra model
 					// turn ahead of a queued follow-up — the outer drain batches asides + follow-ups together.
-					pendingMessages = steering;
+					pendingMessages = [...pendingMessages, ...steering];
 				}
 			}
 
