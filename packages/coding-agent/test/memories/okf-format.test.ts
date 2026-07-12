@@ -120,7 +120,7 @@ describe("learned.md as an OKF atom", () => {
 		const text = await Bun.file(file).text();
 		expect(validateOkfDocument(text)).toEqual([]);
 		const body = stripOkfFrontmatter(text);
-		expect(body).toContain("- new lesson");
+		expect(body).toContain("- [UNVERIFIED] new lesson");
 		expect(body).toContain("- legacy lesson one");
 		expect(body).toContain("- legacy lesson two");
 	});

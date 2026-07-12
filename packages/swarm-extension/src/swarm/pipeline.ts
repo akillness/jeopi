@@ -21,6 +21,10 @@ export interface PipelineOptions {
 	onProgress?: (state: PipelineProgress) => void;
 	modelRegistry?: ModelRegistry;
 	settings?: Settings;
+	/** Run each swarm agent in its own git worktree via the isolation-runner primitives. */
+	isolation?: boolean;
+	/** Iteration to begin the run loop at (resume support); defaults to 0. */
+	startIteration?: number;
 }
 
 export interface PipelineProgress {
@@ -54,7 +58,7 @@ export class PipelineController {
 	}
 
 	async run(options: PipelineOptions): Promise<PipelineResult> {
-		const { workspace, signal, onProgress, modelRegistry, settings } = options;
+		const { workspace, signal, onProgress, modelRegistry, settings, isolation } = options;
 		const allResults = new Map<string, SingleResult[]>();
 		const errors: string[] = [];
 
@@ -69,7 +73,7 @@ export class PipelineController {
 		);
 
 		try {
-			for (let iteration = 0; iteration < targetCount; iteration++) {
+			for (let iteration = options.startIteration ?? 0; iteration < targetCount; iteration++) {
 				if (signal?.aborted) {
 					await this.#stateTracker.updatePipeline({ status: "aborted" });
 					return { status: "aborted", iterations: iteration, agentResults: allResults, errors };
@@ -94,6 +98,7 @@ export class PipelineController {
 					emitProgress,
 					modelRegistry,
 					settings,
+					isolation,
 				});
 
 				for (const [agentName, result] of iterationResults) {
@@ -127,6 +132,7 @@ export class PipelineController {
 			emitProgress: (currentWave: number) => void;
 			modelRegistry?: ModelRegistry;
 			settings?: Settings;
+			isolation?: boolean;
 		},
 	): Promise<Map<string, SingleResult>> {
 		const results = new Map<string, SingleResult>();
@@ -169,6 +175,7 @@ export class PipelineController {
 							modelRegistry: options.modelRegistry,
 							settings: options.settings,
 							stateTracker: this.#stateTracker,
+							isolation: options.isolation,
 						});
 						return { agentName, result };
 					} catch (err) {

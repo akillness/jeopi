@@ -1,8 +1,12 @@
+import * as path from "node:path";
+import { isEnoent } from "jeopi-utils";
 import {
 	buildMemoryToolDeveloperInstructions,
 	clearMemoryData,
 	clearMemoryToolDeveloperInstructionsCache,
 	enqueueMemoryConsolidation,
+	getMemoryRoot,
+	LEARNED_LESSONS_FILE,
 	saveLearnedLesson,
 	startMemoryStartupTask,
 } from "../memories";
@@ -44,4 +48,34 @@ export const localBackend: MemoryBackend = {
 				"Local rollout-summary memory is active; lessons from the `learn` tool are saved to learned.md. Structured search is not available.",
 		};
 	},
+	async stats(agentDir, cwd) {
+		const filePath = path.join(getMemoryRoot(agentDir, cwd), LEARNED_LESSONS_FILE);
+		let raw = "";
+		try {
+			raw = await Bun.file(filePath).text();
+		} catch (err) {
+			if (!isEnoent(err)) throw err;
+		}
+		let total = 0;
+		let verified = 0;
+		for (const rawLine of raw.split("\n")) {
+			const line = rawLine.trim();
+			if (!line.startsWith("- ")) continue;
+			total++;
+			if (line.startsWith(VERIFIED_PREFIX)) verified++;
+		}
+		const unverified = total - verified;
+		const coverage = total > 0 ? `${((verified / total) * 100).toFixed(1)}%` : "N/A";
+		return [
+			"# Local Memory Stats",
+			"",
+			`- Lessons: ${total}`,
+			`- Verified: ${verified}`,
+			`- Unverified: ${unverified}`,
+			`- Verification coverage: ${coverage}`,
+		].join("\n");
+	},
 };
+
+/** Line prefix `saveLearnedLesson` writes for verified/unverified lessons in `learned.md`. */
+const VERIFIED_PREFIX = "- [VERIFIED]";

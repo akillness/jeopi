@@ -43,7 +43,9 @@ describe("learned-lesson storage (local backend)", () => {
 		const text = await Bun.file(learnedFile).text();
 		// learned.md is an OKF atom; the lesson list is its body.
 		expect(validateOkfDocument(text)).toEqual([]);
-		expect(stripOkfFrontmatter(text).trim()).toBe("- Prefer Bun.file over readFileSync. _(context: from the build)_");
+		expect(stripOkfFrontmatter(text).trim()).toBe(
+			"- [UNVERIFIED] Prefer Bun.file over readFileSync. _(context: from the build)_",
+		);
 	});
 
 	it("redacts secrets, including provider token prefixes, before persisting", async () => {
@@ -72,7 +74,7 @@ describe("learned-lesson storage (local backend)", () => {
 		const lines = stripOkfFrontmatter(await Bun.file(learnedFile).text())
 			.trim()
 			.split("\n");
-		expect(lines).toEqual(["- A", "- B"]);
+		expect(lines).toEqual(["- [UNVERIFIED] A", "- [UNVERIFIED] B"]);
 	});
 
 	it("caps retained lessons at 100, dropping the oldest", async () => {
@@ -83,7 +85,7 @@ describe("learned-lesson storage (local backend)", () => {
 			.trim()
 			.split("\n");
 		expect(lines).toHaveLength(100);
-		expect(lines[0]).toBe("- L101");
+		expect(lines[0]).toBe("- [UNVERIFIED] L101");
 		expect(lines).not.toContain("- L0");
 		expect(lines).not.toContain("- L1");
 	});
@@ -109,9 +111,8 @@ describe("learned-lesson storage (local backend)", () => {
 	it("bounds a single oversized lesson", async () => {
 		await saveLearnedLesson(agentDir, projCwd, { content: "X".repeat(5000) });
 		const line = stripOkfFrontmatter(await Bun.file(learnedFile).text()).trim();
-		// "- " prefix + at most MAX_LEARNED_CONTENT_CHARS (2000) content chars.
-		expect(line.length).toBeLessThanOrEqual(2002);
-		expect(line.length).toBeGreaterThan(1000);
+		// "- [UNVERIFIED] " prefix (15 chars) + MAX_LEARNED_CONTENT_CHARS (2000) content chars, exactly.
+		expect(line.length).toBe(2015);
 	});
 
 	it("neutralizes and bounds the context field too", async () => {
@@ -136,14 +137,14 @@ describe("learned-lesson storage (local backend)", () => {
 			saveLearnedLesson(agentDir, projCwd, { content: "Racer two" }),
 		]);
 		const text = await Bun.file(learnedFile).text();
-		expect(text).toContain("- Racer one");
-		expect(text).toContain("- Racer two");
+		expect(text).toContain("- [UNVERIFIED] Racer one");
+		expect(text).toContain("- [UNVERIFIED] Racer two");
 	});
 
 	it("the local backend's save() delegates to the same file", async () => {
 		const result = await localBackend.save?.({ agentDir, cwd: projCwd }, { content: "Via the backend" });
 		expect(result?.stored).toBe(1);
-		expect(await Bun.file(learnedFile).text()).toContain("- Via the backend");
+		expect(await Bun.file(learnedFile).text()).toContain("- [UNVERIFIED] Via the backend");
 	});
 
 	it("local backend status reports writable", async () => {
@@ -178,7 +179,7 @@ describe("learned-lesson read-back", () => {
 		await saveLearnedLesson(agentDir, settings.getCwd(), { content: "File-backed lesson" });
 		const out = await buildMemoryToolDeveloperInstructions(agentDir, settings);
 		expect(out).toContain("Learned lessons");
-		expect(out).toContain("- File-backed lesson");
+		expect(out).toContain("- [UNVERIFIED] File-backed lesson");
 	});
 
 	it("keeps a session's memory prompt stable after a learned lesson is written", async () => {
@@ -191,7 +192,7 @@ describe("learned-lesson read-back", () => {
 		expect(await buildMemoryToolDeveloperInstructions(agentDir, settings, session)).toBeUndefined();
 		const nextSession = sessionWithFile("session-2.jsonl");
 		const out = await buildMemoryToolDeveloperInstructions(agentDir, settings, nextSession);
-		expect(out).toContain("- Later session only");
+		expect(out).toContain("- [UNVERIFIED] Later session only");
 	});
 
 	it("refreshes the frozen memory prompt after explicit memory clear", async () => {
@@ -237,7 +238,7 @@ describe("learned-lesson read-back", () => {
 		await saveLearnedLesson(agentDir, settings.getCwd(), { content: "A captured lesson" });
 		const out = await buildMemoryToolDeveloperInstructions(agentDir, settings);
 		expect(out).toContain("Consolidated guidance here.");
-		expect(out).toContain("- A captured lesson");
+		expect(out).toContain("- [UNVERIFIED] A captured lesson");
 	});
 
 	it("returns undefined when the memory backend is off", async () => {
@@ -321,7 +322,7 @@ describe("learn tool (local backend)", () => {
 
 	it("execute writes the lesson to learned.md", async () => {
 		await new LearnTool(localSession()).execute("1", { memory: "A local tool lesson" });
-		expect(await Bun.file(learnedFile).text()).toContain("- A local tool lesson");
+		expect(await Bun.file(learnedFile).text()).toContain("- [UNVERIFIED] A local tool lesson");
 	});
 
 	it("execute throws when the lesson is empty after sanitization", async () => {

@@ -43,6 +43,7 @@ import { createMarketplaceManager } from "./helpers/marketplace-manager";
 import { handleMcpAcp } from "./helpers/mcp";
 import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
 import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } from "./helpers/reset-usage";
+import { handleSkillCommand } from "./helpers/skill-verify";
 import { handleSshAcp } from "./helpers/ssh";
 import { launchStatsDashboard, parseStatsDashboardArgs } from "./helpers/stats-dashboard";
 import { handleTodoAcp } from "./helpers/todo";
@@ -1347,6 +1348,14 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			runtime.ctx.editor.setText("");
 			await runtime.ctx.handleSSHCommand(command.text);
 		},
+	},
+	{
+		name: "verify-skill",
+		description: "Run a skill's `## Eval Cases` and report pass/fail",
+		acpDescription: "Verify a skill's eval cases",
+		inlineHint: "<name>",
+		allowArgs: true,
+		handle: handleSkillCommand,
 	},
 	{
 		name: "new",

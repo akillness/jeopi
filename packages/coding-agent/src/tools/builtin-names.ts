@@ -13,6 +13,7 @@ export const BUILTIN_TOOL_NAMES = [
 	"grep",
 	"lsp",
 	"inspect_image",
+	"vision_verify",
 	"browser",
 	"checkpoint",
 	"rewind",

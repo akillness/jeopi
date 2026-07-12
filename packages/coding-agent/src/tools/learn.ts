@@ -9,6 +9,12 @@ import type { ToolSession } from ".";
 const learnSchema = type({
 	memory: type("string").describe("the durable, self-contained lesson to remember (what, when, why)"),
 	"context?": type("string").describe("optional source context for the lesson"),
+	"verified?": type("boolean").describe(
+		"true only if you independently re-checked this claim against the repo (ran a command, read a file, ran a test) rather than merely inferring it",
+	),
+	"evidence?": type("string").describe(
+		"the short check that confirmed the claim (a command, a file path, a test name); only meaningful when verified is true",
+	),
 	"skill?": type({
 		action: "'create' | 'update'",
 		name: type("string").describe("kebab-case skill name"),
@@ -65,6 +71,8 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 					cwd: state.session.sessionManager.getCwd(),
 					context: params.context ?? null,
 					tool: "learn",
+					verified: params.verified ?? false,
+					evidence: params.evidence ?? null,
 				},
 				scope: "bank",
 				extract: true,
@@ -81,7 +89,14 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 		} else if (backend === "local") {
 			const result = await localBackend.save?.(
 				{ agentDir: this.session.settings.getAgentDir(), cwd: this.session.settings.getCwd() },
-				{ content: params.memory, context: params.context, source: "coding-agent-learn", importance: 0.8 },
+				{
+					content: params.memory,
+					context: params.context,
+					source: "coding-agent-learn",
+					importance: 0.8,
+					verified: params.verified,
+					evidence: params.evidence,
+				},
 			);
 			if (!result || result.stored === 0) {
 				throw new Error("Lesson was empty after sanitization; nothing stored.");

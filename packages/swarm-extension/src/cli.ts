@@ -14,7 +14,7 @@ import { buildDependencyGraph, buildExecutionWaves, detectCycles } from "./swarm
 import { PipelineController } from "./swarm/pipeline";
 import { renderSwarmProgress } from "./swarm/render";
 import { parseSwarmYaml, validateSwarmDefinition } from "./swarm/schema";
-import { StateTracker } from "./swarm/state";
+import { StateTracker, type SwarmState } from "./swarm/state";
 
 const yamlPath = process.argv[2];
 if (!yamlPath) {
@@ -58,9 +58,21 @@ const workspace = path.isAbsolute(def.workspace)
 await fs.mkdir(workspace, { recursive: true });
 console.log(`Workspace: ${workspace}`);
 
-// Initialize
+// Initialize (or resume from persisted state via --resume)
+const resumeRequested = process.argv.includes("--resume");
 const stateTracker = new StateTracker(workspace, def.name);
-await stateTracker.init([...def.agents.keys()], def.targetCount, def.mode);
+let loadedState: SwarmState | null = null;
+if (resumeRequested) {
+	loadedState = await stateTracker.load();
+	if (loadedState && (loadedState.status === "running" || loadedState.status === "failed")) {
+		console.log(`Resuming pipeline from iteration ${loadedState.iteration}`);
+	} else {
+		loadedState = null;
+	}
+}
+if (!loadedState) {
+	await stateTracker.init([...def.agents.keys()], def.targetCount, def.mode);
+}
 
 // Auth + settings
 const authStorage = await discoverAuthStorage();
@@ -88,6 +100,8 @@ const result = await controller.run({
 	},
 	modelRegistry,
 	settings,
+	isolation: def.isolation ?? false,
+	startIteration: loadedState?.iteration,
 });
 
 console.log("\n--- Pipeline finished ---\n");

@@ -7,6 +7,12 @@
 import * as path from "node:path";
 import type { AgentDefinition, AgentProgress, AgentSource, ModelRegistry, Settings, SingleResult } from "jeopi-cli";
 import { runSubprocess } from "jeopi-cli";
+import {
+	type IsolationContext,
+	mergeIsolatedChanges,
+	prepareIsolationContext,
+	runIsolatedSubprocess,
+} from "jeopi-cli/task/isolation-runner";
 import type { SwarmAgent } from "./schema";
 import type { StateTracker } from "./state";
 
@@ -19,6 +25,8 @@ export interface SwarmExecutorOptions {
 	onProgress?: (agentName: string, progress: AgentProgress) => void;
 	modelRegistry?: ModelRegistry;
 	settings?: Settings;
+	/** Run this agent in its own git worktree via the isolation-runner primitives, merging back on success. */
+	isolation?: boolean;
 	stateTracker: StateTracker;
 }
 
@@ -36,8 +44,18 @@ export async function executeSwarmAgent(
 	index: number,
 	options: SwarmExecutorOptions,
 ): Promise<SingleResult> {
-	const { workspace, swarmName, iteration, modelOverride, signal, onProgress, modelRegistry, settings, stateTracker } =
-		options;
+	const {
+		workspace,
+		swarmName,
+		iteration,
+		modelOverride,
+		signal,
+		onProgress,
+		modelRegistry,
+		settings,
+		stateTracker,
+		isolation,
+	} = options;
 
 	const agentId = `swarm-${swarmName}-${agent.name}-${iteration}`;
 
@@ -56,7 +74,8 @@ export async function executeSwarmAgent(
 	await stateTracker.appendLog(agent.name, `Starting iteration ${iteration}`);
 
 	try {
-		const result = await runSubprocess({
+		const artifactsDir = path.join(stateTracker.swarmDir, "context");
+		const baseOptions = {
 			cwd: workspace,
 			agent: agentDef,
 			task: agent.task,
@@ -64,12 +83,60 @@ export async function executeSwarmAgent(
 			id: agentId,
 			modelOverride,
 			signal,
-			onProgress: progress => onProgress?.(agent.name, progress),
+			onProgress: (progress: AgentProgress) => onProgress?.(agent.name, progress),
 			modelRegistry,
 			settings,
 			enableLsp: false,
-			artifactsDir: path.join(stateTracker.swarmDir, "context"),
-		});
+			artifactsDir,
+		};
+
+		let result: SingleResult;
+		if (isolation) {
+			let context: IsolationContext;
+			try {
+				context = await prepareIsolationContext(workspace);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				throw new Error(`Isolation requested but workspace is not a git repository: ${message}`);
+			}
+
+			result = await runIsolatedSubprocess({
+				baseOptions,
+				context,
+				preferredBackend: undefined,
+				agentId,
+				mergeMode: "branch",
+				artifactsDir,
+				buildCommitMessage: () => undefined,
+				buildFailureResult: err => {
+					const message = err instanceof Error ? err.message : String(err);
+					return {
+						index,
+						id: agentId,
+						agent: agent.name,
+						agentSource: "project" as AgentSource,
+						task: agent.task,
+						exitCode: 1,
+						output: "",
+						stderr: message,
+						truncated: false,
+						durationMs: 0,
+						tokens: 0,
+						requests: 0,
+						error: message,
+					};
+				},
+			});
+
+			if (result.exitCode === 0) {
+				const outcome = await mergeIsolatedChanges({ result, repoRoot: context.repoRoot, mergeMode: "branch" });
+				if (outcome.changesApplied === false) {
+					await stateTracker.appendLog(agent.name, `Isolation merge failed: ${outcome.summary.trim()}`);
+				}
+			}
+		} else {
+			result = await runSubprocess(baseOptions);
+		}
 
 		const status = result.exitCode === 0 ? ("completed" as const) : ("failed" as const);
 		await stateTracker.updateAgent(agent.name, {

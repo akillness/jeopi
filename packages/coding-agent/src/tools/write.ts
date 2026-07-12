@@ -41,6 +41,7 @@ import {
 import { invalidateFsScanAfterWrite } from "./fs-cache-invalidation";
 import { type OutputMeta, outputMeta } from "./output-meta";
 import { formatPathRelativeToCwd, isInternalUrlPath, pathTargetsSsh, peelWriteUrlSelector } from "./path-utils";
+import { withPathWriteLock } from "./path-write-lock";
 import { enforcePlanModeWrite, resolvePlanPath, unwrapHashlineHeaderPath } from "./plan-mode-guard";
 import {
 	cachedRenderedString,
@@ -322,15 +323,17 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const enableFormat = enableLsp && session.settings.get("lsp.formatOnWrite");
 		const enableDiagnostics = enableLsp && session.settings.get("lsp.diagnosticsOnWrite");
 		const dedup = enableDiagnostics && session.settings.get("lsp.diagnosticsDeduplicate");
-		this.#writethrough = enableLsp
-			? createLspWritethrough(session.cwd, {
-					enableFormat,
-					enableDiagnostics,
-					transformDiagnostics: dedup
-						? (path, result) => getDiagnosticsLedger(session).reduce(path, result)
-						: undefined,
-				})
-			: writethroughNoop;
+		this.#writethrough = withPathWriteLock(
+			enableLsp
+				? createLspWritethrough(session.cwd, {
+						enableFormat,
+						enableDiagnostics,
+						transformDiagnostics: dedup
+							? (path, result) => getDiagnosticsLedger(session).reduce(path, result)
+							: undefined,
+					})
+				: writethroughNoop,
+		);
 		this.description = prompt.render(writeDescription);
 	}
 

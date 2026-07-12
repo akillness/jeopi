@@ -20,6 +20,7 @@ Treat the design system as the foundation — UI built without one collapses int
 2. **No coherent system? Build the minimal one first.** Extract what exists, then define a palette, type scale, spacing scale (4px/8px base), radii/shadows/transitions, and primitive components — THEN implement the request against it.
 3. **Compose with the system, never around it.** Colors → tokens/CSS variables, never hardcoded hex; spacing → scale values, never arbitrary px; type → scale steps; components → extend/compose existing primitives, not one-off div soup. Need something outside the system? Add the new token to the system first, then use it — never a one-off override.
 4. **Verify before done.** Every color a token, every spacing on the scale, every component on the existing composition pattern, zero magic numbers — a designer would see consistency across old and new. Any "no" → not done.
+5. **Visually verify the rendered result.** Code-level checks (tokens/spacing) don't catch layout/rendering bugs. After producing a UI change, capture it (`tab.screenshot()` for browser-rendered UI, or the existing screenshot path) and call `vision_verify` with the task's stated goal — pass `baseline` when checking for regression against a known-good prior state.
 </design-system>
 
 <procedure>

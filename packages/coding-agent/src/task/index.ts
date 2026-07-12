@@ -67,6 +67,7 @@ import {
 	prepareIsolationContext,
 	runIsolatedSubprocess,
 } from "./isolation-runner";
+import { classifyDefaultTaskModelTier } from "./model-tier-classifier";
 import { generateTaskName } from "./name-generator";
 import { AgentOutputManager } from "./output-manager";
 import { mapWithConcurrencyLimit, normalizeConcurrencyLimit, Semaphore } from "./parallel";
@@ -1202,7 +1203,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const agentModelOverrides = this.session.settings.get("task.agentModelOverrides");
 		const settingsModelOverride = agentModelOverrides[agentName];
 		const parentActiveModelPattern = this.session.getActiveModelString?.();
-		const modelOverride = resolveAgentModelPatterns({
+		let modelOverride = resolveAgentModelPatterns({
 			settingsOverride: settingsModelOverride,
 			agentModel: effectiveAgent.model,
 			settings: this.session.settings,
@@ -1210,6 +1211,30 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			fallbackModelPattern: this.session.getModelString?.(),
 		});
 		const thinkingLevelOverride = effectiveAgent.thinkingLevel;
+
+		// Auto-tier the generic default `task` agent to the cheap `smol` model
+		// when the assignment classifies as trivially simple and nothing else
+		// (settings override) already pinned the model. Named specialists carry
+		// their own `model:` frontmatter, so gating on the literal "task" agent
+		// name naturally excludes them without inspecting frontmatter here.
+		const autoModel = this.session.getActiveModel?.();
+		const autoModelRegistry = this.session.modelRegistry;
+		if (
+			agentName === "task" &&
+			settingsModelOverride === undefined &&
+			this.session.settings.get("task.autoModelTier") &&
+			autoModel &&
+			autoModelRegistry
+		) {
+			const tier = await classifyDefaultTaskModelTier(assignment, {
+				settings: this.session.settings,
+				registry: autoModelRegistry,
+				model: autoModel,
+				sessionId: this.session.getSessionId?.() ?? undefined,
+				signal,
+			});
+			if (tier === "smol") modelOverride = ["pi/smol"];
+		}
 
 		// Output schema priority: agent frontmatter > inherited parent session.
 		// The task call itself never carries a schema; workflows needing ad-hoc

@@ -1,10 +1,15 @@
 /**
  * Auto-learn session controller (experimental).
  *
- * Subscribes to the session event stream and, after a substantive turn,
- * optionally auto-runs a synthetic capture turn. Passive mode is intentionally
- * prompt-cache neutral: the standing system guidance remains available, but no
- * hidden mid-session reminder is inserted into the conversation.
+ * Subscribes to the session event stream and, after a turn becomes eligible
+ * for the capture nudge, optionally auto-runs a synthetic capture turn. A
+ * turn is eligible via either of two independent paths: it cleared the
+ * `autolearn.minToolCalls` volume threshold, OR it saw at least one failed
+ * tool call regardless of volume — a single failure is treated as a likely
+ * reusable lesson even in an otherwise-short turn. Passive mode is
+ * intentionally prompt-cache neutral: the standing system guidance remains
+ * available, but no hidden mid-session reminder is inserted into the
+ * conversation.
  *
  * Installed once per top-level session (taskDepth 0). The subscription lives
  * for the session's lifetime — `newSession` resets the session in place
@@ -54,6 +59,8 @@ export class AutoLearnController {
 	 * would let a goal-continuation turn slip through and get nudged.
 	 */
 	#turnStartedInGoalMode = false;
+	/** Whether any `tool_execution_end` in the in-flight turn carried `isError === true`. */
+	#sawFailure = false;
 	/** Swallow the agent_end produced by an auto-run capture turn so it cannot re-trigger. */
 	#suppressNext = false;
 
@@ -73,6 +80,7 @@ export class AutoLearnController {
 		}
 		if (event.type === "tool_execution_end") {
 			this.#toolCalls++;
+			if (event.isError === true) this.#sawFailure = true;
 			return;
 		}
 		if (event.type === "agent_end") {
@@ -90,6 +98,10 @@ export class AutoLearnController {
 		// observed no agent_start can never inherit a stale value.
 		const startedInGoalMode = this.#turnStartedInGoalMode;
 		this.#turnStartedInGoalMode = false;
+		// Snapshot and reset alongside the counter above: a failure describes
+		// only the just-finished turn.
+		const sawFailure = this.#sawFailure;
+		this.#sawFailure = false;
 
 		if (this.#suppressNext) {
 			this.#suppressNext = false;
@@ -99,7 +111,11 @@ export class AutoLearnController {
 		// the current flag rather than trusting install-time state.
 		if (!this.#settings.get("autolearn.enabled")) return;
 		const minToolCalls = this.#settings.get("autolearn.minToolCalls") ?? DEFAULT_MIN_TOOL_CALLS;
-		if (toolCalls < minToolCalls) return;
+		// Eligible when EITHER the turn cleared the volume threshold OR it saw at
+		// least one failed tool call — a single failure is a reusable lesson
+		// regardless of how few tools ran, while the volume gate remains the
+		// fallback for long clean turns.
+		if (toolCalls < minToolCalls && !sawFailure) return;
 		// Never interrupt plan-mode review.
 		if (this.#session.getPlanModeState()?.enabled) return;
 		// Never divert a goal loop. Skip when the turn STARTED in goal mode — a

@@ -17,6 +17,7 @@ interface RawSwarmConfig {
 	mode?: string;
 	target_count?: number;
 	model?: string;
+	isolation?: boolean;
 	agents: Record<string, RawSwarmAgentConfig>;
 }
 
@@ -42,6 +43,7 @@ export interface SwarmDefinition {
 	mode: SwarmMode;
 	targetCount: number;
 	model?: string;
+	isolation?: boolean;
 	agents: Map<string, SwarmAgent>;
 	/** Preserves YAML declaration order for implicit pipeline sequencing. */
 	agentOrder: string[];
@@ -108,6 +110,7 @@ export function parseSwarmYaml(content: string): SwarmDefinition {
 		mode: mode as SwarmMode,
 		targetCount: swarm.target_count ?? 1,
 		model: typeof swarm.model === "string" ? swarm.model.trim() : undefined,
+		isolation: typeof swarm.isolation === "boolean" ? swarm.isolation : undefined,
 		agents,
 		agentOrder,
 	};

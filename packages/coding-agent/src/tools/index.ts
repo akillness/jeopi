@@ -66,6 +66,7 @@ import { SearchToolBm25Tool } from "./search-tool-bm25";
 import { loadSshTool } from "./ssh";
 import { isSubagentToolEnabled, SubagentTool } from "./subagent";
 import { type TodoPhase, TodoTool } from "./todo";
+import { VisionVerifyTool } from "./vision-verify";
 import { WriteTool } from "./write";
 import { YieldTool } from "./yield";
 
@@ -106,6 +107,7 @@ export * from "./ssh";
 export * from "./subagent";
 export * from "./todo";
 export * from "./tts";
+export * from "./vision-verify";
 export * from "./write";
 export * from "./yield";
 
@@ -466,6 +468,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	grep: s => new GrepTool(s),
 	lsp: LspTool.createIf,
 	inspect_image: s => new InspectImageTool(s),
+	vision_verify: s => new VisionVerifyTool(s),
 	browser: s => new BrowserTool(s),
 	checkpoint: CheckpointTool.createIf,
 	rewind: RewindTool.createIf,
@@ -621,6 +624,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		if (name === "ast_grep") return session.settings.get("astGrep.enabled");
 		if (name === "ast_edit") return session.settings.get("astEdit.enabled");
 		if (name === "inspect_image") return session.settings.get("inspect_image.enabled");
+		if (name === "vision_verify") return session.settings.get("vision_verify.enabled");
 		if (name === "web_search") return session.settings.get("web_search.enabled");
 		// search_tool_bm25 is allowed when either legacy mcp.discoveryMode or new tools.discoveryMode is active.
 		if (name === "search_tool_bm25") return discoveryActive;

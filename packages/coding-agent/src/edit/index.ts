@@ -19,6 +19,7 @@ import replaceDescription from "../prompts/tools/replace.md" with { type: "text"
 import type { DeferredDiagnosticsEntry, ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/approval";
 import { isInternalUrlPath } from "../tools/path-utils";
+import { withPathWriteLock } from "../tools/path-write-lock";
 import { type EditMode, normalizeEditMode, resolveEditMode } from "../utils/edit-mode";
 import { executeHashlineSingle, hashlineEditParamsSchema } from "./hashline";
 import { type ApplyPatchParams, applyPatchSchema, expandApplyPatchToEntries } from "./modes/apply-patch";
@@ -405,7 +406,7 @@ export class EditTool implements AgentTool<TInput> {
 			(session.enableLsp ?? true) &&
 			session.settings.get("lsp.diagnosticsOnEdit") &&
 			session.settings.get("lsp.diagnosticsDeduplicate");
-		this.#writethrough = createEditWritethrough(session);
+		this.#writethrough = withPathWriteLock(createEditWritethrough(session));
 	}
 
 	get mode(): EditMode {

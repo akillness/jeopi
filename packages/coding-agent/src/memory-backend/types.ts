@@ -60,6 +60,17 @@ export interface MemoryBackendSaveInput {
 	context?: string;
 	source?: string;
 	importance?: number;
+	/**
+	 * Marks this lesson as independently re-checked against the repo (a
+	 * command run, a file read, a test executed) rather than merely asserted
+	 * from inference. Mirrors the "verify" stage of the fail → investigate →
+	 * verify → distill → consult self-improvement progression: a lesson that
+	 * skips verification is still worth capturing, but downstream consumers
+	 * (e.g. `stats()`) should be able to tell the two apart.
+	 */
+	verified?: boolean;
+	/** The short check that was run to establish `verified` (a command, a file path, a test name). Ignored when `verified` is not `true`. */
+	evidence?: string;
 }
 
 export interface MemoryBackendSaveResult {

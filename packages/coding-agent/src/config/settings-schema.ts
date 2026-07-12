@@ -3560,6 +3560,18 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	"vision_verify.enabled": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "tools",
+			group: "Available Tools",
+			label: "Vision Verify",
+			description:
+				"Enable the vision_verify tool, checking a screenshot/artifact against a stated goal with a vision-capable model",
+		},
+	},
+
 	"checkpoint.enabled": {
 		type: "boolean",
 		default: false,
@@ -4121,6 +4133,18 @@ export const SETTINGS_SCHEMA = {
 			label: "LSP in Subagents",
 			description:
 				"Allow subagents spawned via the task tool to use the lsp tool. Off by default to keep subagents cheap; enable when LSP-aware delegation is worth the extra tokens.",
+		},
+	},
+
+	"task.autoModelTier": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "tasks",
+			group: "Subagents",
+			label: "Auto Model Tier for Simple Tasks",
+			description:
+				"Classify a task() spawn's assignment text and route trivially-simple work to the cheap 'smol' model tier instead of the default 'task' tier, when the caller has not explicitly overridden the model. Off-by-default agent-type model pins (named specialist agents like reviewer/critic/architect) are never affected — this only applies to the generic default 'task' agent.",
 		},
 	},
 

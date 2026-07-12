@@ -248,6 +248,39 @@ describe("AutoLearnController", () => {
 		session.agentEnd();
 		expect(session.sent).toHaveLength(1);
 	});
+
+	it("fires the auto-continue nudge on a single failure below the volume threshold", () => {
+		const session = new FakeSession();
+		install(session, { "autolearn.autoContinue": true });
+		// One tool call, well under the default threshold of 5, but it failed.
+		session.emit({ type: "tool_execution_end", toolCallId: "t0", toolName: "bash", result: null, isError: true });
+		session.agentEnd();
+		expect(session.sent).toHaveLength(1);
+	});
+
+	it("does not leak a turn's failure flag into a later turn (#sawFailure resets per turn)", () => {
+		const session = new FakeSession();
+		install(session, { "autolearn.autoContinue": true });
+
+		// Turn A: a single failing call below the volume threshold fires via
+		// the failure path alone.
+		session.emit({ type: "tool_execution_end", toolCallId: "a0", toolName: "bash", result: null, isError: true });
+		session.agentEnd();
+		expect(session.sent).toHaveLength(1);
+
+		// Turn B: the synthetic capture turn triggered by A's nudge — its
+		// agent_end is swallowed by one-shot suppression regardless of content.
+		session.toolCalls(5);
+		session.agentEnd();
+		expect(session.sent).toHaveLength(1);
+
+		// Turn C: no failures, below threshold. If `#sawFailure` had leaked
+		// from turn A instead of resetting on every agent_end, this would
+		// incorrectly fire a second nudge.
+		session.toolCalls(1);
+		session.agentEnd();
+		expect(session.sent).toHaveLength(1);
+	});
 });
 
 describe("buildAutoLearnInstructions", () => {

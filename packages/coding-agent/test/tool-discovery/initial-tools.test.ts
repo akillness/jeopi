@@ -24,6 +24,7 @@ const allToolsSettings = Settings.isolated({
 	"github.enabled": true,
 	"lsp.enabled": true,
 	"inspect_image.enabled": true,
+	"vision_verify.enabled": true,
 	"web_search.enabled": true,
 	"browser.enabled": true,
 	"checkpoint.enabled": true,

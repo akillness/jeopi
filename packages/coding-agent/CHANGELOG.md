@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- The `learn` tool now accepts optional `verified`/`evidence` params (article gap: "verified fact" vs. "hypothesis" distinction). Every `learned.md` line is now tagged `[VERIFIED]`/`[UNVERIFIED]` (legacy untagged lines are read back as unverified for backward compat, never retagged). The `local` memory backend's previously-unimplemented `stats()` now reports total/verified/unverified lesson counts and a verification-coverage percentage for `/memory stats`.
+- New `/verify-skill <name>` command: runs a skill's `## Eval Cases` markdown section (bulleted verifiable claims) against the current repo via one read-only `critic` sub-agent per case, reporting pass/fail. A skill with no `## Eval Cases` section reports how to add one instead of erroring. Failing cases on a managed skill suggest a `## Known Failure Modes` line to append — never auto-written.
+- `AutoLearnController`'s capture-turn eligibility now also fires when a turn's tool calls included any failure (`tool_execution_end` with `isError`), independent of the existing `autolearn.minToolCalls` volume threshold — a single failed tool call is now eligible for a capture nudge even in an otherwise-short turn.
+- New `vision_verify` tool (gated by `vision_verify.enabled`, same gating shape as `inspect_image`): takes a goal description, a screenshot path, and an optional `baseline` screenshot for regression comparison, returning a structured `{matches, summary, gaps}` verdict from a vision-capable model instead of free text. `designer` agent's verify step now references it after producing a UI change.
+- New per-path write lock (`tools/path-write-lock.ts`) wraps both `EditTool`'s and `WriteTool`'s disk-write callback: concurrent non-isolated subagents (the default — `task.isolation.mode` is `"none"`) editing the same file now have their physical writes serialized instead of racing, closing a lost-write window with no other collision-avoidance mechanism.
+- New `task.autoModelTier` setting (default `true`): the default (unnamed) `task` sub-agent spawn now classifies its assignment text via the existing auto-thinking difficulty classifier and routes `Minimal`/`Low`-effort assignments to the `smol` model tier automatically, when the caller has not explicitly overridden the model. Named specialist agents (reviewer/critic/architect/etc.), which already carry their own `model:` frontmatter pin, are unaffected. Fails open (no override) on any classification error/timeout.
+- `swarm-extension` gains opt-in per-agent worktree isolation (`isolation: true` in the swarm YAML): each agent runs in its own git worktree via the same isolation primitives `task`/`agent()` use, merging back after completion; a non-git workspace fails the agent's iteration cleanly rather than silently falling back to shared-workspace execution. `swarm-extension`'s CLI runner also gains a `--resume` flag: reconstructs `StateTracker` from the persisted `pipeline.json` and continues the pipeline from its last recorded iteration instead of restarting at 0, for a `"running"`/`"failed"` (not `"completed"`/`"aborted"`) prior state.
+
+### Fixed
+
+- The new `/verify-skill` command was initially registered as `/skill verify <name>`, which silently shadowed the pre-existing `/skill:<name>` skill-invocation syntax — both parse to the command-name token `skill` under `parseSlashCommand`'s earliest-whitespace-or-colon splitting rule, and the builtin-command dispatch runs before the skill-invocation dispatch, so every `/skill:<name>` call would have hit the new command's usage error instead of invoking the named skill. Renamed to `/verify-skill <name>` before release.
+
 ## [16.3.0] - 2026-07-12
 
 ### Added
