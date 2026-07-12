@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.3.0] - 2026-07-12
+
 ### Added
 
 - Goal-mode completion now spawns an independent `goal-verifier` sub-agent (fresh context, no exposure to the maker's transcript/reasoning) to grade a `goal({op:"complete"})` claim against the objective and the actual repo diff, after the existing deterministic evidence gate passes. New `goal.verifyCompletion` setting (default `true`). A non-`okay` verdict (`iterate`/`reject`) bounces the completion once with the verifier's justification and required fixes; a second `complete` call with no new mutation/verification evidence in between passes (the same bounce-once escape hatch pattern as the existing evidence gate, tracked independently so a wrong verifier verdict can't permanently block completion).
