@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "jeopi-utils",
-	"version": "16.3.0",
+	"version": "16.4.0",
 	"description": "Shared utilities for pi packages",
 	"homepage": "https://github.com/akillness/jeopi",
 	"author": "Can Boluk",

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.0] - 2026-07-12
+
 ### Added
 
 - Opt-in per-agent worktree isolation (`isolation: true` in the swarm YAML): each agent runs in its own git worktree, merging back after completion. Non-git workspaces fail the agent's iteration cleanly instead of silently falling back to shared-workspace execution.

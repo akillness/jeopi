@@ -21,7 +21,7 @@
     },
     "packages/agent": {
       "name": "jeopi-agent-core",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
         "jeopi-ai": "catalog:",
@@ -39,7 +39,7 @@
     },
     "packages/ai": {
       "name": "jeopi-ai",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/catalog": {
       "name": "jeopi-catalog",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -69,7 +69,7 @@
     },
     "packages/coding-agent": {
       "name": "jeopi-cli",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "bin": {
         "jeopi": "dist/cli.js",
       },
@@ -147,7 +147,7 @@
     },
     "packages/hashline": {
       "name": "jeopi-hashline",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "dependencies": {
         "diff": "catalog:",
         "lru-cache": "catalog:",
@@ -158,7 +158,7 @@
     },
     "packages/mnemopi": {
       "name": "jeopi-mnemopi",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
@@ -184,7 +184,7 @@
     },
     "packages/natives": {
       "name": "jeopi-natives",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
@@ -192,7 +192,7 @@
     },
     "packages/snapcompact": {
       "name": "jeopi-snapcompact",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "dependencies": {
         "jeopi-ai": "catalog:",
         "jeopi-natives": "catalog:",
@@ -205,7 +205,7 @@
     },
     "packages/stats": {
       "name": "jeopi-stats",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "bin": {
         "jeopi-stats": "./src/index.ts",
       },
@@ -231,7 +231,7 @@
     },
     "packages/swarm-extension": {
       "name": "jeopi-swarm-extension",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "bin": {
         "jeopi-swarm": "src/cli.ts",
       },
@@ -257,7 +257,7 @@
     },
     "packages/tui": {
       "name": "jeopi-tui",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "dependencies": {
         "jeopi-natives": "catalog:",
         "jeopi-utils": "catalog:",
@@ -298,7 +298,7 @@
     },
     "packages/utils": {
       "name": "jeopi-utils",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "dependencies": {
         "handlebars": "catalog:",
         "jeopi-natives": "catalog:",
@@ -311,7 +311,7 @@
     },
     "packages/wire": {
       "name": "jeopi-wire",
-      "version": "16.3.0",
+      "version": "16.4.0",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
@@ -374,18 +374,18 @@
     "fflate": "0.8.3",
     "ghostty-web": "^0.4.0",
     "handlebars": "^4.7.9",
-    "jeopi-agent-core": "16.3.0",
-    "jeopi-ai": "16.3.0",
-    "jeopi-catalog": "16.3.0",
-    "jeopi-cli": "16.3.0",
-    "jeopi-hashline": "16.3.0",
-    "jeopi-mnemopi": "16.3.0",
-    "jeopi-natives": "16.3.0",
-    "jeopi-snapcompact": "16.3.0",
-    "jeopi-stats": "16.3.0",
-    "jeopi-tui": "16.3.0",
-    "jeopi-utils": "16.3.0",
-    "jeopi-wire": "16.3.0",
+    "jeopi-agent-core": "16.4.0",
+    "jeopi-ai": "16.4.0",
+    "jeopi-catalog": "16.4.0",
+    "jeopi-cli": "16.4.0",
+    "jeopi-hashline": "16.4.0",
+    "jeopi-mnemopi": "16.4.0",
+    "jeopi-natives": "16.4.0",
+    "jeopi-snapcompact": "16.4.0",
+    "jeopi-stats": "16.4.0",
+    "jeopi-tui": "16.4.0",
+    "jeopi-utils": "16.4.0",
+    "jeopi-wire": "16.4.0",
     "linkedom": "^0.18.12",
     "lint-staged": "^17.0.7",
     "lru-cache": "11.5.1",
@@ -768,7 +768,7 @@
 
     "@opentelemetry/sdk-trace-node": ["@opentelemetry/sdk-trace-node@2.9.0", "", { "dependencies": { "@opentelemetry/context-async-hooks": "2.9.0", "@opentelemetry/core": "2.9.0", "@opentelemetry/sdk-trace-base": "2.9.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-ec9a7ps37huy5itYk0MalaZdSLlM6AXWp/FhtEjgMpp5leEGojBDvAl/UWttQnkMZOvFHKzRESn8TD3yKTF5nQ=="],
 
-    "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.42.0", "", {}, "sha512-icc5xCzndZfhuJMy5oqk5AvloWquR7jtae74qzpkKkhGp8BivK+oCcEXgGnjCdTfp8hA44l+w8gE8yYJbocJJw=="],
+    "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.43.0", "", {}, "sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg=="],
 
     "@oxc-project/types": ["@oxc-project/types@0.139.0", "", {}, "sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw=="],
 
@@ -1222,7 +1222,7 @@
 
     "mammoth": ["mammoth@1.12.0", "", { "dependencies": { "@xmldom/xmldom": "^0.8.6", "argparse": "~1.0.3", "base64-js": "^1.5.1", "bluebird": "~3.4.0", "dingbat-to-unicode": "^1.0.1", "jszip": "^3.7.1", "lop": "^0.4.2", "path-is-absolute": "^1.0.0", "underscore": "^1.13.1", "xmlbuilder": "^10.0.0" }, "bin": { "mammoth": "bin/mammoth" } }, "sha512-cwnK1RIcRdDMi2HRx2EXGYlxqIEh0Oo3bLhorgnsVJi2UkbX1+jKxuBNR9PC5+JaX7EkmJxFPmo6mjLpqShI2w=="],
 
-    "marked": ["marked@18.0.5", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-S6GcvALHg6K4ohtu4E7x0a1AqhAjp6cV8KhLSyN9qVapnzJkusVBxZRcIU9AeYsbe6P1hKDusSbEOzGyyuce6w=="],
+    "marked": ["marked@18.0.6", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-MrV5puXBfuiy6wl6DLaq3BtIJQAJToAd5zt/ZKhRfGRAuFPALE7/4Y7jnxRQoEgK/pBgurGqLyAuRgZ2xOjr6w=="],
 
     "matcher": ["matcher@4.0.0", "", { "dependencies": { "escape-string-regexp": "^4.0.0" } }, "sha512-S6x5wmcDmsDRRU/c2dkccDwQPXoFczc5+HpQ2lON8pnvHlnvHAHj5WlLVvw6n6vNyHuVugYrFohYxbS+pvFpKQ=="],
 
@@ -1296,7 +1296,7 @@
 
     "postcss": ["postcss@8.5.16", "", { "dependencies": { "nanoid": "^3.3.12", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg=="],
 
-    "prettier": ["prettier@3.9.4", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-yWG/o/4oJfo036EKAfK6ACAoDOfHeRHx4tuxkfBZiauURiaSmYwlpOr5LQqKtIkRD2z1PLteme2WoxEnj4tHTg=="],
+    "prettier": ["prettier@3.9.5", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-/FVl766LpUfB5vXgCYOYa0MeV/441Ia99AeICQIQFTY/Nw0roZwULcXpku5i1/m5kt/baz+s4Zogspd839HSMg=="],
 
     "process-nextick-args": ["process-nextick-args@2.0.1", "", {}, "sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag=="],
 

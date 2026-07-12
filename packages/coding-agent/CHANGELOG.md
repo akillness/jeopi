@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.0] - 2026-07-12
+
 ### Added
 
 - The `learn` tool now accepts optional `verified`/`evidence` params (article gap: "verified fact" vs. "hypothesis" distinction). Every `learned.md` line is now tagged `[VERIFIED]`/`[UNVERIFIED]` (legacy untagged lines are read back as unverified for backward compat, never retagged). The `local` memory backend's previously-unimplemented `stats()` now reports total/verified/unverified lesson counts and a verification-coverage percentage for `/memory stats`.
