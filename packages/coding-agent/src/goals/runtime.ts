@@ -6,6 +6,13 @@ import { assertSubstantiveCompletionEvidence } from "./completion-evidence";
 import { GoalEvidenceTracker, isVerificationSignal, MUTATION_TOOL_NAMES } from "./evidence-gate";
 import type { Goal, GoalBudgetSteering, GoalModeState, GoalRuntimeEvent, GoalTokenUsage } from "./state";
 
+export interface GoalCompletionVerdict {
+	verdict: "okay" | "iterate" | "reject";
+	justification: string;
+	summary?: string;
+	requiredFixes: string[];
+}
+
 export interface GoalRuntimeHost {
 	getState(): GoalModeState | undefined;
 	setState(state: GoalModeState | undefined): void;
@@ -17,6 +24,16 @@ export interface GoalRuntimeHost {
 		content: string;
 		deliverAs?: "steer" | "followUp" | "nextTurn";
 	}): Promise<void>;
+	/**
+	 * Spawn an independent grader sub-agent to verdict a completion claim against
+	 * the objective and the actual repo diff (article gap: "the agent that wrote
+	 * the code is not the agent that grades it"). The sub-agent sees only the
+	 * objective + evidence text passed here plus its own repo inspection — never
+	 * this session's transcript/reasoning. Optional: hosts that don't wire this
+	 * (e.g. test harnesses, `goal.verifyCompletion` disabled) skip independent
+	 * grading and fall back to the deterministic evidence gate alone.
+	 */
+	verifyCompletion?(objective: string, evidence: string): Promise<GoalCompletionVerdict>;
 	now?(): number;
 }
 
@@ -122,6 +139,8 @@ export class GoalRuntime {
 	#turnSnapshot: GoalTurnSnapshot | undefined;
 	#wallClock: GoalWallClockSnapshot;
 	#budgetReportedFor: string | undefined;
+	/** Set when an independent-verifier non-okay verdict was bounced once; cleared by any new mutation/verification or a fresh goal. Mirrors GoalEvidenceTracker's bypass latch, kept separate because it gates a different (probabilistic) signal. */
+	#verifierBypassArmed = false;
 	#accountingTail: Promise<void> = Promise.resolve();
 
 	constructor(host: GoalRuntimeHost) {
@@ -219,10 +238,12 @@ export class GoalRuntime {
 		if (!this.#hasAccountingState()) return;
 		if (MUTATION_TOOL_NAMES[toolName]) {
 			this.#evidence.recordMutation();
+			this.#verifierBypassArmed = false;
 			return;
 		}
 		if (detail && isVerificationSignal(detail.command ?? "", detail.outputHead ?? "")) {
 			this.#evidence.recordVerification();
+			this.#verifierBypassArmed = false;
 		}
 	}
 
@@ -418,6 +439,7 @@ export class GoalRuntime {
 			const state = this.#createGoalState(objective, input.tokenBudget);
 			this.#budgetReportedFor = undefined;
 			this.#evidence.reset();
+			this.#verifierBypassArmed = false;
 			this.#markActiveAccounting(state.goal);
 			await this.#commitState(state, { persist: "goal" });
 			return state;
@@ -437,6 +459,7 @@ export class GoalRuntime {
 			const state = this.#createGoalState(objective, input.tokenBudget);
 			this.#budgetReportedFor = undefined;
 			this.#evidence.reset();
+			this.#verifierBypassArmed = false;
 			this.#markActiveAccounting(state.goal);
 			await this.#commitState(state, { persist: "goal" });
 			return state;
@@ -521,6 +544,34 @@ export class GoalRuntime {
 			const gate = this.#evidence.classifyCompletion();
 			if (gate.block) {
 				throw new Error(gate.message);
+			}
+			// Independent grader (goal-verifier sub-agent, see GoalRuntimeHost.verifyCompletion):
+			// maker != grader, per the compounding-loop primitive — the same agent that did
+			// the work does not get to be the sole judge of whether it's done. Same bounce-once
+			// shape as the deterministic gate above, kept as a separate latch since this signal
+			// is probabilistic (an LLM verdict), not mechanical.
+			if (this.#host.verifyCompletion) {
+				const verdict = await this.#host.verifyCompletion(state.goal.objective, verifiedEvidence);
+				if (verdict.verdict !== "okay") {
+					if (this.#verifierBypassArmed) {
+						// Second attempt with no new mutation/verification since the bounce:
+						// escape hatch for a verifier false-positive-reject/iterate.
+						this.#verifierBypassArmed = false;
+					} else {
+						this.#verifierBypassArmed = true;
+						const fixes =
+							verdict.requiredFixes.length > 0
+								? `\nRequired fixes:\n${verdict.requiredFixes.map(fix => `- ${fix}`).join("\n")}`
+								: "";
+						throw new Error(
+							`Completion blocked: independent verifier verdict was "${verdict.verdict}", not "okay". ` +
+								`${verdict.justification}${fixes}\nAddress the gaps above, then call complete again. ` +
+								"If the verifier is wrong, call complete again unchanged to override.",
+						);
+					}
+				} else {
+					this.#verifierBypassArmed = false;
+				}
 			}
 			state.enabled = false;
 			state.goal.status = "complete";

@@ -12,6 +12,7 @@ import designerMd from "../prompts/agents/designer.md" with { type: "text" };
 import exploreMd from "../prompts/agents/explore.md" with { type: "text" };
 // Embed agent markdown files at build time
 import agentFrontmatterTemplate from "../prompts/agents/frontmatter.md" with { type: "text" };
+import goalVerifierMd from "../prompts/agents/goal-verifier.md" with { type: "text" };
 import librarianMd from "../prompts/agents/librarian.md" with { type: "text" };
 
 import planMd from "../prompts/agents/plan.md" with { type: "text" };
@@ -47,6 +48,7 @@ const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
 	{ fileName: "explore.md", template: exploreMd },
 	{ fileName: "plan.md", template: planMd },
 	{ fileName: "critic.md", template: criticMd },
+	{ fileName: "goal-verifier.md", template: goalVerifierMd },
 	{ fileName: "architect.md", template: architectMd },
 	{ fileName: "designer.md", template: designerMd },
 	{ fileName: "reviewer.md", template: reviewerMd },

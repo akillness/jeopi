@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- Goal-mode completion now spawns an independent `goal-verifier` sub-agent (fresh context, no exposure to the maker's transcript/reasoning) to grade a `goal({op:"complete"})` claim against the objective and the actual repo diff, after the existing deterministic evidence gate passes. New `goal.verifyCompletion` setting (default `true`). A non-`okay` verdict (`iterate`/`reject`) bounces the completion once with the verifier's justification and required fixes; a second `complete` call with no new mutation/verification evidence in between passes (the same bounce-once escape hatch pattern as the existing evidence gate, tracked independently so a wrong verifier verdict can't permanently block completion).
+- Autoresearch mode now auto-resumes a pending (run-but-never-logged) experiment on the next session load — `session_start` and `/resume`-reason `session_switch` re-arm the same auto-continuation the live in-process loop already used, closing the gap where a process restart required manually re-invoking `/autoresearch` to pick a run back up. Bounded to pending runs completed within the last 24 hours, and skipped entirely when messages are already queued.
+
+### Changed
+
+- `advisor.includeThinking` now defaults to `false`: the advisor no longer sees the primary agent's raw thinking blocks by default, only messages/tool calls/results/diffs — reduces anchoring on the maker's own already-committed reasoning trail instead of bringing an independent angle. Still toggleable via Settings → Advisor.
+- Raised `SHUTDOWN_CONSOLIDATE_BUDGET_MS` (the `/quit`/`/exit` shutdown budget for the mnemopi consolidate pass and the hindsight retain-queue flush) from 1500ms to 8000ms — the prior budget was tighter than a single LLM fact-extraction round-trip (1-3s), so it lost the race on effectively every session with any memory-worthy content.
+
+### Fixed
+
+- The Hindsight retain-queue flush on session dispose (`AgentSession.dispose` → `HindsightSessionState.flushRetainQueue`) made unbounded `fetch()` calls with no timeout, so an unreachable or hung Hindsight server could block `/quit`/`/exit` indefinitely. Now bounded by the same shutdown budget used for mnemopi consolidation when one is supplied; remaining items are dropped with a logged warning on timeout instead of hanging the process.
+
 ## [16.2.30] - 2026-07-10
 
 ### Added

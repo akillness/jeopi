@@ -76,6 +76,7 @@ import {
 	setActiveSkills,
 } from "./extensibility/skills";
 import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal } from "./extensibility/slash-commands";
+import { verifyGoalCompletion } from "./goals/verifier";
 import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
@@ -2756,6 +2757,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			providerSessionId: options.providerSessionId,
 			parentEvalSessionId: options.parentEvalSessionId,
 			advisorTools,
+			verifyGoalCompletion: (objective, evidence) => verifyGoalCompletion(toolSession, objective, evidence),
 			titleSystemPrompt: options.titleSystemPrompt,
 		});
 		hasSession = true;

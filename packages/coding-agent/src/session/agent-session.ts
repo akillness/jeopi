@@ -222,7 +222,7 @@ import { ExtensionToolWrapper } from "../extensibility/extensions/wrapper";
 import type { HookCommandContext } from "../extensibility/hooks/types";
 import type { Skill, SkillWarning } from "../extensibility/skills";
 import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slash-commands";
-import { GoalRuntime } from "../goals/runtime";
+import { type GoalCompletionVerdict, GoalRuntime } from "../goals/runtime";
 import type { Goal, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
 import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
@@ -539,13 +539,19 @@ function refusalBackoffBudgetMs(): number {
 }
 /**
  * Budget for callers on the user-visible `/quit` / `/exit` shutdown path that
- * want to cap how long they wait for `MnemopiSessionState.dispose()` to finish
- * its consolidate pass. Consolidate fires fresh LLM fact extractions, each a
- * 1–3 s round-trip, so interactive shutdown passes this budget to keep the
- * UI responsive. Callers that keep the process/session host alive must omit it
- * so dispose still awaits the full consolidate-then-close pipeline.
+ * want to cap how long they wait for `MnemopiSessionState.dispose()` (and the
+ * Hindsight retain-queue flush, see the dispose() call site) to finish writing
+ * this session's memory before the process exits. Consolidate fires fresh LLM
+ * fact extractions, each a 1-3s round-trip; the retain-queue flush is a single
+ * HTTP POST. The prior 1500ms budget was tighter than a single extraction
+ * round-trip, so it lost the race on effectively every session with any
+ * memory-worthy content — "write before walking away" in name only. 8s still
+ * bounds worst-case UI unresponsiveness on /exit while giving a small
+ * consolidation batch (1-3 facts) a realistic chance to land before the
+ * process exits. Callers that keep the process/session host alive must omit
+ * it so dispose still awaits the full write pipeline unbounded.
  */
-export const SHUTDOWN_CONSOLIDATE_BUDGET_MS = 1_500;
+export const SHUTDOWN_CONSOLIDATE_BUDGET_MS = 8_000;
 
 export interface AgentSessionDisposeOptions {
 	mnemopiConsolidateTimeoutMs?: number;
@@ -728,6 +734,15 @@ export interface AgentSessionConfig {
 	rebuildSystemPrompt?: (toolNames: string[], tools: Map<string, AgentTool>) => Promise<{ systemPrompt: string[] }>;
 	/** Rebuild the SSH tool from current capability discovery results. */
 	reloadSshTool?: () => Promise<AgentTool | null>;
+	/**
+	 * Independent-verifier bridge for goal-mode completion (see goals/verifier.ts).
+	 * Spawns the bundled `goal-verifier` sub-agent to grade a completion claim against
+	 * the objective and the actual repo diff — a fresh session/context, no exposure to
+	 * this session's transcript. Wired from sdk.ts (needs the constructed `toolSession`).
+	 * Undefined when `goal.verifyCompletion` is off or the caller has no tool session
+	 * (e.g. minimal SDK embedders) — GoalRuntime skips independent grading in that case.
+	 */
+	verifyGoalCompletion?: (objective: string, evidence: string) => Promise<GoalCompletionVerdict>;
 	requestedToolNames?: ReadonlySet<string>;
 	/**
 	 * Optional accessor for live MCP server instructions. Read by the session's
@@ -2210,6 +2225,14 @@ export class AgentSession {
 					{ deliverAs: message.deliverAs },
 				);
 			},
+			verifyCompletion: config.verifyGoalCompletion
+				? async (objective: string, evidence: string): Promise<GoalCompletionVerdict> => {
+						if (!this.settings.get("goal.verifyCompletion")) {
+							return { verdict: "okay", justification: "goal.verifyCompletion disabled", requiredFixes: [] };
+						}
+						return config.verifyGoalCompletion!(objective, evidence);
+					}
+				: undefined,
 		});
 		this.#cancelExitRecorder = postmortem.register(`agent-session:${this.sessionManager.getSessionId()}`, reason => {
 			this.#recordSessionExit(reason);
@@ -5618,7 +5641,27 @@ export class AgentSession {
 		// Reversed, the spliced batch survives just long enough to fail the
 		// identity check and get dropped with a `session vanished` warning.
 		const hindsightState = this.getHindsightSessionState();
-		await hindsightState?.flushRetainQueue();
+		// Bounded when a shutdown budget is set (interactive /quit /exit): the
+		// underlying HindsightApi client makes plain `fetch()` calls with no
+		// timeout/signal, so an unreachable or hung Hindsight server would
+		// otherwise block process exit indefinitely. Callers that keep the
+		// process/session host alive (no timeout passed) still await the flush
+		// unbounded, matching the mnemopi dispose contract below.
+		if (hindsightState) {
+			const { mnemopiConsolidateTimeoutMs: timeoutMs } = options;
+			if (timeoutMs !== undefined && timeoutMs > 0) {
+				try {
+					await withTimeout(hindsightState.flushRetainQueue(), timeoutMs, "Hindsight retain-queue flush");
+				} catch (error) {
+					logger.warn("Hindsight retain-queue flush exceeded shutdown budget; remaining items dropped", {
+						timeoutMs,
+						error: String(error),
+					});
+				}
+			} else {
+				await hindsightState.flushRetainQueue();
+			}
+		}
 		this.setHindsightSessionState(undefined);
 		hindsightState?.dispose();
 		const mnemopiState = setMnemopiSessionState(this, undefined);

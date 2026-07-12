@@ -30,6 +30,16 @@ import type { AutoresearchRuntime, ExperimentResult, PendingRunSummary } from ".
 
 const EXPERIMENT_TOOL_NAMES = ["init_experiment", "run_experiment", "log_experiment", "update_notes"];
 
+/**
+ * Cross-process auto-resume window: a pending (run-but-never-logged) experiment
+ * completed within this long ago is resumed automatically on the next session
+ * load; older ones are left for the user to inspect and resume by hand. Bounds
+ * the "open your laptop, the loop picks back up" pattern to realistic gaps
+ * (overnight, a workday) without silently relaunching token-spending work
+ * against a session nobody touched in weeks.
+ */
+const AUTORESEARCH_RESUME_STALENESS_MS = 24 * 60 * 60 * 1000;
+
 export const createAutoresearchExtension: ExtensionFactory = api => {
 	const runtimeStore = createRuntimeStore();
 	const dashboard = createDashboardController();
@@ -47,7 +57,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		return { session, currentBranch };
 	};
 
-	const rehydrate = async (ctx: ExtensionContext): Promise<void> => {
+	const rehydrate = async (ctx: ExtensionContext, resumeEligible: boolean): Promise<void> => {
 		const runtime = getRuntime(ctx);
 		const control = reconstructControlState(ctx.sessionManager.getBranch());
 		runtime.goal = control.goal;
@@ -69,13 +79,15 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const onActiveBranch = session === null || session.branch === null || session.branch === currentBranch;
 		runtime.autoresearchMode = control.autoresearchMode && onActiveBranch;
 
+		let pendingRow: RunRow | null = null;
 		if (session && onActiveBranch) {
 			const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 			if (storage) {
 				const loggedRuns = storage.listLoggedRuns(session.id);
 				runtime.state = buildExperimentState(session, loggedRuns);
 				runtime.goal = runtime.goal ?? session.goal;
-				runtime.lastRunSummary = pendingRunSummaryFromRow(storage.getPendingRun(session.id));
+				pendingRow = storage.getPendingRun(session.id);
+				runtime.lastRunSummary = pendingRunSummaryFromRow(pendingRow);
 			} else {
 				runtime.state = createExperimentState();
 				runtime.lastRunSummary = null;
@@ -101,6 +113,41 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			nextActiveTools.some((name, index) => name !== activeTools[index]);
 		if (toolsChanged) {
 			await api.setActiveTools(nextActiveTools);
+		}
+
+		// Auto-rearm across a process restart (article gap: "the mode itself has to be
+		// manually re-armed with /autoresearch after a restart, since session_shutdown
+		// doesn't leave anything wired to auto-relaunch" — the "morning briefing"/
+		// nightly-loop pattern requires the NEXT process to pick a pending run back up
+		// on its own, not wait for the user to notice and retype /autoresearch).
+		// `autoResumeArmed` is deliberately NOT restored here (reset above, matching
+		// existing behavior) — that flag is a live in-process signal set by the
+		// experiment tools mid-run; it cannot be reconstructed from persisted state
+		// and re-arming it unconditionally on every resume would fire even when the
+		// prior process ended cleanly with nothing left to continue. The only
+		// cross-restart-durable signal is an actual pending (run-but-never-logged)
+		// run row, so that's the sole trigger here.
+		if (
+			resumeEligible &&
+			runtime.autoresearchMode &&
+			pendingRow?.completedAt !== undefined &&
+			pendingRow.completedAt !== null &&
+			Date.now() - pendingRow.completedAt <= AUTORESEARCH_RESUME_STALENESS_MS &&
+			!ctx.hasPendingMessages()
+		) {
+			const pendingRun = runtime.lastRunSummary;
+			runtime.lastAutoResumePendingRunNumber = pendingRow.id;
+			api.sendMessage(
+				{
+					customType: "autoresearch-resume",
+					content: prompt.render(resumeMessageTemplate, {
+						has_pending_run: Boolean(pendingRun),
+					}),
+					display: false,
+					attribution: "agent",
+				},
+				{ deliverAs: "nextTurn", triggerTurn: true },
+			);
 		}
 	};
 
@@ -245,10 +292,17 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		},
 	});
 
-	api.on("session_start", (_event, ctx) => rehydrate(ctx));
-	api.on("session_switch", (_event, ctx) => rehydrate(ctx));
-	api.on("session_branch", (_event, ctx) => rehydrate(ctx));
-	api.on("session_tree", (_event, ctx) => rehydrate(ctx));
+	api.on("session_start", (_event, ctx) => rehydrate(ctx, true));
+	// "resume" = picked from the /resume session picker or `jeopi -r`, the exact
+	// "reopen your laptop, the loop should still be going" moment the article
+	// describes. "new"/"fork" start a fresh conversation off old history — no
+	// auto-continuation there, matching session_start's "don't fire on plain
+	// process launch into an unrelated session" restraint.
+	api.on("session_switch", (event, ctx) => rehydrate(ctx, event.reason === "resume"));
+	// Mid-conversation navigation (branch off an earlier message, move through the
+	// tree), not a process/session restart — never auto-fires a fresh turn here.
+	api.on("session_branch", (_event, ctx) => rehydrate(ctx, false));
+	api.on("session_tree", (_event, ctx) => rehydrate(ctx, false));
 	api.on("session_shutdown", (_event, ctx) => {
 		dashboard.clear(ctx);
 		runtimeStore.clear(getSessionKey(ctx));

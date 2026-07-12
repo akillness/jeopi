@@ -416,13 +416,13 @@ export const SETTINGS_SCHEMA = {
 	},
 	"advisor.includeThinking": {
 		type: "boolean",
-		default: true,
+		default: false,
 		ui: {
 			tab: "model",
 			group: "Advisor",
 			label: "Advisor Sees Thinking",
 			description:
-				"Include the primary agent's thinking blocks in advisor transcript updates. Some provider classifiers (e.g. Anthropic's reasoning_extraction) refuse payloads that replay thinking as text; the advisor also auto-disables this for the session after such a refusal.",
+				"Include the primary agent's thinking blocks in advisor transcript updates. Off by default: a reviewer that sees the maker's own reasoning trail tends to anchor on conclusions the maker already committed to instead of bringing an independent angle (the advisor's own directive is to 'bring the angle they skipped, never re-run reasoning they already have'); the advisor still sees full messages, tool calls, results, and diffs. Some provider classifiers (e.g. Anthropic's reasoning_extraction) also refuse payloads that replay thinking as text if enabled; the advisor auto-disables this for the session after such a refusal.",
 			condition: "advisorEnabled",
 		},
 	},
@@ -3943,6 +3943,18 @@ export const SETTINGS_SCHEMA = {
 			group: "Modes",
 			label: "Goal Continuation Modes",
 			description: "Run modes where active goals may auto-continue between turns",
+		},
+	},
+
+	"goal.verifyCompletion": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Verify Goal Completion",
+			description:
+				"Spawn an independent goal-verifier sub-agent to grade a completion claim against the objective and diff before accepting it",
 		},
 	},
 
