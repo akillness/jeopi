@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.1] - 2026-07-14
+
 ### Fixed
 
 - The interrupted-thinking continuity message (`Esc` mid-stream on a turn with unsigned thinking, replayed on the next turn's resume so the model can continue where it left off) shipped the model's own prior reasoning as raw, undisguised text inside a "here is your unfinished internal work state" wrapper — the exact shape Anthropic's `reasoning_extraction` classifier flags on Fable/Mythos targets, and the one remaining site in the codebase that hadn't been brought in line with the disguise every other thinking-replay path already applies. Now routed through the same `renderDemotedThinking` transform (italic prose with no literal `thinking:` label for Fable/Mythos, dialect-appropriate fallback for everything else) before it reaches the template. Live-verified against `claude-fable-5`: genuine mid-thinking-stream interrupt followed by resume completes cleanly with zero refusal.
