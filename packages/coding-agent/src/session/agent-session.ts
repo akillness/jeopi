@@ -109,6 +109,7 @@ import {
 	serviceTierFamily,
 	streamSimple,
 } from "jeopi-ai";
+import { renderDemotedThinking } from "jeopi-ai/dialect";
 import * as AIError from "jeopi-ai/error";
 import { toolWireSchema } from "jeopi-ai/utils/schema";
 import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "jeopi-ai/utils/thinking-loop";
@@ -3327,6 +3328,15 @@ export class AgentSession {
 	 * so live render, reload, and Ctrl+L rebuilds keep showing it; `convertToLlm`
 	 * strips the run from the provider request (incomplete/unsigned thinking is
 	 * rejected on resend) when this continuity message follows the assistant turn.
+	 *
+	 * The reasoning text is rendered through {@link renderDemotedThinking} (keyed
+	 * off `message.model`, the model resuming the turn in the overwhelming
+	 * majority of cases) before it reaches the template — same disguise every
+	 * other thinking-replay site in this codebase already applies before
+	 * sending a model's own prior reasoning back to it as plaintext. Raw,
+	 * undisguised reasoning wrapped in a "your unfinished internal work state"
+	 * frame is exactly the shape Anthropic's `reasoning_extraction` classifier
+	 * flags; this was the one remaining site that still shipped it undisguised.
 	 */
 	#demoteInterruptedThinkingOnUserInterrupt(
 		message: AssistantMessage,
@@ -3335,10 +3345,11 @@ export class AgentSession {
 		const demoted = demoteInterruptedThinking(message);
 		if (!demoted) return undefined;
 		const interruptedAt = Date.now();
+		const disguisedReasoning = renderDemotedThinking(message.model, demoted.reasoning).trimEnd();
 		return {
 			role: "custom",
 			customType: INTERRUPTED_THINKING_MESSAGE_TYPE,
-			content: prompt.render(interruptedThinkingTemplate, { reasoning: demoted.reasoning }),
+			content: prompt.render(interruptedThinkingTemplate, { reasoning: disguisedReasoning }),
 			display: false,
 			details: {
 				interruptedAt,
