@@ -522,6 +522,17 @@ const RETRY_BACKOFF_MAX_DELAY_MS = 8_000;
 const REFUSAL_BACKOFF_BASE_MS = 2_000;
 const REFUSAL_BACKOFF_MAX_MS = 30_000;
 const REFUSAL_BACKOFF_BUDGET_MS = 30 * 60_000;
+/**
+ * Consecutive-use cap on the `reasoning_extraction` fast-degrade path (strip
+ * unsigned thinking, resend same-model, zero delay — see
+ * `#reasoningExtractionDegradeStreak` below). Bounds the worst case where a
+ * pathological classifier state (documented: 1,164 refusals over ~4 hours in
+ * one incident) refuses every turn's fresh thinking in a row — after this
+ * many back-to-back fast-degrades with no intervening success, fall through
+ * to the Rung-4 ladder above, which already wall-clock-bounds via
+ * {@link REFUSAL_BACKOFF_BUDGET_MS}.
+ */
+const REASONING_EXTRACTION_DEGRADE_STREAK_CAP = 3;
 
 function positiveEnvMs(name: string): number | undefined {
 	const raw = process.env[name];
@@ -1611,13 +1622,31 @@ export class AgentSession {
 	/** Rung-4 classifier-refusal resend streak (post fallback-ladder). */
 	#refusalBackoff: { startedAt: number; attempt: number } | undefined = undefined;
 	/**
-	 * One-shot latch: `reasoning_extraction` classifier refusals are payload-shape-bound
-	 * (see advisor/runtime.ts `#includeThinking` degrade) — resending the identical batch
-	 * predictably re-refuses. Set the first time `#handleRetryableError` strips unsigned
-	 * thinking/redactedThinking from active context and resends on the same model; never
-	 * reset, mirroring the advisor's permanent-for-the-session degrade.
+	 * `reasoning_extraction` classifier refusals are payload-shape-bound (see
+	 * advisor/runtime.ts `#includeThinking` degrade): resending the IDENTICAL
+	 * batch predictably re-refuses, so a bare retry can't help. But this is a
+	 * point-in-time strip of the CURRENT active context, not a persistent
+	 * setting — unlike the advisor's permanent-for-the-session
+	 * `includeThinking` flag, it does not prevent NEW unsigned thinking from a
+	 * LATER turn (a fresh advisor exchange, another interrupt, plain
+	 * continued conversation) from independently triggering its own,
+	 * genuinely-different refusal. A one-shot latch here previously left every
+	 * occurrence after the first to fall through to the generic Rung-4
+	 * backoff ladder unstripped — resending the same unstripped payload until
+	 * the wall-clock budget expired and the turn failed visibly.
+	 *
+	 * Fixed by gating on whether {@link #stripUnsignedThinkingForRefusalDegrade}
+	 * actually found something to strip THIS time (it already returns
+	 * `undefined` when there is nothing new to remove, which is itself proof
+	 * the resend would be payload-identical and degrading again cannot help)
+	 * rather than a permanent flag — each distinct occurrence gets its own
+	 * degrade attempt. Bounded by {@link REASONING_EXTRACTION_DEGRADE_STREAK_CAP}
+	 * consecutive uses (reset on any turn that actually succeeds) so a
+	 * pathological classifier state that refuses every turn's fresh thinking
+	 * in a row still falls through to the wall-clock-bounded ladder instead
+	 * of resending at zero delay indefinitely.
 	 */
-	#reasoningExtractionDegraded = false;
+	#reasoningExtractionDegradeStreak = 0;
 	#retryPromise: Promise<void> | undefined = undefined;
 	#retryResolve: (() => void) | undefined = undefined;
 	#activeRetryFallback: ActiveRetryFallbackState | undefined = undefined;
@@ -3674,6 +3703,7 @@ export class AgentSession {
 					});
 					this.#retryAttempt = 0;
 					this.#refusalBackoff = undefined;
+					this.#reasoningExtractionDegradeStreak = 0;
 				}
 				if (assistantMsg.provider === "opencode-go") {
 					this.#modelRegistry.authStorage.recordUsageCost(assistantMsg.provider, assistantMsg.usage.cost.total, {
@@ -13224,29 +13254,39 @@ export class AgentSession {
 		const errorMessage = message.errorMessage || "Unknown error";
 		// `reasoning_extraction` is payload-shape-bound (see advisor/runtime.ts): resending
 		// the identical batch predictably re-refuses, unlike probabilistic classifier flags
-		// where backoff/fallback genuinely help. Degrade once — strip unsigned
-		// thinking/redactedThinking from active context and resend immediately on the same
-		// model — before falling through to the generic fallback-pin / backoff ladder below,
-		// which would otherwise retry the unchanged, re-refusing payload.
+		// where backoff/fallback genuinely help. Strip unsigned thinking/redactedThinking
+		// from active context and resend immediately on the same model — before falling
+		// through to the generic fallback-pin / backoff ladder below, which would otherwise
+		// retry the unchanged, re-refusing payload. Gated on the strip itself finding
+		// something to remove THIS time (not a one-shot flag): a later turn can
+		// independently accumulate fresh unsigned thinking and trigger its own genuinely
+		// different refusal, and `#stripUnsignedThinkingForRefusalDegrade` already reports
+		// "nothing to strip" via `undefined` when the payload truly is unchanged — which is
+		// itself the correct signal to fall through instead of degrading again. Bounded by
+		// `REASONING_EXTRACTION_DEGRADE_STREAK_CAP` consecutive uses so a pathological
+		// classifier state refusing every turn's fresh thinking in a row still reaches the
+		// wall-clock-bounded ladder instead of resending at zero delay indefinitely.
 		if (
 			classifierRefusal &&
 			message.stopDetails?.category === "reasoning_extraction" &&
-			!this.#reasoningExtractionDegraded
+			this.#reasoningExtractionDegradeStreak < REASONING_EXTRACTION_DEGRADE_STREAK_CAP
 		) {
-			this.#reasoningExtractionDegraded = true;
 			const stripped = this.#stripUnsignedThinkingForRefusalDegrade(this.agent.state.messages);
-			if (stripped) this.agent.replaceMessages(stripped);
-			this.#removeAssistantMessageFromActiveContext(message, "reasoning-extraction-degrade");
-			await this.#emitSessionEvent({
-				type: "auto_retry_start",
-				attempt: this.#retryAttempt,
-				maxAttempts: retrySettings.maxRetries,
-				delayMs: 0,
-				errorMessage,
-				errorId: message.errorId,
-			});
-			this.#scheduleAgentContinue({ delayMs: 1, generation });
-			return true;
+			if (stripped) {
+				this.#reasoningExtractionDegradeStreak++;
+				this.agent.replaceMessages(stripped);
+				this.#removeAssistantMessageFromActiveContext(message, "reasoning-extraction-degrade");
+				await this.#emitSessionEvent({
+					type: "auto_retry_start",
+					attempt: this.#retryAttempt,
+					maxAttempts: retrySettings.maxRetries,
+					delayMs: 0,
+					errorMessage,
+					errorId: message.errorId,
+				});
+				this.#scheduleAgentContinue({ delayMs: 1, generation });
+				return true;
+			}
 		}
 
 		const id = this.#classifyRetryMessage(message);
