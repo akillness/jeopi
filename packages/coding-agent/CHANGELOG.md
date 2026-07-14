@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.2] - 2026-07-14
+
 ### Fixed
 
 - `AgentSession`'s `reasoning_extraction` classifier-refusal auto-degrade (strip unsigned thinking, resend same-model) was gated behind a one-shot latch that, once spent on the first refusal in a session's lifetime, never reset — every subsequent, independent `reasoning_extraction` refusal in the same session (a plausible scenario across multiple turns, interrupts, or advisor exchanges) fell through to the generic backoff ladder with the payload still unstripped, resending it unchanged until the 30-minute wall-clock budget expired and the turn failed visibly with the raw refusal. Replaced the one-shot flag with a bounded, re-triggerable streak: the degrade now fires again for each distinct occurrence (gated on whether there is actually new unsigned thinking to strip, not on session history), capped at 3 consecutive fast-degrades with no intervening success before falling through to the wall-clock-bounded ladder, and resets on any turn that recovers.
