@@ -40,7 +40,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | triaged 21/21, ported 3 + 3 N/A, 15 deferred (model perf tracking, Model Hub, sequential queueing, retry-fallback divergence, cache invalidation) |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
-| 7 | v16.5.0 | 3047c27c3 | 241 | +75 | pending |
+| 7 | v16.5.0 | 3047c27c3 | 241 | +75 | in progress: 12/75 ported, ~25 deferred (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation), ~38 not yet reviewed |
 | 8 | v16.5.1 | 14b5da76a | 431 | +190 | pending |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
@@ -790,3 +790,44 @@ tip-weight-decoupling port (`9c77369b5`) directly de-risks checkpoint
 5's `93db3913d` port, which had already zeroed out `[NEW]` tips in
 `tips.txt` — confirms that earlier port didn't leave the test suite
 fragile.
+
+### Checkpoint 7 — v16.5.0 (75 commits) — IN PROGRESS (12/75 ported)
+
+75 commits between `20c0a2e41`..`3047c27c3`. Largest/riskiest
+checkpoint so far: introduces an entirely new internal package
+(`harbor-manager`/`metaharness`, a benchmark/experiment orchestration
+tool — not present anywhere in jeopi, not listed in AGENTS.md's package
+table), a `downshift`/`boomerang` agent-workflow feature that is added
+then partially removed within the same checkpoint, a new `launch` tool
+(persistent project service + pty terminal rendering), and a
+session-compaction/collapsed-transcript feature bucket touching
+config schema + the `snapcompact` package + session recovery. Full
+per-commit list captured in `git log --reverse --oneline
+20c0a2e41..v16.5.0` for resume.
+
+**Ported (12 upstream commits via 10 jeopi commits):**
+1. `fabded89e` → `f7d3fe402`: empty provider responses classified as retriable
+2. `8f783d100` → `13bd9f919`: removed redundant TTSR parse-error logging
+3. `900ffef06` → `3d3c1aa46`: text verbosity default high→medium
+4. `8c8afaf47`+`df7193731`+`3047c27c3` → `c69059fe5`: `tab.evaluate` always runs in the page's main JS world (squashed with same-day test-timeout/skip-when-chromium-cant-exec fixups)
+5. `59ecd2a4d` → `4e9067f3d`: ACP elicitation type guards (pure narrowing refactor)
+6. `3e5b7da6f` → `b7ba70754`: auth-gateway diagnostic response headers (`x-request-id`, LiteLLM-style cost/model/duration headers)
+7. `bd7d39522` → `43cba08c0`: browser `wait()` gained predicate-polling form, `wait(fn, {timeout,interval})`
+8. `46ed33f27` → `62505dfcc`: `/tan` records `session_init` on the clone's own session log
+9. `c69c04836` → `23d02c66e`: CI UI/TUI bucket chunk size 10→5 (Bun GC heap abort avoidance) — **partial port**, the paired `repro-issue-1955` test's `Settings.init`/`resetSettingsForTest` addition was **not** ported (confirmed `renderInitialMessages`/`initTheme` read no global `Settings` state on jeopi's current code path; upstream's stated root cause, a `display.collapseCompacted` settings read, doesn't exist in jeopi yet — deferred with the session-compaction bucket below)
+10. `eb52f6ea2` → `83a4ec908`: `/tan` clones get a context-switch developer-message notice before their prompt runs
+
+**Explicitly deferred (reason given, not yet a final skip decision):**
+- `69865b609` (system prompt verification-guidelines rewrite) — coupled to the same `system-prompt.md` structural divergence already flagged blocking `1c6f5dc18` (checkpoint 1, item 19); jeopi's own Verify/Cleanup sections already diverged (mentions jeopi-specific "tester agent"), needs one combined manual review rather than two clobbering passes.
+- Harbor-manager/metaharness bucket (whole new package, not in jeopi): `14aa1e206`, `0856055df`, `96ba1a99f`, `32714d2fd`, `6f6f2f263`, `e90bbf121`, `017fd641d`, `b451f9456`, `0f9a30153`, `35d3e49d1`, `77f641268`, `8702a3f22`, and the parts of `42d81f189`/`4cfec9345`/`96cc9caa6`/`acc0211cf`/`d8ad39320`/`4c1c5f40d`/`e770cdc4d`/`f83e40921`/`64dfb98c2`/`6fcb1b300` that are harbor/launch-tool-coupled — needs a user decision on whether this internal benchmarking tool is in scope for the fork at all before any of it is triaged commit-by-commit.
+- Downshift/boomerang agent-workflow bucket (added then partially removed upstream within this same checkpoint): `9f1ff90a3`, `e42589d43`, `d7849ddea`, `d76872274`, `4d019e561`, `45e7a12f3`, `95ecc61bc`, `590270ca2`, `f405525bf` (the removal commit — moot for jeopi since none of the "add" commits were ported).
+- Session-compaction/collapsed-transcript bucket: `d6f8c061b`, `5c2bae47a`, `585b9e437`, `711fa4312`, `4903a1351`, `aa52fa423`, `22f2c1947`, plus `bf5eb3769` (pending context snapshot rebase after compaction) — touches config schema, `snapcompact` package, and session recovery together; needs one coherent pass, not commit-by-commit.
+- Model-Hub-coupled: `8dbc43b6e` (floating model selection), `af7345e87` (role switching/filtering in model picker) — same deferred-Model-Hub bucket as checkpoints 4/5.
+- Vendored-coreutils BSD compat: `6b2f4ad5d`, `198efb3e4` — continuation of checkpoint 3's already-deferred vendored-coreutils bucket.
+- `edd959a38` (removed docs-index generation, `PI_DOCS_EMBED` env-var injection instead) — coupled to checkpoint 1's deferred Bun.build bundling migration (`d179968bb`); jeopi's build still generates and CI-checks `docs-index.generated.txt` via `gen:docs`, confirmed load-bearing in every `check:ts` run.
+- Experimental/wip: `ac1625361` ("wip: rslide"), `4df6f6683`/`f80fb4836`/`da24614d5` (prewalk finalization/guidance/status-line — explicitly experimental per commit messages).
+- `d0f90f35a` (removed unreliable web search providers, −401 lines) — needs review against jeopi's still-deferred web-search-provider-rewrite bucket from checkpoint 1 before deciding whether this is a compatible subtraction or conflicts with what jeopi kept.
+- `a5673c90f` (removed legacy Google interactions routing, −1510/+95 across 18 files) — large deletion, needs careful review that jeopi doesn't still depend on the removed path before porting.
+- `f9f6ed9e8` (replaced legacy `pi/` role alias prefix, 38 files) — potentially relevant to jeopi's own `pi`/`omp`→`jeopi` rename conventions; needs dedicated review, not a quick port.
+
+**Not yet reviewed at all (~38 remaining):** `0d07da529`, `d4ffb4b64`, `87a64b2f6`, `58d6130b5`, `0a98aa252`, `e45796908`, `a886a3090`, `485d207a7`, `896c4bb17`, `883e68f2d`, plus the harbor/launch/downshift/compaction bucket members not yet confirmed above. `a3960bb4e` (version bump) is the expected trailing N/A.
