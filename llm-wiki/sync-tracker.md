@@ -35,7 +35,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | # | tag | upstream commit | cumulative commits | delta | status |
 |---|-----|-----------------|--------------------|-------|--------|
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
-| 2 | v16.4.4 | 29a6a6800 | 82 | +13 | in progress: 5/10 ported + 3 N/A, 2 remaining (1 large feature) |
+| 2 | v16.4.4 | 29a6a6800 | 82 | +13 | triaged 10/10, ported 5 + 3 N/A, 2 deferred (large feature) |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | pending |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
@@ -319,7 +319,7 @@ list later. At this rate (~1469 total upstream commits across 16
 checkpoints), full catch-up is a multi-session effort — this tracker is
 the source of truth for exactly where the next turn should resume.
 
-### Checkpoint 2 — v16.4.4 (10 substantive commits) — in progress
+### Checkpoint 2 — v16.4.4 (10 substantive commits) — triaged, tail deferred
 
 10 commits between `6328671d1` and `29a6a6800`. Notable: small-model
 preprocessing centralization (`93635e7b6`, large — new `message-preproc.ts`
@@ -349,13 +349,20 @@ install artifact portability (`bc7a143c1`), test null-safety hardening
   request. Direct 1:1 port. Verified: `bun test
   .../test/tools/image-gen.test.ts` (6/6 pass, incl. 2 new tests) + tsgo
   + biome.
-- [ ] `93635e7b6` feat(coding-agent): centralized preprocessing/guidance
-  for small models — 687+/128- lines across `tiny/message-preproc.ts`
-  (new, 133 lines), `tiny/text.ts` (heavily refactored), `tiny/worker.ts`,
-  `title-generator.ts`. Not yet reviewed for jeopi's `tiny/` divergence.
-- [ ] `29a6a6800` fix(coding-agent): preserved chat envelope in title
-  preprocessing — builds on `93635e7b6`'s new `message-preproc.ts`; port
-  together with it.
+- [ ] **Deferred — large feature, dedicated review**: `93635e7b6` feat:
+  centralized preprocessing/guidance for small models + `29a6a6800` fix
+  (builds on it) — 687+/128- lines across 15 files: new
+  `tiny/message-preproc.ts` (133 lines, centralizes noise-stripping/
+  truncation currently duplicated across `tiny/text.ts`/`worker.ts`/
+  `title-generator.ts`), a new 332-line `scripts/bench-title-models.ts`
+  benchmark harness, `auto-thinking/classifier.ts`,
+  `prompts/system/{tiny-title-system,title-system}.md`,
+  `session/agent-session.ts`, `.omp/skills/system-prompts/small-models.md`
+  (upstream repo-dev skill doc, needs `jeopi`-renaming if ported), and 3
+  test files. Comparable in scope to checkpoint 1's deferred web-search/
+  pcre2-grep rewrites — same bucket, same reason (needs a dedicated
+  session to diff jeopi's actual `tiny/` module against upstream's
+  refactor before extracting the centralized module cleanly).
 - [x] `bc7a143c1` fix(setup): used portable native install artifacts —
   jeopi commit `f98711401`. Windows release binary now compiles with
   `bun-windows-x64-baseline` (not the AVX2-only `-modern` target,
@@ -402,10 +409,10 @@ install artifact portability (`bc7a143c1`), test null-safety hardening
   lockfile, own changelog finalization). Not applicable to a fork with
   its own versioning/changelog cadence.
 
-Status: **in progress**, 5/10 substantive commits ported (4 jeopi
+Status: **triaged 10/10** — 5/10 substantive commits ported (4 jeopi
 commits: `935a34034`, `7087f7272`, `f98711401`, `b85cfd000`), 3 N/A
 (confirmed against actual jeopi code/architecture, not assumed), 2
-remaining — both coupled to the single not-yet-reviewed large feature
-(`93635e7b6` small-model preprocessing centralization + `29a6a6800`
-which builds on it). Checkpoint 2's mechanical work is done; the only
-remaining item is a genuine feature review.
+deferred as a large feature (small-model preprocessing centralization,
+same bucket/reason as checkpoint 1's deferred items). Checkpoint 2's
+mechanical work is complete — everything left needs a dedicated
+large-feature session, same as checkpoint 1's tail.
