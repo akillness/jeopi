@@ -171,12 +171,37 @@ to a dedicated pass):
   leasing, a feature jeopi's `auth-storage.ts` doesn't have at all yet
   (no match for the table name anywhere in the file). Needs that base
   feature ported first; out of scope as a standalone fix.
-- [ ] Remaining ~20 substantive commits in this checkpoint — not yet
-  ported. Next candidates: `7d72ee9e0` + `dabb2291a` (advisor:
-  empty/invalid tool lists, 2 commits), `f53411295` + `449310eb1`
-  (startup changelog rendering, 2 commits), `1c6f5dc18` (agent
-  delegation prompt refinement), `45143e8c7` (natives glob traversal
-  depth cap — Rust, `crates/pi-natives`, needs a cargo build to verify).
+- [x] `7d72ee9e0` + `dabb2291a` fix(advisor): preserved explicit empty
+  tool lists — jeopi commit `6e139870a`. `filterAdvisorTools`,
+  `loadWatchdogConfigFile`, `serializeWatchdogConfig`, `commitTools` (the
+  tools-picker overlay), and `AgentSession`'s advisor tool resolution now
+  distinguish `undefined` (default read/grep/glob) from an explicit `[]`
+  (no tools).
+- [x] `f53411295` + `449310eb1` fix(coding-agent): bound startup
+  changelog to unseen releases — jeopi commit `aba69f857`. New
+  `parseChangelogVersion`/`selectStartupChangelog`/`renderChangelogEntries`
+  cap first-run/upgrade startup notes to 3 releases and 64 KiB instead of
+  dumping the full packaged changelog on any missing/malformed marker;
+  `/changelog` and the slash-command registry now share the same
+  rendering helper.
+- [x] `1c6f5dc18` feat(prompts): sharpened eager-task delegation guidance
+  — jeopi commit `d075dbe79`, **`eager-task.md` portion only**.
+  `system-prompt.md`'s delegation section has diverged structurally from
+  upstream's (different paragraph organization) — flagged for separate
+  manual review rather than force-fitted.
+- [skip] `3b6c3409e` fix: paranoid auth storage schema handling —
+  depends on `auth_credential_refresh_leases` table/credential-refresh
+  leasing, a feature jeopi's `auth-storage.ts` doesn't have at all yet
+  (no match for the table name anywhere in the file). Needs that base
+  feature ported first; out of scope as a standalone fix.
+- [ ] Remaining ~17 substantive commits in this checkpoint — not yet
+  ported. Next candidate: `45143e8c7` (natives glob traversal depth cap —
+  Rust, `crates/pi-natives`, needs a cargo build to verify).
+- [ ] **Partial**: `system-prompt.md` delegation-section refinement from
+  `1c6f5dc18` — needs manual semantic port into jeopi's restructured
+  section (search for "NEVER abandon phases under scope pressure" /
+  "Use `{{toolRefs.task}}` to map unknown code" in `system-prompt.md` to
+  locate jeopi's equivalent).
 - [ ] Large features flagged for dedicated review before porting: vibe
   mode (4 commits), plan-subagent removal (conflicts with jeopi's
   `planner` role-agent — needs a design decision, not a mechanical port),
@@ -189,11 +214,12 @@ to a dedicated pass):
   large Rust + TS surface, needs dedicated review), Bun.build bundling
   migration (`d179968bb` — build infra, verify via actual binary build).
 
-Status: **in progress**, 21/~69 upstream commits ported and verified,
-1 explicitly skipped as out-of-scope (`bun test` + full `bun check`
-clean after each; 16 jeopi commits, some squashing multiple upstream
-commits that touched the same function in sequence). Continuing
-commit-by-commit in following turns. At this rate (~1469 total upstream
-commits across 16 release checkpoints), full catch-up is a multi-session
-effort — this tracker is the source of truth for exactly where the next
-turn should resume.
+Status: **in progress**, 24/~69 upstream commits ported (1 partially —
+`eager-task.md` done, `system-prompt.md` deferred) and verified, 1
+explicitly skipped as out-of-scope (`bun test` + full `bun check` clean
+after each; 19 jeopi commits, some squashing multiple upstream commits
+that touched the same function in sequence). Continuing commit-by-commit
+in following turns. At this rate (~1469 total upstream commits across 16
+release checkpoints), full catch-up is a multi-session effort — this
+tracker is the source of truth for exactly where the next turn should
+resume.
