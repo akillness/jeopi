@@ -5,6 +5,7 @@
 ### Added
 
 - `jeopi acp` now prints a short hint on stderr when launched from an interactive terminal (stdin is a TTY): the command speaks JSON-RPC over stdout and is meant to be spawned by an ACP client such as Zed, so running it by hand previously showed nothing at all. Ported from oh-my-pi (upstream `54af1c03f`).
+- Added a `c` hotkey in the plan-review overlay that copies the current reviewed plan markdown to the system clipboard, including in-overlay edits. Ported from oh-my-pi (upstream `4fa5b61b0`).
 
 ### Changed
 

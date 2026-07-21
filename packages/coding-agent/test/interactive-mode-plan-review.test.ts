@@ -18,6 +18,7 @@ import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "jeopi-cli/session/messages";
 import { SessionManager } from "jeopi-cli/session/session-manager";
 import { AUTO_THINKING } from "jeopi-cli/thinking";
+import * as clipboard from "jeopi-cli/utils/clipboard";
 import { setKeybindings } from "jeopi-tui";
 import { formatNumber, TempDir } from "jeopi-utils";
 
@@ -320,6 +321,39 @@ describe("InteractiveMode plan review rendering", () => {
 			if (previousVisual === undefined) delete Bun.env.VISUAL;
 			else Bun.env.VISUAL = previousVisual;
 		}
+	});
+
+	it("copies the overlay's current edited plan markdown from the real plan review overlay", async () => {
+		let capturedOverlay: PlanReviewOverlay | undefined;
+		const overlayHandle = { hide: vi.fn() };
+		vi.spyOn(mode.ui, "showOverlay").mockImplementation(component => {
+			capturedOverlay = component as PlanReviewOverlay;
+			return overlayHandle as never;
+		});
+		const copySpy = vi.spyOn(clipboard, "copyToClipboard").mockResolvedValue(undefined);
+		const statusSpy = vi.spyOn(mode, "showStatus");
+		const constructorPlan = "# Plan\n\nOriginal constructor body.\n";
+		const editedPlan = "# Plan\n\nEdited in overlay.\n\n## Verify\n\n- run focused test\n";
+
+		const choice = mode.showPlanReview(constructorPlan, "Plan mode - next step", [
+			"Approve and execute",
+			"Refine plan",
+		]);
+
+		expect(capturedOverlay).toBeDefined();
+		const overlay = capturedOverlay!;
+		overlay.setPlanContent(editedPlan);
+		overlay.handleInput("c");
+		await Promise.resolve();
+
+		expect(copySpy).toHaveBeenCalledTimes(1);
+		expect(copySpy).toHaveBeenCalledWith(editedPlan);
+		expect(copySpy).not.toHaveBeenCalledWith(constructorPlan);
+		expect(statusSpy).toHaveBeenCalledWith("Copied plan to clipboard");
+
+		overlay.handleInput("\x1b");
+		await expect(choice).resolves.toBeUndefined();
+		expect(overlayHandle.hide).toHaveBeenCalled();
 	});
 
 	it("Refine with no annotations silently aborts approval and returns to the editor", async () => {
