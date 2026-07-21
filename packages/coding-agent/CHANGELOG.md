@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `jeopi acp` now prints a short hint on stderr when launched from an interactive terminal (stdin is a TTY): the command speaks JSON-RPC over stdout and is meant to be spawned by an ACP client such as Zed, so running it by hand previously showed nothing at all. Ported from oh-my-pi (upstream `54af1c03f`).
+
 ### Fixed
 
 - Bare `skill://name` URLs (no relative path) now resolve to the skill directory for path-only tool operations (`bash` `skill://` expansion, `search`/`find` on internal URLs) instead of `SKILL.md`; `read` still returns `SKILL.md` instructions for the bare form. Ported from oh-my-pi (upstream `cf4e510ac`).
@@ -10,6 +14,7 @@
 - `read` with a `:raw` selector (alone or combined with a line range, e.g. `:raw:31-31`) no longer pads the result with leading/trailing context lines — raw output has no line numbers, so padding was indistinguishable from the requested content. Non-raw range reads keep expanding with context as before. Ported from oh-my-pi (upstream `83fbefac2`).
 - `glob` no longer reports the contradictory "No files found matching pattern" next to a "timed out; returning 0 partial matches" notice. A timed-out empty scan now states explicitly that the result is incomplete (not proof of absence) and suggests scoping to a deeper directory; the TUI renders it as "No matches before timeout (scan incomplete)" instead of a definitive no-files claim. Ported from oh-my-pi (upstream `530faffd2`).
 - Empty assistant `stop` responses that exhaust the empty-stop retry cap now always emit a failed `auto_retry_end` session event (previously only when a prior transient-error retry had already set a nonzero retry attempt), so the TUI surfaces a visible retry failure instead of silently settling. Ported from oh-my-pi (upstream `51cc34ac6`).
+- Fixed ACP turns ending silently when the provider request failed before streaming any assistant output (e.g. an intermittent `HTTP 400 model_not_supported` after retries): such failures emit only `agent_end` with the error on the assistant message, which never mapped to a session update. The error message is now delivered to the client as an `agent_message_chunk`, without duplicating errors that already streamed. Ported from oh-my-pi (upstream `54af1c03f`).
 
 ## [16.4.2] - 2026-07-14
 
