@@ -41,7 +41,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | triaged 75/75, ported 19 + 1 N/A, 55 deferred to dedicated large-feature sessions (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls, Model Hub, ACP SDK major bump, misc large/experimental) |
-| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 8/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
+| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 13/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
 | 11 | v17.0.1 | 6ae7cdbf9 | 756 | +157 | pending |
@@ -874,10 +874,13 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 6. `70316a7f8` → `b68bafab1`: collab-web live transcript deduped active tool cards against committed assistant messages too (not just the stream ghost), and stops showing the "thinking…" shimmer while a tool card is already rendering
 7. `8480a84b3` → `892226c28`: collab-web deduped active tool cards render the ActiveTool's current execution args, not the stale raw args captured at tool-call time
 8. `3ebcb3690` → `6a0680675`: threaded `localProtocolOptions` through `ExtensionRunner`/`ExtensionContext`/`createCustomToolContext` so extension-registered MCP tools resolve `local://` session attachments against the correct calling session too (follow-up to #5)
+9. `5e781a9c7` → `66096b939`: OAuth completion page now tells users they can close the tab manually (Firefox ignores `window.close()` on unscripted tabs); new regression test drives the real callback path directly since jeopi has no `/launch` route
+10. `b7aa046ed` → `4c6e1bee6`: stale cached model limits no longer override fresh static-catalog limits after a static fingerprint mismatch — same-id cache rows are sanitized (`contextWindow`/`maxTokens` reset to `null`) instead of passed through verbatim
+11. `63adfeece` → `088352a76`: plugin installer removes the stale pinned git dependency edge before invoking Bun when replacing a pinned source with an unpinned one for the same repo, avoiding a Bun `DependencyLoop`
+12. `e7c678dbe` → `963f10a18`: `ultrathink`/`orchestrate`/`workflowz` magic keywords now trigger beside sentence punctuation and quotes (new shared `magicKeywordRegex` boundary builder), while still rejecting inflections and path/extension occurrences
 
-**Not yet reviewed:** ~182 remaining. Next in queue per the commit
-list above: `5e781a9c7`, `b7aa046ed`, `63adfeece`, `e7c678dbe`,
-`358811115`, `f98ef2e1e`, and onward through
+**Not yet reviewed:** ~178 remaining. Next in queue per the commit
+list above: `358811115`, `f98ef2e1e` (Cursor max-mode pair), and onward through
 the list. Given the volume, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
