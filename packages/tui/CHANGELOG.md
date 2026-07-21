@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed ordinary navigation keys (arrows, page up/down, etc.) paying a full frame of input-render-grace latency meant only for the Ctrl+C/Esc double-press gesture window: the grace period now arms only when the incoming key is Ctrl+C or Esc, so idle-state keyboard navigation repaints immediately again. Ported from oh-my-pi (upstream `1822603b2`, TUI portion only — the accompanying Model Hub/model-browser keyboard-navigation changes are coupled to jeopi's not-yet-ported Model Hub feature).
+
 ## [16.2.25] - 2026-07-05
 
 ### Added
