@@ -37,7 +37,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | triaged 10/10, ported 5 + 3 N/A, 2 deferred (large feature) |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | reviewed 41/41, ported 3 + 4 N/A/subsumed, 34 deferred to dedicated large-feature sessions (model hub, ask dialog, vendored coreutils, agent suspension, task restructure, TUI loader, bash fixup removal, tool-arg recovery) |
-| 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | in progress: 2/~21 ported (3 upstream commits, 2 jeopi commits) |
+| 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | in progress: 3/~21 ported + 2 N/A (4 upstream commits, 3 jeopi commits) |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | pending |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | pending |
@@ -602,18 +602,47 @@ checkpoint-3-deferred flat task structure).
   aborts). Direct 1:1 port. Verified: `bun test`
   `agent-session-message-pipeline.test.ts` + `input-controller-escape.test.ts`
   (53/53 pass, incl. 3 new tests) + full `bun run check:ts`.
+- [x] `7cef4a769` fix(ai): improved OAuth credential resolution fallback
+  logic — jeopi commit `30b46cf97`. Replaced the single top-ranked-only
+  fallback with a 3-pass ladder (strict → blocked-allowed+filtered →
+  blocked-allowed+unfiltered) run over every candidate, so an exhausted
+  Pro-eligible account is now returned (real usage-limit retry
+  semantics) instead of "No API key found" when the top-ranked candidate
+  is an idle-but-ineligible account. Adapted: jeopi has no generalized
+  multi-tier `planRequirement` abstraction (only a boolean
+  `enforceProRequirement`/`hasOpenAICodexProPlan` Pro gate) — ported the
+  structural ladder fix against jeopi's actual gate shape. Verified:
+  `bun test auth-storage-codex-selection.test.ts` (21/21, incl. new
+  regression test) + full `auth-storage*` suite (152/152) + `bun run
+  check:ts`.
+- [x] **N/A** `4181ef18b` build: prevented embedding native runtime
+  dependencies — depends on `packages/coding-agent/scripts/compile-binary.ts`
+  and the `Bun.build()`-API binary-compile path, neither of which exist
+  in jeopi (confirmed: no `compile-binary.ts` file; `build-binary.ts`
+  and `ci-release-build-binaries.ts` both still spawn CLI-invoked `bun
+  build --compile`). Same root cause as `d179968bb`/`3d2568060`'s N/A
+  findings — jeopi never adopted the Bun.build JS-API migration for any
+  binary-compile path.
+- [x] **N/A** `666327608` feat(coding-agent): improved model search
+  ranking by match quality — touches
+  `packages/coding-agent/src/modes/components/model-browser.ts`, which
+  doesn't exist in jeopi (confirmed: only `model-selector.ts` exists).
+  Coupled to the checkpoint-3-deferred Model Hub feature
+  (`59d08172c`+series) that introduces `model-browser.ts`/`model-hub.ts`
+  in the first place.
 
-Status: **in progress**, 2/~21 ported (2 jeopi commits covering 3
-upstream commits). Remaining candidates not yet reviewed:
-`41317cc23`/`b6559861d`/`c4fa0ebaa`/`a0dcb8ae2`/`d54dcc222` (model perf
-tracking sequence, likely large), `a3117c284` (async-drain utility
-migration to shared package), `666327608` (model search ranking),
-`e7955ddf3` (sequential message queueing), `54bafa1cc` (fallback chain
-config), `7cef4a769` (OAuth credential resolution fallback, `packages/ai`),
-`6bb0878b6`+`43f8999a9` (cache invalidation for usage reports, 2-commit
-sequence), `4181ef18b` (build: prevented embedding native runtime deps,
-small), `0ae8efd64` (coreutils shell builtins — coupled to checkpoint
-3's deferred vendored-coreutils bucket), `6c292b97c` (preserved
-completed/abandoned tasks — likely coupled to checkpoint 3's deferred
-flat task structure), `20c0a2e41` (storage test fixes for schema v6,
-likely coupled to `c4fa0ebaa`'s migration).
+Status: **in progress**, 3/~21 ported (3 jeopi commits covering 4
+upstream commits), 2 confirmed N/A this round. Remaining candidates not
+yet reviewed: `41317cc23`/`b6559861d`/`c4fa0ebaa`/`a0dcb8ae2`/`d54dcc222`
+(model perf tracking sequence, likely large), `a3117c284` (async-drain
+utility migration to shared package), `e7955ddf3` (sequential message
+queueing), `54bafa1cc` (fallback chain config), `6bb0878b6`+`43f8999a9`
+(cache invalidation for usage reports — reviewed at a glance, genuine
+new auth-broker wire-protocol feature: new `POST /v1/usage/stale`
+endpoint, wire-schemas, `AuthCredentialStore.invalidateUsageCache` hook;
+larger than a quick win, needs a proper look), `0ae8efd64` (coreutils
+shell builtins — coupled to checkpoint 3's deferred vendored-coreutils
+bucket), `6c292b97c` (preserved completed/abandoned tasks — likely
+coupled to checkpoint 3's deferred flat task structure), `20c0a2e41`
+(storage test fixes for schema v6, likely coupled to `c4fa0ebaa`'s
+migration).
