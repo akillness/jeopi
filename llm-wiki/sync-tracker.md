@@ -40,7 +40,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | triaged 21/21, ported 3 + 3 N/A, 15 deferred (model perf tracking, Model Hub, sequential queueing, retry-fallback divergence, cache invalidation) |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
-| 7 | v16.5.0 | 3047c27c3 | 241 | +75 | in progress: 15/75 ported, ~26 deferred (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite), ~34 not yet reviewed |
+| 7 | v16.5.0 | 3047c27c3 | 241 | +75 | in progress: 17/75 ported, ~27 deferred (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls on a different pinned puppeteer version), ~31 not yet reviewed |
 | 8 | v16.5.1 | 14b5da76a | 431 | +190 | pending |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
@@ -805,7 +805,7 @@ config schema + the `snapcompact` package + session recovery. Full
 per-commit list captured in `git log --reverse --oneline
 20c0a2e41..v16.5.0` for resume.
 
-**Ported (15 upstream commits via 13 jeopi commits):**
+**Ported (17 upstream commits via 15 jeopi commits):**
 1. `fabded89e` → `f7d3fe402`: empty provider responses classified as retriable
 2. `8f783d100` → `13bd9f919`: removed redundant TTSR parse-error logging
 3. `900ffef06` → `3d3c1aa46`: text verbosity default high→medium
@@ -819,6 +819,8 @@ per-commit list captured in `git log --reverse --oneline
 11. `d4ffb4b64` → `682423c05`: status event log shows a tail window of the most recent entries behind a leading "… N earlier" marker (was head window + trailing "… N more"), expanded view widens to the viewport-sized preview window
 12. `896c4bb17` → `5df2e25fa`: expanded (ctrl+O) streaming edit diff previews capped to a viewport-sized tail instead of unbounded — fixes duplicated tool-box blocks in scrollback from a stale frozen preview snapshot
 13. `e45796908` → `0f58e92b5`: hashline `repairReplacementBoundaries` now rejects two classes of ambiguous auto-repair (a too-short one-sided boundary echo; a spared structural closer with no evidence the payload belongs inside its block) instead of silently guessing and risking data loss — added 4 regression tests from the real incident that motivated it
+14. `485d207a7` → `ba33c054d`: forced renders (tool finalization, `resetDisplay`, image reconciliation) mid-resize-drag now stay on the alt-screen viewport fast path instead of preempting into a destructive normal-screen full replay (ED3 + O(history) scroll-through, twice)
+15. `0a98aa252` → `6a60d92b2`: further `/tan` hardening — inherited todo list cleared at fork (memory + disk), fork notice warns about concurrent parent edits + inherited todos, notice re-injected after every compaction, provider prompt-cache key mirrors the parent's actual pinned key; `#pruneStaleToolResults` now persists via `rewriteEntries` so forks/resume don't rebuild a divergent un-pruned prefix
 
 **Explicitly deferred (reason given, not yet a final skip decision):**
 - `69865b609` (system prompt verification-guidelines rewrite) — coupled to the same `system-prompt.md` structural divergence already flagged blocking `1c6f5dc18` (checkpoint 1, item 19); jeopi's own Verify/Cleanup sections already diverged (mentions jeopi-specific "tester agent"), needs one combined manual review rather than two clobbering passes.
@@ -828,10 +830,11 @@ per-commit list captured in `git log --reverse --oneline
 - Model-Hub-coupled: `8dbc43b6e` (floating model selection), `af7345e87` (role switching/filtering in model picker) — same deferred-Model-Hub bucket as checkpoints 4/5.
 - Vendored-coreutils BSD compat: `6b2f4ad5d`, `198efb3e4` — continuation of checkpoint 3's already-deferred vendored-coreutils bucket.
 - `a886a3090` (hashline drift-recovery rewrite: "replaced 3-way-merge and session-chain replay strategies with a consistent anchor remapping flow", 185 lines of core `recovery.ts` changed across 8 files, removes `RECOVERY_SESSION_REPLAY_WARNING` and the 3-way-merge path entirely) — data-integrity-critical rewrite of hashline's core recovery algorithm; needs a dedicated full before/after read of `recovery.ts` and its test suite, not a checkpoint-triage-speed port. `e45796908` (boundary-repair strict validation, same package) was already safely ported this session — this is the next, much larger hashline item.
+- `0d07da529` (browser execution safety controls: cell-budget timeout clamping, `recover` on tab-worker init, JS-dialog/stalled-op failure attribution, `//!world=main` string-boxing fix) — the puppeteer-core patch it touches is pinned to `25.3.0` upstream vs jeopi's `25.1.0` (`patches/puppeteer-core@25.1.0.patch`), so the patch hunk needs manual re-derivation against jeopi's pinned version, not a direct apply; plus 148 lines of `tab-worker.ts` changes to integrate with the already-ported `wait()` predicate/main-world work. Needs dedicated review.
 - `edd959a38` (removed docs-index generation, `PI_DOCS_EMBED` env-var injection instead) — coupled to checkpoint 1's deferred Bun.build bundling migration (`d179968bb`); jeopi's build still generates and CI-checks `docs-index.generated.txt` via `gen:docs`, confirmed load-bearing in every `check:ts` run.
 - Experimental/wip: `ac1625361` ("wip: rslide"), `4df6f6683`/`f80fb4836`/`da24614d5` (prewalk finalization/guidance/status-line — explicitly experimental per commit messages).
 - `d0f90f35a` (removed unreliable web search providers, −401 lines) — needs review against jeopi's still-deferred web-search-provider-rewrite bucket from checkpoint 1 before deciding whether this is a compatible subtraction or conflicts with what jeopi kept.
 - `a5673c90f` (removed legacy Google interactions routing, −1510/+95 across 18 files) — large deletion, needs careful review that jeopi doesn't still depend on the removed path before porting.
 - `f9f6ed9e8` (replaced legacy `pi/` role alias prefix, 38 files) — potentially relevant to jeopi's own `pi`/`omp`→`jeopi` rename conventions; needs dedicated review, not a quick port.
 
-**Not yet reviewed at all (~34 remaining):** `0d07da529`, `87a64b2f6`, `58d6130b5`, `0a98aa252`, `485d207a7`, `883e68f2d`, plus the harbor/launch/downshift/compaction bucket members not yet confirmed above. `a3960bb4e` (version bump) is the expected trailing N/A.
+**Not yet reviewed at all (~31 remaining):** `87a64b2f6`, `58d6130b5`, `883e68f2d`, plus the harbor/launch/downshift/compaction bucket members not yet confirmed above. `a3960bb4e` (version bump) is the expected trailing N/A.
