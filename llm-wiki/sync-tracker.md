@@ -108,11 +108,20 @@ to a dedicated pass):
   `#steeringQueue` entries for `role === "user" && attribution !== "agent"`
   to distinguish real user steering from advisor/system steering. Existing
   boolean-returning callers elsewhere in the codebase are unaffected.
-- [ ] Remaining ~36 substantive commits in this checkpoint — not yet
-  ported. Candidates queued next: `3188506e6` (ai: Responses
-  `incomplete_details`), `31c9f4850` (ai: empty image placeholders), the
-  4-commit thinking-title-stripping chain (`851186f5d`, `0420d40d3`,
-  `65b0f0532`, `a16c60014`).
+- [x] `3188506e6` fix(ai): included OpenAI Responses `incomplete_details` —
+  jeopi commit `4e55623a9`.
+- [x] `31c9f4850` fix(ai): prevented empty image placeholders in tool
+  outputs — jeopi commit `4e55623a9` (same commit as above, applied
+  together).
+- [x] `851186f5d` + `0420d44d3` + `65b0f0532` + `a16c60014` fix(coding-agent):
+  strip leaked thinking envelopes from session titles — jeopi commit
+  `e3cab053e`. Squashed into one port (each upstream commit revised the
+  same function in sequence); adapted to jeopi's dual tool-choice/marker
+  title path — only the marker-parsing branch of `extractGeneratedTitle`
+  changed, the `set_title` tool-call branch (jeopi-specific, not present
+  upstream at this point) is untouched.
+- [ ] Remaining ~30 substantive commits in this checkpoint — not yet
+  ported.
 - [ ] Large features flagged for dedicated review before porting: vibe
   mode (4 commits), plan-subagent removal (conflicts with jeopi's
   `planner` role-agent — needs a design decision, not a mechanical port),
@@ -121,6 +130,7 @@ to a dedicated pass):
   favor of `legacy-pi-virtual-module.ts` — touches jeopi's own
   `legacy-pi-compat.ts` naming, needs careful review).
 
-Status: **in progress**, 3/~69 commits ported and verified
-(`bun test` + full `bun check` clean after each). Continuing
-commit-by-commit in following turns.
+Status: **in progress**, 9/~69 upstream commits ported and verified
+(`bun test` + full `bun check` clean after each; 6 jeopi commits, some
+squashing multiple upstream commits that touched the same function in
+sequence). Continuing commit-by-commit in following turns.
