@@ -37,7 +37,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | triaged 10/10, ported 5 + 3 N/A, 2 deferred (large feature) |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | reviewed 41/41, ported 3 + 4 N/A/subsumed, 34 deferred to dedicated large-feature sessions (model hub, ask dialog, vendored coreutils, agent suspension, task restructure, TUI loader, bash fixup removal, tool-arg recovery) |
-| 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | in progress: 3/~21 ported + 2 N/A (4 upstream commits, 3 jeopi commits) |
+| 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | triaged 21/21, ported 3 + 3 N/A, 15 deferred (model perf tracking, Model Hub, sequential queueing, retry-fallback divergence, cache invalidation) |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | pending |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | pending |
@@ -576,7 +576,7 @@ session. Recommend moving to checkpoint 4 (v16.4.6, only 22 commits) to
 keep breadth-first progress, circling back to checkpoint 3's deferred
 list in a future dedicated pass.
 
-### Checkpoint 4 — v16.4.6 (~21 substantive commits) — in progress
+### Checkpoint 4 — v16.4.6 (21 substantive commits) — fully triaged
 
 21 commits between `3d1f9a4a3` and `20c0a2e41`. Notable large features
 landing here: model performance tracking + storage/migration
@@ -632,17 +632,53 @@ checkpoint-3-deferred flat task structure).
   in the first place.
 
 Status: **in progress**, 3/~21 ported (3 jeopi commits covering 4
-upstream commits), 2 confirmed N/A this round. Remaining candidates not
-yet reviewed: `41317cc23`/`b6559861d`/`c4fa0ebaa`/`a0dcb8ae2`/`d54dcc222`
-(model perf tracking sequence, likely large), `a3117c284` (async-drain
-utility migration to shared package), `e7955ddf3` (sequential message
-queueing), `54bafa1cc` (fallback chain config), `6bb0878b6`+`43f8999a9`
-(cache invalidation for usage reports — reviewed at a glance, genuine
-new auth-broker wire-protocol feature: new `POST /v1/usage/stale`
-endpoint, wire-schemas, `AuthCredentialStore.invalidateUsageCache` hook;
-larger than a quick win, needs a proper look), `0ae8efd64` (coreutils
-shell builtins — coupled to checkpoint 3's deferred vendored-coreutils
-bucket), `6c292b97c` (preserved completed/abandoned tasks — likely
-coupled to checkpoint 3's deferred flat task structure), `20c0a2e41`
-(storage test fixes for schema v6, likely coupled to `c4fa0ebaa`'s
-migration).
+upstream commits), triaged the rest:
+- [ ] **Deferred — model perf tracking bucket** (all touch/reference
+  `agent-storage.ts`'s new `model_perf` table, `recordModelPerf`, or the
+  `model-browser.ts`/`model-hub.ts` UI that doesn't exist in jeopi):
+  `c4fa0ebaa` (core: 339 lines, new table + backfill), `a0dcb8ae2` (UI
+  integration into `model-browser.ts`/`model-hub.ts`), `41317cc23`
+  (tests for the above), `b6559861d` (throughput calc standardized to
+  total-duration, small but reads `recordModelPerf`'s corrected math),
+  `20c0a2e41` (storage test fixes for the `SCHEMA_VERSION` bump this
+  introduces), `a3117c284` (`AsyncDrain` extracted from
+  `history-storage.ts` to `packages/utils` purely as prep for
+  `recordModelPerf`'s deferred-write batching — no benefit ported alone,
+  moves with the feature that needs it).
+- [ ] **Deferred — large, standalone**: `e7955ddf3` feat: sequential
+  message queueing and commands (551 lines, new `queue-input.ts` module
+  + editor/input-controller/TUI changes) and `54bafa1cc` feat:
+  interactive fallback chain configuration (1060 lines, 487 of them in
+  the not-yet-existing `model-hub.ts` — coupled to the Model Hub bucket
+  too).
+- [ ] **Reviewed, deferred — real structural divergence found**:
+  `d54dcc222` feat: allowed model fallback after retry budget exhaustion
+  — confirmed jeopi's `agent-session.ts` retry-lifecycle code at the
+  target line has ALREADY diverged from upstream's pre-change shape
+  (jeopi's `if (this.#retryAttempt > retrySettings.maxRetries &&
+  !classifierRefusal)` already has a `classifierRefusal` guard upstream
+  only adds via a different later condition) — this is core turn-
+  reliability logic; force-fitting the diff without reconciling the
+  divergence first is too risky to rush.
+- [ ] **Reviewed, deferred — genuine new feature, not a quick win**:
+  `6bb0878b6`+`43f8999a9` feat(ai): cache invalidation for usage reports
+  — new `POST /v1/usage/stale` auth-broker endpoint, wire-schemas,
+  `AuthCredentialStore.invalidateUsageCache` hook, `RemoteAuthCredentialStore`
+  wiring, plus `packages/coding-agent/src/cli/usage-cli.ts`/`commands/usage.ts`
+  CLI changes (148 lines combined across 9 files) — a real wire-protocol
+  addition, needs its own review pass.
+- [x] **N/A** `0ae8efd64` feat: integrated coreutils as in-process shell
+  builtins — coupled to checkpoint 3's deferred vendored-coreutils
+  bucket (`991c166d8`/`5a73d65b7`/`8a510052a`/`d1317c303`).
+- [x] **N/A** `6c292b97c` refactor: preserved completed and abandoned
+  tasks in session — coupled to checkpoint 3's deferred flat task
+  structure bucket (`cb2153e9a`).
+- [x] **N/A** `12466ecf4` "chore: bump version to 16.4.6" — pure
+  upstream bookkeeping (own version bump across every package.json/
+  Cargo.toml/lockfile), same pattern as every other checkpoint's
+  version-bump chore.
+
+Checkpoint 4 fully triaged: 21/21 commits accounted for — 3 ported, 3
+N/A, 15 deferred (12 to the model-perf/Model-Hub/sequential-queueing
+buckets, 1 to a confirmed code-divergence risk, 2 to a genuine
+unreviewed feature).
