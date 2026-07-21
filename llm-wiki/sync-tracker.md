@@ -34,7 +34,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 
 | # | tag | upstream commit | cumulative commits | delta | status |
 |---|-----|-----------------|--------------------|-------|--------|
-| 1 | v16.4.3 | 6328671d1 | 69 | +69 | in review |
+| 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 28 + 9 N/A/subsumed/coupled-skip, 13 deferred (large features) |
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | pending |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | pending |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
@@ -223,33 +223,90 @@ to a dedicated pass):
   leasing, a feature jeopi's `auth-storage.ts` doesn't have at all yet
   (no match for the table name anywhere in the file). Needs that base
   feature ported first; out of scope as a standalone fix.
-- [ ] Remaining ~13 substantive commits in this checkpoint — not yet
-  ported. Next candidate: `45143e8c7` (natives glob traversal depth cap —
-  Rust, `crates/pi-natives`, needs a cargo build to verify; same crate
-  family as the now-ported `5a4a6670b`).
+- [x] `45143e8c7` feat(natives): restricted glob traversal depth — jeopi
+  commit `a0c6429fb`, Rust (`crates/pi-natives`). Direct 1:1 port —
+  jeopi's `glob.rs`/`glob_util.rs` matched upstream's pre-change
+  structure exactly. Verified with `cargo test -p pi-natives` (21/21
+  pass) + `cargo fmt` + full `bun run check:rs`.
+- [x] **N/A** `d179968bb` build: migrated bundling from CLI to Bun.build
+  API — the bug this fixes (E2BIG from a giant `PI_DOCS_EMBED` payload
+  passed as a `bun build --define` CLI arg) doesn't exist in jeopi:
+  jeopi's `bundle-dist.ts` already embeds the docs index via a generated
+  on-disk file (`src/internal-urls/docs-index.generated.txt`, imported
+  normally) instead of a `--define`-injected payload — a different,
+  already-safe architecture. Confirmed by reading jeopi's
+  `assertDocsEmbedPopulated()`/`main()`.
+- [x] **N/A** `82645c5a6`, `f7930048d`, `529effac1`, `056fc5f69` — pure
+  upstream bookkeeping (changelog note, upstream's own version bump,
+  upstream's `.github/VOUCHED.td` contributor list, changelog
+  finalization). Not applicable to a fork with its own versioning/vouch
+  list/changelog cadence.
+- [x] **subsumed** `d469064d1` fix: handle stale tests — the only
+  independently-portable fragment (hardening `delayedBody()`'s
+  enqueue/close against a cancelled stream in
+  `packages/ai/test/pi-native-client.test.ts`) is already present in
+  jeopi in equivalent (actually stricter) form — `closed` guard flag +
+  try/catch on `enqueue`, `cancel()` sets `closed = true`. The rest of
+  the commit (deleted `web-search-*.test.ts` files, `robomp` test tweak,
+  `legacy-pi-virtual-module`/Bun.build-migration references) is coupled
+  to the deferred web-search-rewrite and Bun.build-migration commits and
+  moves with them.
+- [skip] `c893e7ab7` hack: backtrack changelog — its only code change
+  (`auth-storage-block-persistence.test.ts` v5→v6 migration test) is a
+  regression test for the credential-refresh-lease backfill, coupled to
+  the already-skipped `3b6c3409e`. Moves with it.
+- [ ] **Deferred — needs dedicated review, not mechanical**:
+  - Vibe mode (persistent background agents): `75bac085a`, `1ab9c367e`,
+    `b60cbb83b`, `514a8ca6c`, `acd893536`, `aa2c580b2`, `46fd8c557` (7
+    commits, ~2500 lines, new subsystem).
+  - `2f97b7fe4` feat: removed plan subagent — **conflicts with jeopi's
+    own `planner` role-agent**; this is an architecture decision (keep
+    jeopi's role-agent vs. adopt upstream's removal), not a mechanical
+    port. Needs explicit user direction before touching.
+  - Web search rewrite: `ea632a518`, `4c167eaa6`, `376084c19` (last one
+    already ported standalone above) — 10 new provider files, couples to
+    the `d469064d1` deleted test files above.
+  - `ce10e5fff` feat: pcre2 + advanced grep, `8755c3879` feat(pi-uu-grep):
+    advanced regex/filtering — large paired Rust+TS grep rewrite (2100+
+    lines combined).
+  - Browser tool standardization pair — **must port together**:
+    `a9cdaf427` (new `run-output.ts` `RunOutput`/`ActionableHandle`
+    infra + 314-line `tab-worker.ts` refactor + match-count timeout
+    diagnosis) and `9ebc23928` (zero-match watchdog) directly build on
+    `a9cdaf427`'s `toActionableHandle`/`{selector, zeroMatchAfterMs}`
+    shape — confirmed while attempting `9ebc23928` standalone: jeopi's
+    current `#runOp`/`#createTabApi` has neither the match-count hint
+    nor the options-object selector param `9ebc23928`'s diff assumes.
+  - `33c161d9d` refactor: plugin system + build logic restructure (761
+    insertions / 5332 deletions — largest single diff in the checkpoint).
 - [ ] **Partial**: `system-prompt.md` delegation-section refinement from
   `1c6f5dc18` — needs manual semantic port into jeopi's restructured
   section (search for "NEVER abandon phases under scope pressure" /
   "Use `{{toolRefs.task}}` to map unknown code" in `system-prompt.md` to
   locate jeopi's equivalent).
-- [ ] Large features flagged for dedicated review before porting: vibe
-  mode (4 commits), plan-subagent removal (conflicts with jeopi's
-  `planner` role-agent — needs a design decision, not a mechanical port),
-  web search provider rewrite (10 new provider files), legacy-pi bundled
-  registry rewrite (`legacy-pi-bundled-registry.ts` deleted upstream in
-  favor of `legacy-pi-virtual-module.ts` — touches jeopi's own
-  `legacy-pi-compat.ts` naming, needs careful review), plugin system
-  restructure (`33c161d9d`), pcre2/advanced grep + browser tool rewrites
-  (`8755c3879`, `ce10e5fff`, `a9cdaf427`, `9ebc23928`, several more —
-  large Rust + TS surface, needs dedicated review), Bun.build bundling
-  migration (`d179968bb` — build infra, verify via actual binary build).
 
-Status: **in progress**, 27/~69 upstream commits ported (1 partially —
-`eager-task.md` done, `system-prompt.md` deferred) and verified, 2
-explicitly skipped as out-of-scope/version-mismatched (`bun test` +
-full `bun check` clean after each; 22 jeopi commits, some squashing
-multiple upstream commits that touched the same function in sequence).
-Continuing commit-by-commit in following turns. At this rate (~1469
-total upstream commits across 16 release checkpoints), full catch-up is
-a multi-session effort — this tracker is the source of truth for exactly
-where the next turn should resume.
+Checkpoint 1 triage is now **complete** — every one of the ~69 commits
+between `7aa1d581` and `6328671d1` has been individually inspected and
+falls into: ported (28), subsumed/already-equivalent (2), N/A to a fork
+(5), skipped as coupled to an N/A/skipped commit (2), or deferred pending
+a dedicated large-feature session (vibe mode, plan-subagent removal,
+web search rewrite, pcre2/grep rewrite, browser tool standardization,
+plugin restructure — ~13 commits, all flagged above with the concrete
+reason). No further "quick win" commits remain in checkpoint 1 — every
+item left requires either a multi-file feature port or a user
+architecture decision (plan-subagent removal).
+
+Status: **in progress**, 28/~69 upstream commits ported (1 partially —
+`eager-task.md` done, `system-prompt.md` deferred), 2 subsumed, 5 N/A,
+2 skipped-as-coupled, and 13 deferred pending dedicated review — all
+verified/triaged (`bun test`/`cargo test` + full `bun check`/`check:rs`
+clean after each port; 23 jeopi commits, some squashing multiple
+upstream commits touching the same function). Checkpoint 1's mechanical
+work is exhausted; the next unit of progress is either (a) tackle one
+deferred large feature (recommend the browser-tool-standardization pair
+`a9cdaf427`+`9ebc23928` first — smallest of the deferred set at ~400
+lines combined and unblocks future browser-tool commits in later
+checkpoints), or (b) move on to checkpoint 2 (v16.4.4, only 13 commits)
+and circle back. At this rate (~1469 total upstream commits across 16
+checkpoints), full catch-up is a multi-session effort — this tracker is
+the source of truth for exactly where the next turn should resume.
