@@ -36,7 +36,7 @@ import {
 	loadPuppeteerInWorker,
 } from "./launch";
 import { extractReadableFromHtml, type ReadableFormat } from "./readable";
-import { waitForBrowserRun } from "./run-cancellation";
+import { type WaitPredicateOptions, waitForBrowserRun } from "./run-cancellation";
 import { cloneSafe, RunOutput } from "./run-output";
 import type {
 	Observation,
@@ -764,7 +764,8 @@ export class WorkerCore {
 				assert: (cond: unknown, text?: string): void => {
 					if (!cond) throw new ToolError(text ?? "Assertion failed");
 				},
-				wait: (ms: number): Promise<void> => waitForBrowserRun(ms, signal),
+				wait: (msOrPredicate: number | (() => unknown), opts?: WaitPredicateOptions): Promise<unknown> =>
+					waitForBrowserRun(msOrPredicate, signal, opts),
 			});
 			const { promise: cancelRejection, reject: rejectCancel } = Promise.withResolvers<never>();
 			const onCancel = (): void => {

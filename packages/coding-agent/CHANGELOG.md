@@ -6,6 +6,7 @@
 
 - `jeopi acp` now prints a short hint on stderr when launched from an interactive terminal (stdin is a TTY): the command speaks JSON-RPC over stdout and is meant to be spawned by an ACP client such as Zed, so running it by hand previously showed nothing at all. Ported from oh-my-pi (upstream `54af1c03f`).
 - Added a `c` hotkey in the plan-review overlay that copies the current reviewed plan markdown to the system clipboard, including in-overlay edits. Ported from oh-my-pi (upstream `4fa5b61b0`).
+- `wait()` in browser `run` code now also accepts a predicate function: `wait(fn, { timeout?, interval? })` polls `fn` (sync or async) until it returns truthy and resolves with that value (default 30s timeout, 100ms interval), throwing a named error on timeout instead of stalling into the whole-cell deadline — use it instead of hand-rolled polling Promises inside `tab.evaluate`. `wait(ms)` still sleeps as before. Ported from oh-my-pi (upstream `bd7d39522`, adapted to jeopi's plain-`async function` `waitForBrowserRun` — jeopi's `run-cancellation.ts` has no `markHandled` unhandled-rejection wrapper to preserve).
 
 ### Changed
 
