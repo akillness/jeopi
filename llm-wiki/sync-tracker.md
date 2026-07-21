@@ -41,7 +41,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | triaged 75/75, ported 19 + 1 N/A, 55 deferred to dedicated large-feature sessions (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls, Model Hub, ACP SDK major bump, misc large/experimental) |
-| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 17/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
+| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 19/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
 | 11 | v17.0.1 | 6ae7cdbf9 | 756 | +157 | pending |
@@ -881,13 +881,13 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 13. `358811115`+`f98ef2e1e` → `1d31be68f` (squashed, same-day pair fixing #4797): Cursor `max_mode` metadata is now parsed from `GetUsableModels` (new `Model.cursorMaxMode`), forwarded on run requests (`modelDetails.maxMode` + new `requestedModel`), and the Cursor cache namespace was bumped (`cursor:max-mode-v2`) so stale pre-max-mode cache rows can't mask the flag
 14. `7029789e7` → `9462719c1`: provider credential changes (add/remove/login) now also purge persisted session-sticky OAuth cache rows for that provider (new `AuthCredentialStore.deleteCachePrefix`, implemented for both Sqlite and Remote stores), fixing sessions reusing stale sticky mappings after login/logout
 15. `a86c1ec46` → `23c334712`: Python eval `agent()` bridge calls no longer lose in-flight subagent work on external abort — new `BridgeAbortShield` in `executor-base.ts` defers the kernel abort until already-paused bridge calls resume, and rejects new bridge calls once an abort is pending to stop a post-abort fan-out wave
+16. `6fab752eb`+`d670dd5d9` → `0e2458b77` (squashed, tightly-coupled same-day pair): `--max-time` now accepts duration suffixes (`5s`/`10m`/`1h`), and invalid values raise a clean `CliUsageError` (exit code 2, no stack trace) from both `launch` and `acp` instead of a silently-dropped deadline
+17. `1d9889810` → `3cf51b51e`: Codex saved-reset consume request now includes the selected account id, so `/usage reset` applies to the chosen OpenAI account in multi-account setups
 
-**Not yet reviewed:** ~175 remaining. Next in queue: `6fab752eb`+
-`d670dd5d9` (CLI --max-time duration parsing pair), `1d9889810`
-(Codex reset selected-account), `3876f60d6` (npm self-update
-routing), `a4f43be04`+`f26fffb8e` (read-only internal URL / memory
-root isolation pair), and onward through
---oneline v16.5.0..v16.5.1` starting after `f26fffb8e`, and onward through
+**Not yet reviewed:** ~173 remaining. Next in queue: `3876f60d6`
+(npm self-update routing), `a4f43be04`+`f26fffb8e` (read-only
+internal URL / memory root isolation pair), and onward through
+--oneline v16.5.0..v16.5.1` starting after `1d9889810`.
 the list. Given the volume, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
