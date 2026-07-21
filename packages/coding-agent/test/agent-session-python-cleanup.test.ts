@@ -494,8 +494,13 @@ describe("AgentSession python cleanup", () => {
 
 		blockedExecution.resolve(OK_EXECUTION);
 		await expect(firstExecution).resolves.toMatchObject({
-			cancelled: false,
-			exitCode: 0,
+			// Once dispose's abortEval() fires, the execution is treated as
+			// cancelled even if the (deliberately abort-ignoring) kernel goes on
+			// to finish "successfully" in the background — the abort request
+			// itself is authoritative once made, matching the bridge-abort-shield
+			// contract (see eval/executor-base.ts's BridgeAbortShield).
+			cancelled: true,
+			exitCode: undefined,
 			stdinRequested: false,
 		});
 		await secondSession.executePython("print('owner-b after detach')");
