@@ -35,7 +35,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | # | tag | upstream commit | cumulative commits | delta | status |
 |---|-----|-----------------|--------------------|-------|--------|
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
-| 2 | v16.4.4 | 29a6a6800 | 82 | +13 | in progress: 4/10 ported |
+| 2 | v16.4.4 | 29a6a6800 | 82 | +13 | in progress: 5/10 ported + 3 N/A, 2 remaining (1 large feature) |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | pending |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
@@ -371,22 +371,41 @@ install artifact portability (`bc7a143c1`), test null-safety hardening
   directly. Verified: `bun test` on all 5 `scripts/*.test.ts` (23/23
   pass) + full `bun run check:ts` (incl. `bun run gen:docs` regen for
   the `cbe083224` docs edit) + `bun run check:rs`, both clean.
-- [ ] `337feb297` test: improved test null safety and type assertions —
-  touches 7 test files across `packages/ai` and `packages/coding-agent`;
-  not yet reviewed for applicability (may be upstream-specific flake
-  fixes).
-- [ ] `3d2568060` fix(coding-agent): dispatched CLI entry in
-  Bun.build-compiled Windows binaries — likely coupled to the
-  checkpoint-1-deferred Bun.build bundling migration (jeopi still uses
-  the CLI-invoked `bun build` in `bundle-dist.ts`, not `Bun.build()` API,
-  per the `d179968bb` N/A finding); needs verification before deciding
-  applicable/coupled.
-- [ ] `cf1b3fc3f`, `6bc4302f6` — chore version bump / changelog update,
-  expected N/A (upstream-only bookkeeping, same pattern as checkpoint 1's
-  `f7930048d`/`056fc5f69`).
+- [x] `337feb297` test: improved test null safety and type assertions —
+  jeopi commit `b85cfd000`. Applied to 7 of 9 upstream-touched files
+  (adapted individually to jeopi's actual per-file state, not blindly
+  copied): `openai-responses-stateful.test.ts`,
+  `pre-response-timeout.test.ts`, `openai-responses-history-payload.test.ts`,
+  `sdk-custom-tools-per-session-binding.test.ts` (both `it()` blocks),
+  `session-messages.test.ts`, `irc.test.ts`, `perplexity.test.ts`. Two
+  files already carried an equivalent independent fix (`anthropic-alignment.test.ts`,
+  `stream-auth-retry.test.ts` — subsumed); two upstream targets don't
+  exist in jeopi at all (`openai-codex-responses-lite.test.ts`'s
+  `additional_tools` test, `browser-cmux-release-mid-run.test.ts` file
+  itself — both coupled to not-yet-ported features, out of scope).
+  Verified: `bun test` on all 7 touched files (109/109 pass) + tsgo +
+  biome.
+- [x] **N/A** `3d2568060` fix(coding-agent): dispatched CLI entry in
+  Bun.build-compiled Windows binaries — the bug is specific to the
+  `Bun.build()` **JS API**'s standalone loader (backslash/forward-slash
+  path-separator mismatch in `import.meta.main` detection on Windows);
+  upstream's own commit message says "`bun build --compile` CLI builds
+  are unaffected." Confirmed jeopi's entire binary-compile pipeline
+  (`packages/coding-agent/scripts/build-binary.ts` AND
+  `scripts/ci-release-build-binaries.ts`, the actual release path) still
+  spawns CLI-invoked `bun build --compile ...` via `Bun.spawn`, not the
+  `Bun.build()` API — consistent with the `d179968bb` N/A finding in
+  checkpoint 1 (jeopi never did that migration for the binary-compile
+  path either). Bug does not exist in jeopi's architecture.
+- [x] **N/A** `cf1b3fc3f`, `6bc4302f6` — confirmed pure upstream
+  bookkeeping (own version bump across every package.json/Cargo.toml/
+  lockfile, own changelog finalization). Not applicable to a fork with
+  its own versioning/changelog cadence.
 
-Status: **in progress**, 4/10 substantive commits ported (3 jeopi
-commits: `935a34034`, `7087f7272`, `f98711401`), 6 remaining (1 large
-feature not yet reviewed, 1 likely-coupled Windows/Bun.build fix, 1
-test-hardening batch not yet reviewed, 2 expected-N/A chores, 1 depends
-on the not-yet-reviewed `93635e7b6`).
+Status: **in progress**, 5/10 substantive commits ported (4 jeopi
+commits: `935a34034`, `7087f7272`, `f98711401`, `b85cfd000`), 3 N/A
+(confirmed against actual jeopi code/architecture, not assumed), 2
+remaining — both coupled to the single not-yet-reviewed large feature
+(`93635e7b6` small-model preprocessing centralization + `29a6a6800`
+which builds on it). Checkpoint 2's mechanical work is done; the only
+remaining item is a genuine feature review.
