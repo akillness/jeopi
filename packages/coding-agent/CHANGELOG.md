@@ -5,6 +5,7 @@
 ### Fixed
 
 - Bare `skill://name` URLs (no relative path) now resolve to the skill directory for path-only tool operations (`bash` `skill://` expansion, `search`/`find` on internal URLs) instead of `SKILL.md`; `read` still returns `SKILL.md` instructions for the bare form. Ported from oh-my-pi (upstream `cf4e510ac`).
+- MCP stdio server launches now use Bun's argv-first `spawn(cmd, opts)` overload instead of the single-object `spawn({ cmd, ... })` form, so macOS TCC Apple Events prompts reach children (e.g. `xcrun mcpbridge`) the same way the JS eval kernel path already does — the object-overload spawn was timing out before the prompt fired. Ported from oh-my-pi (upstream `a0a6949a4`).
 
 ## [16.4.2] - 2026-07-14
 
