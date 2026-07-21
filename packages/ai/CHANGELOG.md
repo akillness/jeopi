@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- OpenAI Responses server non-streaming envelopes always include the required `incomplete_details` field now, using `null` for completed responses instead of omitting the key. Ported from oh-my-pi (upstream `3188506e6`).
+- Responses API tool results with genuinely empty content (e.g. an empty file read) no longer serialize as `"(see attached image)"` — the placeholder is now only emitted when the result actually carries an image block. Ported from oh-my-pi (upstream `31c9f4850`).
+
 ## [16.2.28] - 2026-07-08
 
 ### Fixed

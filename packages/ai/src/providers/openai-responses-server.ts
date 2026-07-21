@@ -561,6 +561,10 @@ function responseStatusForStopReason(message: AssistantMessage): ResponseStatus 
 	return "completed";
 }
 
+function incompleteDetailsForStatus(status: ResponseStatus): { reason: "max_output_tokens" } | null {
+	return status === "incomplete" ? { reason: "max_output_tokens" } : null;
+}
+
 function buildReasoningItem(part: ThinkingContent): ReasoningOutputItem {
 	const baseId = part.itemId ?? makeReasoningId();
 	if (part.thinkingSignature) {
@@ -711,7 +715,7 @@ function buildResponseEnvelope(
 		model: requestedModelId,
 		output: items,
 		usage,
-		...(status === "incomplete" ? { incomplete_details: { reason: "max_output_tokens" } } : {}),
+		incomplete_details: incompleteDetailsForStatus(status),
 		...(status === "failed" ? { error: { message: message.errorMessage ?? "response failed" } } : {}),
 	};
 }
@@ -805,6 +809,7 @@ export function encodeStream(
 				model: requestedModelId,
 				output,
 				usage: null,
+				incomplete_details: incompleteDetailsForStatus(status),
 			});
 
 			const openMessage = (signature?: MessageSignature): OpenMessage => {
@@ -1235,7 +1240,7 @@ export function encodeStream(
 								model: requestedModelId,
 								output: items,
 								usage,
-								...(status === "incomplete" ? { incomplete_details: { reason: "max_output_tokens" } } : {}),
+								incomplete_details: incompleteDetailsForStatus(status),
 								...(status === "failed"
 									? { error: { message: message?.errorMessage ?? "response failed" } }
 									: {}),
@@ -1260,6 +1265,7 @@ export function encodeStream(
 									model: requestedModelId,
 									output: [],
 									error: { message: err instanceof Error ? err.message : String(err) },
+									incomplete_details: null,
 								},
 							}),
 						),
