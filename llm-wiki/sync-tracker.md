@@ -194,9 +194,39 @@ to a dedicated pass):
   leasing, a feature jeopi's `auth-storage.ts` doesn't have at all yet
   (no match for the table name anywhere in the file). Needs that base
   feature ported first; out of scope as a standalone fix.
-- [ ] Remaining ~17 substantive commits in this checkpoint — not yet
+- [x] `295655255` test(coding-agent): validated behavioral consistency —
+  subsumed by tests already added while porting `d993b13c8` (browser eval
+  envelope), `530faffd2` (glob timeout), and `83fbefac2` (raw range) —
+  same contracts, different exact assertions/test names.
+- [x] `376084c19` feat(coding-agent/web): ensured auth storage cleanup —
+  jeopi commit `8c07425e8`. `runSearchQuery` throws when no auth storage
+  is available and closes any storage it opened itself in a `finally`.
+- [x] `b0d98d9e2` fix(coding-agent): decoupled LSP diagnostics from tool
+  execution — jeopi commit `6e576a4a5`. New shared
+  `lsp/deferred-diagnostics.ts` `DeferredDiagnostics` class (extracted
+  from `EditTool`); `WriteTool` now wired into the same deferred late-
+  diagnostics channel instead of blocking on the inline poll.
+- [x] `5a4a6670b` feat(pi-walker): ignored parent rules that cover
+  explicitly rooted walks — jeopi commit `b029cd92b`, Rust
+  (`crates/pi-walker`). Adapted to jeopi's simpler ancestor-walk
+  structure (no repo-scoped boundary); test adapted to jeopi's
+  `collect_entries` convention. Verified with `cargo test -p pi-walker`
+  (24 pass) + `cargo fmt` + full `bun run check:rs`.
+- [skip] `980d24e24` fix(patches): resolved puppeteer locator timeouts —
+  patches `puppeteer-core@25.3.0.patch`; jeopi pins `puppeteer-core@25.1.0`
+  (`patches/puppeteer-core@25.1.0.patch`, a different upstream npm
+  version with different source line numbers/hunks). Not a mechanical
+  port — needs the equivalent fix re-derived against jeopi's actual
+  pinned puppeteer-core version.
+- [skip] `3b6c3409e` fix: paranoid auth storage schema handling —
+  depends on `auth_credential_refresh_leases` table/credential-refresh
+  leasing, a feature jeopi's `auth-storage.ts` doesn't have at all yet
+  (no match for the table name anywhere in the file). Needs that base
+  feature ported first; out of scope as a standalone fix.
+- [ ] Remaining ~13 substantive commits in this checkpoint — not yet
   ported. Next candidate: `45143e8c7` (natives glob traversal depth cap —
-  Rust, `crates/pi-natives`, needs a cargo build to verify).
+  Rust, `crates/pi-natives`, needs a cargo build to verify; same crate
+  family as the now-ported `5a4a6670b`).
 - [ ] **Partial**: `system-prompt.md` delegation-section refinement from
   `1c6f5dc18` — needs manual semantic port into jeopi's restructured
   section (search for "NEVER abandon phases under scope pressure" /
@@ -214,12 +244,12 @@ to a dedicated pass):
   large Rust + TS surface, needs dedicated review), Bun.build bundling
   migration (`d179968bb` — build infra, verify via actual binary build).
 
-Status: **in progress**, 24/~69 upstream commits ported (1 partially —
-`eager-task.md` done, `system-prompt.md` deferred) and verified, 1
-explicitly skipped as out-of-scope (`bun test` + full `bun check` clean
-after each; 19 jeopi commits, some squashing multiple upstream commits
-that touched the same function in sequence). Continuing commit-by-commit
-in following turns. At this rate (~1469 total upstream commits across 16
-release checkpoints), full catch-up is a multi-session effort — this
-tracker is the source of truth for exactly where the next turn should
-resume.
+Status: **in progress**, 27/~69 upstream commits ported (1 partially —
+`eager-task.md` done, `system-prompt.md` deferred) and verified, 2
+explicitly skipped as out-of-scope/version-mismatched (`bun test` +
+full `bun check` clean after each; 22 jeopi commits, some squashing
+multiple upstream commits that touched the same function in sequence).
+Continuing commit-by-commit in following turns. At this rate (~1469
+total upstream commits across 16 release checkpoints), full catch-up is
+a multi-session effort — this tracker is the source of truth for exactly
+where the next turn should resume.
