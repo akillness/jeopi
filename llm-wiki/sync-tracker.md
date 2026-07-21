@@ -36,7 +36,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 |---|-----|-----------------|--------------------|-------|--------|
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | triaged 10/10, ported 5 + 3 N/A, 2 deferred (large feature) |
-| 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | pending |
+| 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | in progress: 1/~41 ported (dense checkpoint — model hub UI, ask dialog UI, vendored coreutils, agent suspension all land here) |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | pending |
@@ -416,3 +416,65 @@ deferred as a large feature (small-model preprocessing centralization,
 same bucket/reason as checkpoint 1's deferred items). Checkpoint 2's
 mechanical work is complete — everything left needs a dedicated
 large-feature session, same as checkpoint 1's tail.
+
+### Checkpoint 3 — v16.4.5 (~41 substantive commits) — in progress, dense
+
+41 commits between `29a6a6800` and `3d1f9a4a3` (chores/merges excluded).
+Denser with large new features than checkpoints 1–2 — several multi-commit
+subsystems land in this window:
+- **Model hub** (`59d08172c` introduces it + `5d3d1230f`, `2081bae6a`,
+  `ab7b776f9`, `c6b83c1d9` follow-ups): unified model management/search UI.
+- **`ask` rich interactive dialog** (`38a5c8a89` introduces it +
+  `69c02c802`, `48b2a742c`, `1d14e262b`, `f66e52767` fixes): new dialog
+  subsystem.
+- **Vendored coreutils** (`991c166d8`, `5a73d65b7`, `8a510052a`, `d1317c303`
+  "allocation-free grep"): in-process coreutils execution for the shell
+  tool. **Note**: jeopi's `crates/` already contains `pi-uu-grep`,
+  `crates/vendor/uu-{wc,mv,sort,cat,head,tail,ls,find,rm,mkdir,uniq}` and
+  compiles/links them (discovered while running `bun run check:rs` for
+  the grep mmap port below) — this suggests jeopi already has some form
+  of vendored coreutils, independent of or ahead of this upstream
+  commit. Needs a diff-level comparison before assuming this checkpoint's
+  vendoring commits are needed at all — may be partially/fully subsumed.
+- **Agent suspension / pause** (`9a868d2e7` introduces `pause` command +
+  UI, `369a0d879` follow-up): new interruption mechanism.
+- **Resumable subagent yielding** (`33b6774aa`): task subsystem change.
+- **Flat task structure** (`cb2153e9a` "agent-centric flat task
+  structure"): likely a task/job subsystem rewrite, may be a prerequisite
+  or successor to `408a92d91` (background task execution) and
+  `5b20a7dea` (tool-call persistence during rebuilds) — needs sequencing
+  review.
+- **Bulk conflict resolution** (`7a0ae7031`, `conflict://*` URLs) +
+  follow-up (`7e5e7e864`, echo-line auto-trim in `conflict-detect.ts`).
+
+Smaller/more isolated candidates spotted but not yet reviewed:
+`c22d5dffb`/`62172339b`/`276092eac` (TUI loader/anchored-container
+sequence, ~3 commits building on each other), `d7a71642c` (browser
+header generation guard, self-contained with tests), `459682cc6` (custom
+tool loader — skip invalid entries), `172691f6e` (−569 lines, removed
+redundant bash command fixup — worth checking what replaced it),
+`0b9bdaaed` (malformed tool-argument auto-recovery, `packages/ai`).
+
+Ported so far:
+- [x] `b87cfc7e1` + `f359a5f29` fix(native): replaced mmap-backed grep
+  reads with bounded owned buffers (SIGBUS/mutation-under-rewrite safety
+  fix) — jeopi commit `ab1f3a18c`, Rust (`crates/pi-natives/src/grep.rs`).
+  Direct 1:1 port, removed the `memmap2` dependency entirely (only
+  `pi-natives` used it directly; `grep-searcher`'s own transitive
+  `memmap2` dep is unaffected). Verified: `cargo test -p pi-natives grep`
+  (28/28 pass) + `cargo build` clean (no mmap warnings) + `cargo fmt` +
+  full `bun run check:rs`.
+- [ ] `f47fd9300` (scout agent prompt `blocking: true` removal) —
+  reviewed, coupled to a not-yet-identified larger task/job per-item
+  blocking feature landing earlier in this checkpoint (referenced by its
+  own CHANGELOG bullet as already-shipped); deferred with that feature.
+
+Status: **in progress**, 1/~41 ported. This is the densest checkpoint
+seen so far — most remaining commits belong to 5+ distinct large
+subsystems (model hub, ask dialog, vendored coreutils, agent suspension,
+task/job restructure) each individually comparable in scope to
+checkpoint 1's deferred items. Recommend a dedicated session per
+subsystem rather than attempting checkpoint-wide mechanical porting.
+Next candidates for quick wins: the TUI loader sequence, the browser
+header generation fix, and the custom-tool-loader fix — all flagged
+above as smaller/self-contained but not yet reviewed line-by-line.
