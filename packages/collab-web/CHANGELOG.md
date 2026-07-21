@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the live collab transcript rendering duplicate tool cards and a stale `thinking…` shimmer while a committed tool call is still running. Ported from oh-my-pi (upstream `70316a7f8`).
+
 ## [16.2.27] - 2026-07-07
 
 ### Fixed
