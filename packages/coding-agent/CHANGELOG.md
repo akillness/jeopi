@@ -22,6 +22,7 @@
 - Fixed the `/move` directory picker drawing a fixed 68-column frame inside wider full-width overlays instead of honoring the assigned overlay width. Ported from oh-my-pi (upstream `b35e4c413`).
 - Fixed snapcompact inline imaging for GitHub Copilot Business and Enterprise models that advertise image input, removing the stale non-personal-host block. Ported from oh-my-pi (upstream `e58d2c460`, `4bae9a42a`, `b0f22caf8`).
 - Fixed advisor config collapsing an explicit empty tool list into the default `read`/`grep`/`glob` subset, so `/advisor config` can no longer disable all advisor tools — an omitted `tools` field still falls back to the default, but an explicit `tools: []` now grants none. Ported from oh-my-pi (upstream `7d72ee9e0`, `dabb2291a`).
+- Fixed first-run interactive startup rendering the full packaged changelog when the last-seen marker is missing, malformed, or unreadable. Startup upgrade notes now show at most three unseen releases and cap Markdown source at 64 KiB; `/changelog full` remains the explicit full-history path. Ported from oh-my-pi (upstream `f53411295`, `449310eb1`).
 
 ## [16.4.2] - 2026-07-14
 
