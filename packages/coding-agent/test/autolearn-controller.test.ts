@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentMessage } from "jeopi-agent-core";
+import type { AssistantMessage } from "jeopi-ai";
 import { AutoLearnController, buildAutoLearnInstructions } from "jeopi-cli/autolearn/controller";
 import { Settings } from "jeopi-cli/config/settings";
 import type { AgentSession, AgentSessionEvent } from "jeopi-cli/session/agent-session";
@@ -287,13 +288,24 @@ describe("AutoLearnController", () => {
 		const session = new FakeSession();
 		install(session, { "autolearn.autoContinue": true });
 		session.toolCalls(5);
-		session.agentEnd([
-			{
-				role: "assistant",
-				content: [{ type: "text", text: "partial" }],
-				stopReason: "aborted",
-			} as never,
-		]);
+		const abortedMessage: AssistantMessage = {
+			role: "assistant",
+			content: [{ type: "text", text: "partial" }],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "mock",
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "aborted",
+			timestamp: Date.now(),
+		};
+		session.agentEnd([abortedMessage]);
 		expect(session.sent).toHaveLength(0);
 	});
 });
