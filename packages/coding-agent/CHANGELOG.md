@@ -38,6 +38,7 @@
 - Fixed `GenerateImage` rejecting OpenAI Codex-compatible proxy bearer keys when the token does not expose a `chatgpt-account-id`. Ported from oh-my-pi (upstream `748b2dff1`).
 - Fixed the generic Windows release binary (`jeopi-windows-x64.exe`) requiring an AVX2-capable CPU by building it with Bun's baseline x64 runtime instead of the modern target, so older Windows 10 CPUs no longer fail to launch it. Ported from oh-my-pi (upstream `bc7a143c1`).
 - Fixed plugin custom tool loading crashing startup on one malformed tool factory result: a factory returning `null`, an array containing `null`, or an object missing `name`/`description`/`parameters`/`execute` is now reported as a per-entry load error and skipped instead of registering a broken tool (or throwing before the rest load). Ported from oh-my-pi (upstream `459682cc6`).
+- Fixed agents getting stuck waiting for IRC messages from peers that have already stopped running: `irc wait` (bare or `from`-filtered) now aborts immediately if no running peer can ever reply, and re-aborts if the awaited peer (or the last running peer, for an unfiltered wait) goes idle/parked mid-wait, instead of hanging until the timeout. `irc send await:true` is unaffected — an idle recipient is woken by the send itself. Ported from oh-my-pi (upstream `0828c53ca`).
 
 ## [16.4.2] - 2026-07-14
 

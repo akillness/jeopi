@@ -171,7 +171,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			case "send":
 				return this.#executeSend(registry, senderId, params, signal);
 			case "wait":
-				return this.#executeWait(senderId, params, signal);
+				return this.#executeWait(registry, senderId, params, signal);
 			case "inbox":
 				return this.#executeInbox(registry, senderId, params);
 			default:
@@ -367,23 +367,37 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		}
 	}
 
-	async #executeWait(senderId: string, params: IrcParams, signal?: AbortSignal): Promise<AgentToolResult<IrcDetails>> {
+	async #executeWait(
+		registry: AgentRegistry,
+		senderId: string,
+		params: IrcParams,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<IrcDetails>> {
 		const from = params.from?.trim() || undefined;
 		const timeoutMs = this.#resolveTimeoutMs(params);
-		const waited = await IrcBus.global().wait(senderId, { from }, timeoutMs, signal);
-		if (!waited) {
-			const filterNote = from ? ` from ${from}` : "";
+		try {
+			const waited = await IrcBus.global().wait(senderId, { from }, timeoutMs, signal, {
+				liveness: { registry, senderId },
+			});
+			if (!waited) {
+				const filterNote = from ? ` from ${from}` : "";
+				return {
+					content: [{ type: "text", text: `No message${filterNote} within ${formatDuration(timeoutMs)}.` }],
+					details: { op: "wait", from: senderId, waited: null },
+					// A clean wait timeout carries no information once consumed.
+					useless: true,
+				};
+			}
 			return {
-				content: [{ type: "text", text: `No message${filterNote} within ${formatDuration(timeoutMs)}.` }],
-				details: { op: "wait", from: senderId, waited: null },
-				// A clean wait timeout carries no information once consumed.
-				useless: true,
+				content: [{ type: "text", text: formatIncoming(waited) }],
+				details: { op: "wait", from: senderId, waited },
 			};
+		} catch (error) {
+			if (signal?.aborted) {
+				throw error;
+			}
+			return errorResult(error instanceof Error ? error.message : String(error), { op: "wait", from: senderId });
 		}
-		return {
-			content: [{ type: "text", text: formatIncoming(waited) }],
-			details: { op: "wait", from: senderId, waited },
-		};
 	}
 
 	#executeInbox(registry: AgentRegistry, senderId: string, params: IrcParams): AgentToolResult<IrcDetails> {
