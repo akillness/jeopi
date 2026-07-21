@@ -38,7 +38,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | triaged 10/10, ported 5 + 3 N/A, 2 deferred (large feature) |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | reviewed 41/41, ported 3 + 4 N/A/subsumed, 34 deferred to dedicated large-feature sessions (model hub, ask dialog, vendored coreutils, agent suspension, task restructure, TUI loader, bash fixup removal, tool-arg recovery) |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | triaged 21/21, ported 3 + 3 N/A, 15 deferred (model perf tracking, Model Hub, sequential queueing, retry-fallback divergence, cache invalidation) |
-| 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
+| 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | pending |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | pending |
 | 8 | v16.5.1 | 14b5da76a | 431 | +190 | pending |
@@ -682,3 +682,55 @@ Checkpoint 4 fully triaged: 21/21 commits accounted for — 3 ported, 3
 N/A, 15 deferred (12 to the model-perf/Model-Hub/sequential-queueing
 buckets, 1 to a confirmed code-divergence risk, 2 to a genuine
 unreviewed feature).
+
+### Checkpoint 5 — v16.4.7 (6 commits) — fully triaged
+
+6 commits between `20c0a2e41` and `f933f02fc`. Small checkpoint, fully
+resolved:
+
+- [x] `4fa5b61b0` "Add plan review copy hotkey" — jeopi commit
+  `e1aa33a5d`. `c` hotkey in `PlanReviewOverlay` copies the current
+  (in-overlay-edited) plan markdown to the clipboard via a new
+  `onCopyPlan` callback. Direct 1:1 port. Verified: `bun test` on both
+  touched test files (74/74 pass, incl. 3 new tests) + full `bun run
+  check:ts`.
+- [x] `1b0b18c7a` fix(stats): handled malformed session entries to
+  prevent sync crashes — jeopi commit `0ad04c7aa`, applicable portion
+  only. `extractStats()` now skips entries with no model/provider/api/
+  usage and coerces missing `stopReason`/token counts/`timestamp`
+  instead of crashing the whole sync on a NOT NULL constraint. **Not
+  ported**: the `extractToolCalls()`/`ToolCallStats` portion — confirmed
+  jeopi's `packages/stats` has no per-tool-call stats tracking at all
+  (no matching type/function/export exists). Verified: `bun test` new
+  file (3/3) + full `packages/stats/test/` suite (56/57 — the 1 failure
+  is a confirmed pre-existing, unrelated flake in
+  `priority-premium-requests.test.ts`, reproduced identically via `git
+  stash` before this edit) + full `bun run check:ts`.
+- [x] `1822603b2` feat(coding-agent): improved model browser keyboard
+  navigation and focus visuals — TUI portion only, jeopi commit
+  `bd0621fd8`. `TUI#handleInput()`'s input-render-grace delay (meant to
+  keep a Ctrl+C/Esc double-press gesture's second key from landing
+  behind an immediate slow repaint) now arms only for those two keys
+  instead of every keystroke, so idle-state keyboard navigation repaints
+  without a frame of extra latency. **Not ported**: the
+  `model-browser.ts`/`model-hub.ts` navigation/focus-visual changes in
+  the same commit — coupled to the not-yet-ported Model Hub feature.
+  Verified: `bun test input-priority.test.ts` (2/2, incl. new test) +
+  full `packages/tui/test/` suite (1160/1163 pass, 3 pre-existing skips)
+  + full `bun run check:ts`.
+- [x] `93db3913d` "chore: update tips" — `tips.txt` portion only, jeopi
+  commit `c1bd90e49`. Removed the stale `[NEW]` marker from the
+  `/advisor` tip (an established jeopi feature). **Not ported**: the new
+  `->`-prompt-queueing tip (references the not-yet-ported sequential
+  message queueing feature — confirmed no `->` composer shorthand exists
+  in jeopi) and the Model Hub CHANGELOG bullets bundled into the same
+  commit (coupled to the deferred Model Hub feature).
+- [x] **N/A** `f933f02fc` "chore: bump version to 16.4.7" — pure
+  upstream bookkeeping, same pattern as every other checkpoint.
+- [x] **N/A** `b1c882e89` "Update VOUCHED list" — pure upstream
+  bookkeeping (`.github/VOUCHED.td`), same pattern as every other
+  checkpoint.
+
+Checkpoint 5 fully triaged: 6/6 commits accounted for — 4 ported
+(2 of them partial: the tips/keyboard-nav commits had a Model-Hub-
+coupled portion correctly excluded), 2 N/A.
