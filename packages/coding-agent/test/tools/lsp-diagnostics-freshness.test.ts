@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
+import { Settings } from "jeopi-cli/config/settings";
 import { createLspWritethrough, type FileDiagnosticsResult } from "jeopi-cli/lsp";
 import * as lspClient from "jeopi-cli/lsp/client";
 import * as lspConfig from "jeopi-cli/lsp/config";
 import type { Diagnostic, LspClient, ServerConfig } from "jeopi-cli/lsp/types";
 import { fileToUri } from "jeopi-cli/lsp/utils";
+import type { DeferredDiagnosticsEntry, ToolSession } from "jeopi-cli/tools";
+import { WriteTool } from "jeopi-cli/tools/write";
 import { type ptree, TempDir } from "jeopi-utils";
 
 const TEST_SERVER: ServerConfig = {
@@ -257,6 +260,61 @@ describe("LSP diagnostics freshness", () => {
 		expect(lateResult.messages.some(m => m.includes("deferred error"))).toBe(true);
 
 		// The edit still landed on disk regardless of diagnostics timing.
+		expect(await Bun.file(filePath).text()).toBe("export const value: number = 'x';\n");
+	});
+
+	it("returns the write tool result before slow diagnostics and queues them for the agent", async () => {
+		const filePath = path.join(tempDir.path(), "write-tool.ts");
+		const uri = fileToUri(filePath);
+		const client = createClient(tempDir.path(), TEST_SERVER);
+		const clock = new VirtualClock(Date.now());
+		installVirtualTime(clock);
+
+		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+		vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", TEST_SERVER]]);
+		vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
+		vi.spyOn(lspClient, "syncContent").mockImplementation(async (mockClient, syncedFilePath) => {
+			const syncedUri = fileToUri(syncedFilePath);
+			mockClient.openFiles.set(syncedUri, { version: 1, languageId: "typescript" });
+		});
+		vi.spyOn(lspClient, "notifySaved").mockImplementation(async mockClient => {
+			clock.in(2000, () => {
+				publishDiagnostics(mockClient, uri, [createDiagnostic("write tool deferred error")], null);
+			});
+		});
+
+		const queued = Promise.withResolvers<DeferredDiagnosticsEntry>();
+		const mutationVersions = new Map<string, number>();
+		const session: ToolSession = {
+			cwd: tempDir.path(),
+			hasUI: false,
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			settings: Settings.isolated({
+				"lsp.formatOnWrite": false,
+				"lsp.diagnosticsOnWrite": true,
+				"lsp.diagnosticsDeduplicate": true,
+			}),
+			enableLsp: true,
+			queueDeferredDiagnostics: entry => queued.resolve(entry),
+			bumpFileMutationVersion: target => {
+				const version = (mutationVersions.get(target) ?? 0) + 1;
+				mutationVersions.set(target, version);
+				return version;
+			},
+			getFileMutationVersion: target => mutationVersions.get(target) ?? 0,
+		};
+
+		const result = await new WriteTool(session).execute("write-deferred", {
+			path: filePath,
+			content: "export const value: number = 'x';\n",
+		});
+
+		expect(result.details?.diagnostics).toBeUndefined();
+		const late = await queued.promise;
+		expect(late.isStale()).toBe(false);
+		expect(late.errored).toBe(true);
+		expect(late.messages.some(message => message.includes("write tool deferred error"))).toBe(true);
 		expect(await Bun.file(filePath).text()).toBe("export const value: number = 'x';\n");
 	});
 });
