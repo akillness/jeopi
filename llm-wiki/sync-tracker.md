@@ -164,14 +164,19 @@ to a dedicated pass):
   `packages/catalog` (model-manager merge, openai-compat discovery,
   wire/github-copilot) and `packages/coding-agent`
   (snapcompact-inline.ts).
-- [ ] Remaining ~21 substantive commits in this checkpoint — not yet
-  ported. Next candidates: `3f52e26a7` (ai: CCA schema annotation
-  conflicts), `3b6c3409e` (ai: paranoid auth storage schema handling),
-  `7d72ee9e0` + `dabb2291a` (advisor: empty/invalid tool lists, 2
-  commits), `f53411295` + `449310eb1` (startup changelog rendering, 2
-  commits), `1c6f5dc18` (agent delegation prompt refinement),
-  `45143e8c7` (natives glob traversal depth cap — Rust,
-  `crates/pi-natives`, needs a cargo build to verify).
+- [x] `3f52e26a7` fix(ai): preserve CCA schemas with annotation
+  conflicts — jeopi commit `329232f65`.
+- [skip] `3b6c3409e` fix: paranoid auth storage schema handling —
+  depends on `auth_credential_refresh_leases` table/credential-refresh
+  leasing, a feature jeopi's `auth-storage.ts` doesn't have at all yet
+  (no match for the table name anywhere in the file). Needs that base
+  feature ported first; out of scope as a standalone fix.
+- [ ] Remaining ~20 substantive commits in this checkpoint — not yet
+  ported. Next candidates: `7d72ee9e0` + `dabb2291a` (advisor:
+  empty/invalid tool lists, 2 commits), `f53411295` + `449310eb1`
+  (startup changelog rendering, 2 commits), `1c6f5dc18` (agent
+  delegation prompt refinement), `45143e8c7` (natives glob traversal
+  depth cap — Rust, `crates/pi-natives`, needs a cargo build to verify).
 - [ ] Large features flagged for dedicated review before porting: vibe
   mode (4 commits), plan-subagent removal (conflicts with jeopi's
   `planner` role-agent — needs a design decision, not a mechanical port),
@@ -184,10 +189,11 @@ to a dedicated pass):
   large Rust + TS surface, needs dedicated review), Bun.build bundling
   migration (`d179968bb` — build infra, verify via actual binary build).
 
-Status: **in progress**, 20/~69 upstream commits ported and verified
-(`bun test` + full `bun check` clean after each; 15 jeopi commits, some
-squashing multiple upstream commits that touched the same function in
-sequence). Continuing commit-by-commit in following turns. At this rate
-(~1469 total upstream commits across 16 release checkpoints), full
-catch-up is a multi-session effort — this tracker is the source of truth
-for exactly where the next turn should resume.
+Status: **in progress**, 21/~69 upstream commits ported and verified,
+1 explicitly skipped as out-of-scope (`bun test` + full `bun check`
+clean after each; 16 jeopi commits, some squashing multiple upstream
+commits that touched the same function in sequence). Continuing
+commit-by-commit in following turns. At this rate (~1469 total upstream
+commits across 16 release checkpoints), full catch-up is a multi-session
+effort — this tracker is the source of truth for exactly where the next
+turn should resume.
