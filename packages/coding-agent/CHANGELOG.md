@@ -9,6 +9,7 @@
 ### Changed
 
 - Task delegation guidance (`eager-task.md`, forced-delegation mode) now says explicitly that top-level scoping, decomposition, and cross-slice contracts are the primary agent's job — never spawn a subagent to produce the overall plan — and that a single runnable slice should be done inline rather than handed to a lone subagent (a lossy handoff, not parallelism). Ported from oh-my-pi (upstream `1c6f5dc18`, `eager-task.md` portion only — jeopi's `system-prompt.md` delegation section has diverged structurally from upstream's and needs separate manual review before porting the rest of this commit).
+- Reduced browser action timeout from 15s to 8s to improve agent iteration speed. Ported from oh-my-pi (upstream `9ebc23928`).
 
 ### Fixed
 
@@ -29,6 +30,10 @@
 - Fixed first-run interactive startup rendering the full packaged changelog when the last-seen marker is missing, malformed, or unreadable. Startup upgrade notes now show at most three unseen releases and cap Markdown source at 64 KiB; `/changelog full` remains the explicit full-history path. Ported from oh-my-pi (upstream `f53411295`, `449310eb1`).
 - Fixed `runSearchQuery` leaking a self-discovered `AuthStorage` (never closed) and silently proceeding with an undefined store when discovery failed. It now throws when no auth storage is available and closes any storage it opened itself in a `finally` block, leaving a caller-supplied storage untouched. Ported from oh-my-pi (upstream `376084c19`).
 - Fixed `write` blocking for the full inline LSP diagnostics poll window instead of returning immediately and delivering slow diagnostics via the existing deferred late-diagnostics channel (already used by `edit`). Extracted the deferred-diagnostics bookkeeping (pending-fetch cancellation, mutation-version staleness, dedup) from `EditTool` into a shared `DeferredDiagnostics` class used by both tools. Ported from oh-my-pi (upstream `b0d98d9e2`).
+- Fixed browser runs silently dropping `display("string")`, `console.log`, and `print` output: the runtime emits those as stream text, which the browser embedders (worker and cmux) routed to the debug log only, so the tool result showed a bare "Ran code on tab". Stream text is now buffered and surfaced as ordered display entries alongside `display()` payloads and screenshots. Ported from oh-my-pi (upstream `a9cdaf427`).
+- Fixed `input.fill is not a function` on element handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`: raw puppeteer ElementHandles expose `type()` but not the `fill()` the tool docs promise. Handles handed to user code now carry a `fill()` matching `tab.fill()` semantics (focus, clear, retype). Ported from oh-my-pi (upstream `a9cdaf427`).
+- Browser selector ops (`click`/`type`/`fill`/`waitFor`/…) that hit their fail-fast timeout now append a match-count diagnosis — "matches no elements" (wrong page, consent wall) vs "matches N element(s) but the action never became possible" (hidden/covered) — instead of a bare `timed out after 15000ms`. Ported from oh-my-pi (upstream `a9cdaf427`).
+- Browser selector ops no longer burn their whole deadline on a selector that matches nothing: a watchdog polls while the action runs and aborts after ~2s of confirmed zero matches with the inspection hint. `waitFor`/`waitForSelector` opt out via an explicit `{ timeout }` (and `hidden: true` waits are exempt — zero matches is their success condition). The per-action ceiling for present-but-unactionable elements also dropped from 15s to 8s. Ported from oh-my-pi (upstream `9ebc23928`).
 
 ## [16.4.2] - 2026-07-14
 
