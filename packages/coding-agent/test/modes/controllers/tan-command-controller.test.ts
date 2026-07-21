@@ -188,6 +188,7 @@ describe("TanCommandController", () => {
 		const abortObserved = Promise.withResolvers<void>();
 		const clone = {
 			sessionManager: { appendSessionInit: vi.fn() },
+			agent: { appendMessage: vi.fn() },
 			systemPrompt: ["system prompt"],
 			getActiveToolNames: vi.fn(() => ["read", "bash"]),
 			prompt: vi.fn(async () => {
@@ -237,6 +238,7 @@ describe("TanCommandController", () => {
 		vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
 		const clone = {
 			sessionManager: { appendSessionInit: vi.fn() },
+			agent: { appendMessage: vi.fn() },
 			systemPrompt: ["system prompt"],
 			getActiveToolNames: vi.fn(() => ["read", "bash"]),
 			prompt: vi.fn(async () => {}),
@@ -269,6 +271,7 @@ describe("TanCommandController", () => {
 		const appendSessionInit = vi.fn();
 		const clone = {
 			sessionManager: { appendSessionInit },
+			agent: { appendMessage: vi.fn() },
 			systemPrompt: ["system prompt"],
 			getActiveToolNames: vi.fn(() => ["read", "bash"]),
 			prompt: vi.fn(async () => {}),
