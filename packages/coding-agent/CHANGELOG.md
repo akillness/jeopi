@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Bare `skill://name` URLs (no relative path) now resolve to the skill directory for path-only tool operations (`bash` `skill://` expansion, `search`/`find` on internal URLs) instead of `SKILL.md`; `read` still returns `SKILL.md` instructions for the bare form. Ported from oh-my-pi (upstream `cf4e510ac`).
+
 ## [16.4.2] - 2026-07-14
 
 ### Fixed

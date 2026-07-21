@@ -107,6 +107,13 @@ export interface ResolveContext {
 	 * reject directory resources, so they never need the listing.
 	 */
 	skipDirectoryListing?: boolean;
+	/**
+	 * When set, handlers that support both a "document" and a "directory" form
+	 * for the same bare URL (e.g. `skill://name` vs `skill://name/SKILL.md`)
+	 * resolve to the directory instead of the document. Used by `glob`'s
+	 * internal-URL find path, which needs a directory to walk.
+	 */
+	pathOnly?: boolean;
 }
 
 /**

@@ -766,6 +766,7 @@ async function resolveInternalSearchInputs(opts: {
 		localProtocolOptions: opts.localProtocolOptions,
 		skills: opts.skills,
 		skipDirectoryListing: true,
+		pathOnly: true,
 	};
 
 	for (let idx = 0; idx < paths.length; idx++) {
