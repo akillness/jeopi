@@ -37,7 +37,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | triaged 10/10, ported 5 + 3 N/A, 2 deferred (large feature) |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | reviewed 41/41, ported 3 + 4 N/A/subsumed, 34 deferred to dedicated large-feature sessions (model hub, ask dialog, vendored coreutils, agent suspension, task restructure, TUI loader, bash fixup removal, tool-arg recovery) |
-| 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
+| 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | in progress: 2/~21 ported (3 upstream commits, 2 jeopi commits) |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | pending |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | pending |
@@ -575,3 +575,45 @@ review). None of these are safe to rush — each needs a dedicated
 session. Recommend moving to checkpoint 4 (v16.4.6, only 22 commits) to
 keep breadth-first progress, circling back to checkpoint 3's deferred
 list in a future dedicated pass.
+
+### Checkpoint 4 — v16.4.6 (~21 substantive commits) — in progress
+
+21 commits between `3d1f9a4a3` and `20c0a2e41`. Notable large features
+landing here: model performance tracking + storage/migration
+(`c4fa0ebaa` + `a0dcb8ae2` UI + `41317cc23` tests + `d54dcc222` fallback
+routing — 4-commit sequence), sequential message queueing/commands
+(`e7955ddf3`), interactive fallback chain configuration (`54bafa1cc`),
+`0ae8efd64` "integrated coreutils as in-process shell builtins" (part of
+the checkpoint-3-deferred vendored-coreutils bucket), preserved
+completed/abandoned tasks in session (`6c292b97c`, likely coupled to the
+checkpoint-3-deferred flat task structure).
+
+- [x] `a9adf20af` fix: prevented false overlap errors by deduplicating
+  identical edits — jeopi commit `7f960a53c`, Rust
+  (`crates/pi-ast/src/ops.rs` + `crates/pi-natives/src/ast.rs`). Direct
+  1:1 port. Verified: `cargo test -p pi-ast -p pi-natives ast` (12/12
+  pass) + `cargo fmt` + full `bun run check:rs`.
+- [x] `2c161d2a8` + `9269823d1` fix(coding-agent): preserved btw codex
+  websocket routing + shared codex state — jeopi commit `e545a0865`.
+  `/btw` side-channel turns now pass `preferWebsockets`/
+  `providerSessionState` through instead of forcing SSE with no state;
+  Esc now dismisses an active `/btw`/`/omfg` panel before loop-mode or
+  maintenance interrupts (previously only before streaming/bash
+  aborts). Direct 1:1 port. Verified: `bun test`
+  `agent-session-message-pipeline.test.ts` + `input-controller-escape.test.ts`
+  (53/53 pass, incl. 3 new tests) + full `bun run check:ts`.
+
+Status: **in progress**, 2/~21 ported (2 jeopi commits covering 3
+upstream commits). Remaining candidates not yet reviewed:
+`41317cc23`/`b6559861d`/`c4fa0ebaa`/`a0dcb8ae2`/`d54dcc222` (model perf
+tracking sequence, likely large), `a3117c284` (async-drain utility
+migration to shared package), `666327608` (model search ranking),
+`e7955ddf3` (sequential message queueing), `54bafa1cc` (fallback chain
+config), `7cef4a769` (OAuth credential resolution fallback, `packages/ai`),
+`6bb0878b6`+`43f8999a9` (cache invalidation for usage reports, 2-commit
+sequence), `4181ef18b` (build: prevented embedding native runtime deps,
+small), `0ae8efd64` (coreutils shell builtins — coupled to checkpoint
+3's deferred vendored-coreutils bucket), `6c292b97c` (preserved
+completed/abandoned tasks — likely coupled to checkpoint 3's deferred
+flat task structure), `20c0a2e41` (storage test fixes for schema v6,
+likely coupled to `c4fa0ebaa`'s migration).
