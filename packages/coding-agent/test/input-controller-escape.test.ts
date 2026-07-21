@@ -437,6 +437,35 @@ describe("InputController escape behavior", () => {
 		expect(spies.abort).not.toHaveBeenCalled();
 	});
 
+	it("dismisses an active /btw panel before aborting loop mode", () => {
+		const { ctx, editor, spies } = createContext();
+		ctx.loopModeEnabled = true;
+		(ctx.session as { isStreaming: boolean }).isStreaming = true;
+		spies.hasActiveBtw.mockReturnValue(true);
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.onEscape?.();
+
+		expect(spies.handleBtwEscape).toHaveBeenCalledTimes(1);
+		expect(spies.abort).not.toHaveBeenCalled();
+		expect(ctx.loopModeEnabled).toBe(true);
+	});
+
+	it("dismisses an active /btw panel before aborting maintenance", () => {
+		const { ctx, editor, spies } = createContext();
+		abortViewSession(ctx).isGeneratingHandoff = true;
+		spies.hasActiveBtw.mockReturnValue(true);
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.onEscape?.();
+
+		expect(spies.handleBtwEscape).toHaveBeenCalledTimes(1);
+		expect(spies.abortHandoff).not.toHaveBeenCalled();
+		expect(spies.abort).not.toHaveBeenCalled();
+	});
+
 	it("requires a second Esc within two seconds to abort streaming", () => {
 		const now = vi.spyOn(Date, "now");
 		now.mockReturnValue(1_000);
