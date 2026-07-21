@@ -34,6 +34,7 @@
 - Fixed `input.fill is not a function` on element handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`: raw puppeteer ElementHandles expose `type()` but not the `fill()` the tool docs promise. Handles handed to user code now carry a `fill()` matching `tab.fill()` semantics (focus, clear, retype). Ported from oh-my-pi (upstream `a9cdaf427`).
 - Browser selector ops (`click`/`type`/`fill`/`waitFor`/…) that hit their fail-fast timeout now append a match-count diagnosis — "matches no elements" (wrong page, consent wall) vs "matches N element(s) but the action never became possible" (hidden/covered) — instead of a bare `timed out after 15000ms`. Ported from oh-my-pi (upstream `a9cdaf427`).
 - Browser selector ops no longer burn their whole deadline on a selector that matches nothing: a watchdog polls while the action runs and aborts after ~2s of confirmed zero matches with the inspection hint. `waitFor`/`waitForSelector` opt out via an explicit `{ timeout }` (and `hidden: true` waits are exempt — zero matches is their success condition). The per-action ceiling for present-but-unactionable elements also dropped from 15s to 8s. Ported from oh-my-pi (upstream `9ebc23928`).
+- Fixed context promotion docs to match the explicit `contextPromotionTarget` runtime behavior and `contextPromotion.enabled` default. Ported from oh-my-pi (upstream `cbe083224`).
 
 ## [16.4.2] - 2026-07-14
 
