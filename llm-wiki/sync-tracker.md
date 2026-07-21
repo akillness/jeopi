@@ -87,5 +87,40 @@ before deleting anything).
 subagent` (`2f97b7fe4`, conflicts with jeopi's own `planner` role-agent
 surface — needs explicit review before applying), reasoning/thinking title
 stripping fixes, ACP provider error surfacing, natives glob traversal depth
-cap. Full commit list captured in session; porting not yet started pending
-scope/pacing confirmation from repo owner (see status report).
+cap.
+
+Ported so far (small, self-contained fixes; large features below deferred
+to a dedicated pass):
+
+- [x] `cf4e510ac` fix(tool): bare `skill://` URLs resolve to directory for
+  path-only ops — jeopi commit `8385f04e9`. Adapted to jeopi's `paths[]`
+  array API (upstream had already unified to singular `path` by this
+  point) and additionally threaded `pathOnly` through `grep.ts`'s
+  `resolveInternalSearchInputs` context (upstream's own `grep.ts` didn't
+  need the change at this point in its history — architecture diverged).
+- [x] `a0a6949a4` fix(mcp): argv-first `Bun.spawn` overload for stdio TCC
+  prompts — jeopi commit `922e5a05d`. Test adapted: jeopi doesn't carry
+  upstream's darwin-stays-attached exception yet, so asserts jeopi's real
+  `detached` semantics instead of upstream's platform-specific one.
+- [x] `74c63fa6c` fix(agent): labeled system steering skips accurately —
+  jeopi commit `ca1477dc2`. `hasSteeringMessages` may now return a
+  `SteeringQueueState` in addition to a plain boolean; `agent.ts` inspects
+  `#steeringQueue` entries for `role === "user" && attribution !== "agent"`
+  to distinguish real user steering from advisor/system steering. Existing
+  boolean-returning callers elsewhere in the codebase are unaffected.
+- [ ] Remaining ~36 substantive commits in this checkpoint — not yet
+  ported. Candidates queued next: `3188506e6` (ai: Responses
+  `incomplete_details`), `31c9f4850` (ai: empty image placeholders), the
+  4-commit thinking-title-stripping chain (`851186f5d`, `0420d40d3`,
+  `65b0f0532`, `a16c60014`).
+- [ ] Large features flagged for dedicated review before porting: vibe
+  mode (4 commits), plan-subagent removal (conflicts with jeopi's
+  `planner` role-agent — needs a design decision, not a mechanical port),
+  web search provider rewrite (10 new provider files), legacy-pi bundled
+  registry rewrite (`legacy-pi-bundled-registry.ts` deleted upstream in
+  favor of `legacy-pi-virtual-module.ts` — touches jeopi's own
+  `legacy-pi-compat.ts` naming, needs careful review).
+
+Status: **in progress**, 3/~69 commits ported and verified
+(`bun test` + full `bun check` clean after each). Continuing
+commit-by-commit in following turns.
