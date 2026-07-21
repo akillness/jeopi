@@ -35,7 +35,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | # | tag | upstream commit | cumulative commits | delta | status |
 |---|-----|-----------------|--------------------|-------|--------|
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
-| 2 | v16.4.4 | 29a6a6800 | 82 | +13 | in progress: 3/10 ported |
+| 2 | v16.4.4 | 29a6a6800 | 82 | +13 | in progress: 4/10 ported |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | pending |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
@@ -356,8 +356,21 @@ install artifact portability (`bc7a143c1`), test null-safety hardening
 - [ ] `29a6a6800` fix(coding-agent): preserved chat envelope in title
   preprocessing — builds on `93635e7b6`'s new `message-preproc.ts`; port
   together with it.
-- [ ] `bc7a143c1` fix(setup): used portable native install artifacts — not
-  yet reviewed.
+- [x] `bc7a143c1` fix(setup): used portable native install artifacts —
+  jeopi commit `f98711401`. Windows release binary now compiles with
+  `bun-windows-x64-baseline` (not the AVX2-only `-modern` target,
+  `scripts/ci-release-build-binaries.ts`); native addon builds force
+  `PCRE2_SYS_STATIC=1` (`packages/natives/scripts/build-native.ts` +
+  `scripts/ci-build-native.ts`, new `withPortableNativeBuildEnv()`).
+  Adapted: upstream's `build-binary.ts` `resolveCrossBuild()` extraction
+  + unit test NOT ported — jeopi's `build-binary.ts` has a structurally
+  different string-interpolation `CROSS_TARGET` resolver (no function to
+  extract) from an earlier independent divergence; the actual
+  release-build target (`ci-release-build-binaries.ts`, what `bun run
+  release`/CI invoke) matched upstream's structure and was ported
+  directly. Verified: `bun test` on all 5 `scripts/*.test.ts` (23/23
+  pass) + full `bun run check:ts` (incl. `bun run gen:docs` regen for
+  the `cbe083224` docs edit) + `bun run check:rs`, both clean.
 - [ ] `337feb297` test: improved test null safety and type assertions —
   touches 7 test files across `packages/ai` and `packages/coding-agent`;
   not yet reviewed for applicability (may be upstream-specific flake
@@ -372,8 +385,8 @@ install artifact portability (`bc7a143c1`), test null-safety hardening
   expected N/A (upstream-only bookkeeping, same pattern as checkpoint 1's
   `f7930048d`/`056fc5f69`).
 
-Status: **in progress**, 3/10 substantive commits ported (2 jeopi
-commits: `935a34034`, `7087f7272`), 7 remaining (1 large feature not yet
-reviewed, 1 likely-coupled Windows/Bun.build fix, 1 test-hardening batch
-not yet reviewed, 2 expected-N/A chores, 1 depends on the not-yet
-reviewed `93635e7b6`).
+Status: **in progress**, 4/10 substantive commits ported (3 jeopi
+commits: `935a34034`, `7087f7272`, `f98711401`), 6 remaining (1 large
+feature not yet reviewed, 1 likely-coupled Windows/Bun.build fix, 1
+test-hardening batch not yet reviewed, 2 expected-N/A chores, 1 depends
+on the not-yet-reviewed `93635e7b6`).
