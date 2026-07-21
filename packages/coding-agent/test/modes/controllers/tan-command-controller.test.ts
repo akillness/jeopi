@@ -187,6 +187,9 @@ describe("TanCommandController", () => {
 		const promptStarted = Promise.withResolvers<void>();
 		const abortObserved = Promise.withResolvers<void>();
 		const clone = {
+			sessionManager: { appendSessionInit: vi.fn() },
+			systemPrompt: ["system prompt"],
+			getActiveToolNames: vi.fn(() => ["read", "bash"]),
 			prompt: vi.fn(async () => {
 				promptStarted.resolve();
 				await abortObserved.promise;
@@ -233,6 +236,9 @@ describe("TanCommandController", () => {
 		const harness = createContext({ agentId: "FocusedParent" });
 		vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
 		const clone = {
+			sessionManager: { appendSessionInit: vi.fn() },
+			systemPrompt: ["system prompt"],
+			getActiveToolNames: vi.fn(() => ["read", "bash"]),
 			prompt: vi.fn(async () => {}),
 			waitForIdle: vi.fn(async () => {}),
 			getLastAssistantMessage: vi.fn(() => assistantText("done")),
@@ -260,7 +266,11 @@ describe("TanCommandController", () => {
 	it("parks the finished tan in the registry so it stays visible in the Agent Hub", async () => {
 		const harness = createContext();
 		vi.spyOn(SessionManager, "forkFrom").mockResolvedValue(harness.cloneManager);
+		const appendSessionInit = vi.fn();
 		const clone = {
+			sessionManager: { appendSessionInit },
+			systemPrompt: ["system prompt"],
+			getActiveToolNames: vi.fn(() => ["read", "bash"]),
 			prompt: vi.fn(async () => {}),
 			waitForIdle: vi.fn(async () => {}),
 			getLastAssistantMessage: vi.fn(() => assistantText("done")),
@@ -286,6 +296,11 @@ describe("TanCommandController", () => {
 		});
 
 		expect(result).toBe("done");
+		expect(appendSessionInit).toHaveBeenCalledWith({
+			systemPrompt: "system prompt",
+			task: "park me",
+			tools: ["read", "bash"],
+		});
 		// Parked (not unregistered) before dispose, then the disposed session is nulled
 		// out — the hub keeps the ref and reads its transcript from the session file.
 		expect(setStatus).toHaveBeenCalledWith(expect.stringMatching(/^Tan-/), "parked");
