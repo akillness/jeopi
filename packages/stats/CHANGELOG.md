@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed a `SQLITE_CONSTRAINT_NOTNULL` crash (`messages.stop_reason`) aborting the entire session sync when a persisted assistant message lacks a `stopReason`. Malformed entries — missing stop reason, token counts, or message timestamp — are now coerced at the parser boundary, and entries with no usage or model attribution are skipped instead of failing the batch insert. Ported from oh-my-pi (upstream `1b0b18c7a`; the upstream commit's tool-call-block filtering portion was not ported — jeopi's stats parser has no per-tool-call stats tracking to filter).
+
 ## [16.2.27] - 2026-07-07
 
 ### Fixed

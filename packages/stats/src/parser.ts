@@ -6,6 +6,7 @@ import {
 	getPriorityPremiumRequests,
 	resolveModelServiceTier,
 	type ServiceTierByFamily,
+	type Usage,
 } from "jeopi-ai";
 import { getSessionsDir, isEnoent } from "jeopi-utils";
 import type {
@@ -131,6 +132,14 @@ function extractUserStats(sessionFile: string, folder: string, entry: SessionMes
 
 /**
  * Extract stats from an assistant message entry.
+ *
+ * Session JSONL on disk is not guaranteed to match the current
+ * `AssistantMessage` shape: crash-truncated turns, sessions written by older
+ * versions, and foreign producers all flow through this parser. Every field
+ * returned here feeds a NOT NULL column in stats.db, so malformed entries are
+ * coerced (missing `stopReason`, token counts, `timestamp`) or skipped
+ * (missing `model`/`provider`/`api`/`usage`) instead of crashing the whole
+ * sync with a constraint violation.
  */
 function extractStats(
 	sessionFile: string,
@@ -141,6 +150,9 @@ function extractStats(
 ): MessageStats | null {
 	const msg = entry.message as AssistantMessage;
 	if (msg?.role !== "assistant") return null;
+	if (typeof msg.model !== "string" || typeof msg.provider !== "string" || typeof msg.api !== "string") return null;
+	const rawUsage = msg.usage as Partial<Usage> | undefined;
+	if (!rawUsage || typeof rawUsage !== "object") return null;
 
 	// Backfill: when the session recorded `priority` as the active service tier
 	// at this point but the AI usage payload was captured before priority
@@ -148,11 +160,29 @@ function extractStats(
 	// "Premium Reqs" stat aggregates priority traffic on re-sync. Trust any
 	// non-zero value already in `usage.premiumRequests` (Copilot multipliers or
 	// the new AI code path) and only synthesise when the field is missing/zero.
-	const recorded = msg.usage.premiumRequests ?? 0;
+	const recorded = rawUsage.premiumRequests ?? 0;
 	const model = { provider: msg.provider, api: msg.api, id: msg.model };
 	const tier = resolveModelServiceTier(currentServiceTier, model);
 	const derived = recorded > 0 ? recorded : getPriorityPremiumRequests(tier, model);
-	const usage = derived === recorded ? msg.usage : { ...msg.usage, premiumRequests: derived };
+	const wellFormed =
+		typeof rawUsage.input === "number" &&
+		typeof rawUsage.output === "number" &&
+		typeof rawUsage.cacheRead === "number" &&
+		typeof rawUsage.cacheWrite === "number" &&
+		typeof rawUsage.totalTokens === "number";
+	const usage: Usage =
+		wellFormed && derived === recorded
+			? (rawUsage as Usage)
+			: {
+					...rawUsage,
+					input: rawUsage.input ?? 0,
+					output: rawUsage.output ?? 0,
+					cacheRead: rawUsage.cacheRead ?? 0,
+					cacheWrite: rawUsage.cacheWrite ?? 0,
+					totalTokens: rawUsage.totalTokens ?? 0,
+					cost: rawUsage.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					premiumRequests: derived,
+				};
 
 	return {
 		sessionFile,
@@ -161,14 +191,23 @@ function extractStats(
 		model: msg.model,
 		provider: msg.provider,
 		api: msg.api,
-		timestamp: msg.timestamp,
+		timestamp: coerceEntryTimestamp(msg.timestamp, entry),
 		duration: msg.duration ?? null,
 		ttft: msg.ttft ?? null,
-		stopReason: msg.stopReason,
+		// A message persisted without a terminal stop reason never completed
+		// normally: classify by whether it carried an error.
+		stopReason: msg.stopReason ?? (msg.errorMessage ? "error" : "aborted"),
 		errorMessage: msg.errorMessage ?? null,
 		usage,
 		agentType,
 	};
+}
+
+/** Message timestamp, falling back to the entry's ISO timestamp, then 0. */
+function coerceEntryTimestamp(timestamp: number | undefined, entry: SessionMessageEntry): number {
+	if (typeof timestamp === "number" && Number.isFinite(timestamp)) return timestamp;
+	const ts = Date.parse(entry.timestamp);
+	return Number.isFinite(ts) ? ts : 0;
 }
 
 const LF = 0x0a;
