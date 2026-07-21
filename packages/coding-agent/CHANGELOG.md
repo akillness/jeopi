@@ -20,6 +20,7 @@
 - Fixed cmux `tab.evaluate()` / `elementHandle.evaluate()` errors surfacing as the daemon's opaque `js_error: A JavaScript exception occurred`. Scripts now run inside a page-side try/catch envelope that returns the real message and stack, and a Promise return (which the daemon cannot serialize) yields an actionable "evaluates synchronously" error instead of an unsupported-type failure. Ported from oh-my-pi (upstream `d993b13c8`).
 - Fixed `jeopi commit` agent sessions so a valid proposal is committed before session teardown can dispose mnemopi/autolearn resources, missing required host outputs now fail non-zero instead of returning cleanly, and git subprocesses no longer force `GPG_TTY=not a tty` on signing-enabled repositories. Ported from oh-my-pi (upstream `159484ca6`).
 - Fixed the `/move` directory picker drawing a fixed 68-column frame inside wider full-width overlays instead of honoring the assigned overlay width. Ported from oh-my-pi (upstream `b35e4c413`).
+- Fixed snapcompact inline imaging for GitHub Copilot Business and Enterprise models that advertise image input, removing the stale non-personal-host block. Ported from oh-my-pi (upstream `e58d2c460`, `4bae9a42a`, `b0f22caf8`).
 
 ## [16.4.2] - 2026-07-14
 
