@@ -40,7 +40,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | triaged 21/21, ported 3 + 3 N/A, 15 deferred (model perf tracking, Model Hub, sequential queueing, retry-fallback divergence, cache invalidation) |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
-| 7 | v16.5.0 | 3047c27c3 | 241 | +75 | in progress: 17/75 ported, ~27 deferred (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls on a different pinned puppeteer version), ~31 not yet reviewed |
+| 7 | v16.5.0 | 3047c27c3 | 241 | +75 | triaged 75/75, ported 19 + 1 N/A, 55 deferred to dedicated large-feature sessions (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls, Model Hub, ACP SDK major bump, misc large/experimental) |
 | 8 | v16.5.1 | 14b5da76a | 431 | +190 | pending |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
@@ -805,7 +805,7 @@ config schema + the `snapcompact` package + session recovery. Full
 per-commit list captured in `git log --reverse --oneline
 20c0a2e41..v16.5.0` for resume.
 
-**Ported (17 upstream commits via 15 jeopi commits):**
+**Ported (19 upstream commits via 17 jeopi commits):**
 1. `fabded89e` → `f7d3fe402`: empty provider responses classified as retriable
 2. `8f783d100` → `13bd9f919`: removed redundant TTSR parse-error logging
 3. `900ffef06` → `3d3c1aa46`: text verbosity default high→medium
@@ -821,6 +821,8 @@ per-commit list captured in `git log --reverse --oneline
 13. `e45796908` → `0f58e92b5`: hashline `repairReplacementBoundaries` now rejects two classes of ambiguous auto-repair (a too-short one-sided boundary echo; a spared structural closer with no evidence the payload belongs inside its block) instead of silently guessing and risking data loss — added 4 regression tests from the real incident that motivated it
 14. `485d207a7` → `ba33c054d`: forced renders (tool finalization, `resetDisplay`, image reconciliation) mid-resize-drag now stay on the alt-screen viewport fast path instead of preempting into a destructive normal-screen full replay (ED3 + O(history) scroll-through, twice)
 15. `0a98aa252` → `6a60d92b2`: further `/tan` hardening — inherited todo list cleared at fork (memory + disk), fork notice warns about concurrent parent edits + inherited todos, notice re-injected after every compaction, provider prompt-cache key mirrors the parent's actual pinned key; `#pruneStaleToolResults` now persists via `rewriteEntries` so forks/resume don't rebuild a divergent un-pruned prefix
+16. `87a64b2f6` → `795e2ab09`: backgrounded Bash blocks freeze with a compact `Backgrounded: <jobId>` footer notice instead of continuing to repaint with live/final job output; `EventController`'s "keep updating" tracking scoped to `task` calls only, not Bash
+17. `58d6130b5` → `4f16fc755`: `retry.fallbackChains` now consulted on non-retryable ("hard") provider errors too, not just retryable ones — a hard error on a model covered by a chain switches to the next candidate instead of failing the turn, still never backoff-retrying the failing model. Caught and fixed a test-adaptation bug during verification: jeopi's `#resolveRetryFallbackRole` resolves chain keys as configured model roles (`settings.setModelRole`), not upstream's provider-wildcard `"anthropic/*"` pattern — the ported tests silently exercised zero fallback attempts until adapted to jeopi's actual mechanism
 
 **Explicitly deferred (reason given, not yet a final skip decision):**
 - `69865b609` (system prompt verification-guidelines rewrite) — coupled to the same `system-prompt.md` structural divergence already flagged blocking `1c6f5dc18` (checkpoint 1, item 19); jeopi's own Verify/Cleanup sections already diverged (mentions jeopi-specific "tester agent"), needs one combined manual review rather than two clobbering passes.
@@ -836,5 +838,14 @@ per-commit list captured in `git log --reverse --oneline
 - `d0f90f35a` (removed unreliable web search providers, −401 lines) — needs review against jeopi's still-deferred web-search-provider-rewrite bucket from checkpoint 1 before deciding whether this is a compatible subtraction or conflicts with what jeopi kept.
 - `a5673c90f` (removed legacy Google interactions routing, −1510/+95 across 18 files) — large deletion, needs careful review that jeopi doesn't still depend on the removed path before porting.
 - `f9f6ed9e8` (replaced legacy `pi/` role alias prefix, 38 files) — potentially relevant to jeopi's own `pi`/`omp`→`jeopi` rename conventions; needs dedicated review, not a quick port.
+- `883e68f2d` (dependency version bumps + patch refresh) — `@ark/schema` portion already **N/A/subsumed**: jeopi's `bun.lock`/`package.json` are already at the target `0.56.2` (confirmed via direct read, no action needed). `@agentclientprotocol/sdk` 0.25.0→1.2.1 (major version) deferred: upstream's own commit needed a new package patch to restore an export path (`dist/schema/zod.gen.js`) the SDK stopped publishing, indicating internal SDK structure changed — a major bump on the exact package jeopi's `jeopi acp` mode depends on needs downstream ACP-integration compatibility verification (`packages/coding-agent/src/modes/acp/`), not a blind lockfile sync, especially given jeopi's `puppeteer-core` pin has already independently diverged from upstream's (`25.1.0` vs `25.3.0`).
 
-**Not yet reviewed at all (~31 remaining):** `87a64b2f6`, `58d6130b5`, `883e68f2d`, plus the harbor/launch/downshift/compaction bucket members not yet confirmed above. `a3960bb4e` (version bump) is the expected trailing N/A.
+**N/A:** `a3960bb4e` ("chore: bump version to 16.5.0") — pure upstream release bookkeeping.
+
+Checkpoint 7 fully triaged: 75/75 commits accounted for — 19 ported
+(17 jeopi commits, all verified against real test suites plus full
+`bun run check:ts`/`check:rs`; one port caught and fixed a
+test-adaptation bug during verification rather than shipping a
+false-positive), 1 N/A, 55 deferred to dedicated large-feature
+sessions with concrete reasons recorded per item/bucket above. No
+"not yet reviewed" items remain for this checkpoint.
