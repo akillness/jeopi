@@ -41,7 +41,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | triaged 75/75, ported 19 + 1 N/A, 55 deferred to dedicated large-feature sessions (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls, Model Hub, ACP SDK major bump, misc large/experimental) |
-| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 3/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
+| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 5/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
 | 11 | v17.0.1 | 6ae7cdbf9 | 756 | +157 | pending |
@@ -865,14 +865,15 @@ paired substantive commit is triaged. This means the *effective*
 number of distinct changes is well under 190 — full per-commit list
 via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 
-**Ported (3 upstream commits, each its own jeopi commit):**
+**Ported (5 upstream commits, each its own jeopi commit):**
 1. `aeed4d10d` → `bb1f0008a`: Markdown HTML comments (`<!-- -->`) stripped during TUI terminal normalization instead of rendering literally
 2. `dac54080d` → `3a8a00f3d`: autolearn auto-continue no longer nudges after an aborted turn (Esc/cancel) — reads `stopReason` from the `agent_end` event's own messages since the session-level abort flag is unreliable by delivery time
 3. `1a3e137f1` → `0112a4309`: `jeopi -p` text-mode print writes a one-shot "Working..." stderr indicator before the first prompt so it doesn't look hung
+4. `81c4cb6df` → `de89ca220`: follow-up cleanup to `dac54080d`'s test (typed `AssistantMessage` fixture instead of `as never` cast)
+5. `b097019fe` → `917059ba4`: MCP tool call args now resolve `local://` image attachments to on-disk paths before dispatch (external MCP servers can't resolve jeopi's internal URL scheme) — new `CustomToolContext.localProtocolOptions`, recursive arg-tree resolver in `tool-bridge.ts`
 
-**Not yet reviewed:** ~186 remaining. Next in queue per the commit
-list above: `81c4cb6df` (PR review feedback #4924), `b097019fe` (MCP
-local image paths), `70316a7f8`/`8480a84b3` (collab-web transcript
+**Not yet reviewed:** ~185 remaining. Next in queue per the commit
+list above: `70316a7f8`/`8480a84b3` (collab-web transcript
 tool dedup/args), `3ebcb3690` (MCP local roots), and onward through
 the list. Given the volume, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
