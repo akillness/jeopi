@@ -52,6 +52,7 @@ import { opencodeGoUsageProvider } from "./usage/opencode-go";
 import { zaiUsageProvider } from "./usage/zai";
 
 const USAGE_RANKING_METRIC_EPSILON = 1e-9;
+const SESSION_STICKY_CACHE_PREFIX = "session:sticky:";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Credential Types
@@ -298,6 +299,8 @@ export interface AuthCredentialStore {
 	deleteAuthCredentialsForProvider(provider: string, disabledCause: string): void;
 	getCache(key: string, options?: { includeExpired?: boolean }): string | null;
 	setCache(key: string, value: string, expiresAtSec: number): void;
+	/** Drop all cache rows whose keys start with the supplied prefix. */
+	deleteCachePrefix?(prefix: string): void;
 	cleanExpiredCache(): void;
 	/**
 	 * Append usage-limit snapshots for trend history. Optional: stores without
@@ -1357,7 +1360,7 @@ export class AuthStorage {
 		try {
 			const credentialId = this.#getStoredCredentials(provider)[index]?.id;
 			if (credentialId !== undefined) {
-				const cacheKey = `session:sticky:${provider}:${sessionId}`;
+				const cacheKey = `${SESSION_STICKY_CACHE_PREFIX}${provider}:${sessionId}`;
 				const cacheValue = JSON.stringify({ type, index, credentialId });
 				// Expires in 30 days
 				const expiresAtSec = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
@@ -1379,7 +1382,7 @@ export class AuthStorage {
 			return sessionMap.get(sessionId);
 		}
 		try {
-			const cacheKey = `session:sticky:${provider}:${sessionId}`;
+			const cacheKey = `${SESSION_STICKY_CACHE_PREFIX}${provider}:${sessionId}`;
 			const raw = this.#store.getCache(cacheKey);
 			if (raw) {
 				const val = JSON.parse(raw) as { type: AuthCredential["type"]; index: number; credentialId?: number };
@@ -1423,7 +1426,7 @@ export class AuthStorage {
 			}
 		}
 		try {
-			const cacheKey = `session:sticky:${provider}:${sessionId}`;
+			const cacheKey = `${SESSION_STICKY_CACHE_PREFIX}${provider}:${sessionId}`;
 			this.#store.setCache(cacheKey, "", 0);
 		} catch (err) {
 			logger.debug("Failed to clear session sticky credential from persistent store cache", { err });
@@ -1464,6 +1467,14 @@ export class AuthStorage {
 		return fallback;
 	}
 
+	#clearProviderSessionCredentialCache(provider: string): void {
+		try {
+			this.#store.deleteCachePrefix?.(`${SESSION_STICKY_CACHE_PREFIX}${provider}:`);
+		} catch (err) {
+			logger.debug("Failed to clear provider session sticky credentials from persistent store cache", { err });
+		}
+	}
+
 	/**
 	 * Clears round-robin and session assignment state for a provider.
 	 * Called when credentials are added/removed to prevent stale index references.
@@ -1475,6 +1486,7 @@ export class AuthStorage {
 			}
 		}
 		this.#sessionLastCredential.delete(provider);
+		this.#clearProviderSessionCredentialCache(provider);
 		for (const key of this.#credentialBackoff.keys()) {
 			if (key.startsWith(`${provider}:`)) {
 				this.#credentialBackoff.delete(key);
@@ -4757,6 +4769,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	#getCacheStmt: Statement;
 	#getCacheIncludingExpiredStmt: Statement;
 	#upsertCacheStmt: Statement;
+	#deleteCachePrefixStmt: Statement;
 	#deleteExpiredCacheStmt: Statement;
 	#insertUsageHistoryStmt: Statement;
 	#insertUsageCostStmt: Statement;
@@ -4802,6 +4815,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#upsertCacheStmt = this.#db.prepare(
 			"INSERT INTO cache (key, value, expires_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at",
 		);
+		this.#deleteCachePrefixStmt = this.#db.prepare("DELETE FROM cache WHERE substr(key, 1, ?) = ?");
 		this.#deleteExpiredCacheStmt = this.#db.prepare(`DELETE FROM cache WHERE expires_at <= ${SQLITE_NOW_EPOCH}`);
 		this.#insertUsageHistoryStmt = this.#db.prepare(
 			"INSERT INTO usage_history (recorded_at, provider, account_key, email, account_id, limit_id, label, window_label, used_fraction, status, resets_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -5366,6 +5380,15 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
+	/** Drop all cache rows whose keys start with the supplied prefix. */
+	deleteCachePrefix(prefix: string): void {
+		try {
+			this.#deleteCachePrefixStmt.run(prefix.length, prefix);
+		} catch {
+			// Ignore cache delete failures
+		}
+	}
+
 	cleanExpiredCache(): void {
 		try {
 			this.#deleteExpiredCacheStmt.run();
@@ -5566,6 +5589,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#getCacheStmt.finalize();
 		this.#getCacheIncludingExpiredStmt.finalize();
 		this.#upsertCacheStmt.finalize();
+		this.#deleteCachePrefixStmt.finalize();
 		this.#deleteExpiredCacheStmt.finalize();
 		this.#insertUsageHistoryStmt.finalize();
 		this.#lastUsageHistoryStmt.finalize();
