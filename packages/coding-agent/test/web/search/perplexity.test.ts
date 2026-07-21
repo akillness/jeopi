@@ -356,8 +356,9 @@ describe("Perplexity OAuth request shape", () => {
 
 		// The consumer ask endpoint has no system slot; prepending the prompt makes
 		// the model refuse ("I don't have web-search tools in this turn").
-		expect(body?.query_str).toBe("quic vs tcp");
-		const bodyParams = body?.params as Record<string, unknown>;
+		expect(body).toBeDefined();
+		expect(body!.query_str).toBe("quic vs tcp");
+		const bodyParams = body!.params as Record<string, unknown>;
 		expect(bodyParams.query_str).toBe("quic vs tcp");
 		expect(bodyParams.model_preference).toBe("experimental");
 		// The ask endpoint authenticates via the next-auth session cookie; a bearer

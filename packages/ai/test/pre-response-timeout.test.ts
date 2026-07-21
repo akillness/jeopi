@@ -54,9 +54,10 @@ describe("armPreResponseTimeout", () => {
 		const caller = new AbortController();
 		const { signal, clear } = armPreResponseTimeout(caller.signal, 60_000);
 		clear();
-		expect(signal?.aborted).toBe(false);
+		expect(signal).toBeDefined();
+		expect(signal!.aborted).toBe(false);
 		caller.abort(new Error("caller cancelled"));
-		expect(signal?.aborted).toBe(true);
+		expect(signal!.aborted).toBe(true);
 		const abortReason = signal!.reason as Error;
 		expect(abortReason.message).toBe("caller cancelled");
 	});

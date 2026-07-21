@@ -829,7 +829,8 @@ describe("OpenAI responses history payload", () => {
 			),
 		).toBe(false);
 		expect(reasoningItem?.encrypted_content).toBe("enc_opaque");
-		expect(functionCallItem?.call_id).toBe(expectedCallId);
+		expect(functionCallItem).toBeDefined();
+		expect(functionCallItem!.call_id).toBe(expectedCallId);
 		expect(functionCallOutputItem?.call_id).toBe(expectedCallId);
 		const functionCallId = functionCallItem!.call_id as string;
 		expect(functionCallId.length).toBeLessThanOrEqual(64);

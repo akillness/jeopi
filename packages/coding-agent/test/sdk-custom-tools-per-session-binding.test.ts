@@ -57,8 +57,10 @@ describe("loadCustomTools per-session binding (#2190 review fix)", () => {
 		expect(parentResult.tools).toHaveLength(1);
 		expect(subagentResult.tools).toHaveLength(1);
 
-		const parentToolInstance = parentResult.tools[0]?.tool as unknown as { __boundApi: CustomToolAPI };
-		const subagentToolInstance = subagentResult.tools[0]?.tool as unknown as { __boundApi: CustomToolAPI };
+		expect(parentResult.tools[0]).toBeDefined();
+		expect(subagentResult.tools[0]).toBeDefined();
+		const parentToolInstance = parentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI };
+		const subagentToolInstance = subagentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI };
 		const parentApi = parentToolInstance.__boundApi;
 		const subagentApi = subagentToolInstance.__boundApi;
 
@@ -80,8 +82,10 @@ describe("loadCustomTools per-session binding (#2190 review fix)", () => {
 			subagentLog.push(`subagent:${action.label}`),
 		);
 
-		const parentToolInstance = parentResult.tools[0]?.tool as unknown as { __boundApi: CustomToolAPI };
-		const subagentToolInstance = subagentResult.tools[0]?.tool as unknown as { __boundApi: CustomToolAPI };
+		expect(parentResult.tools[0]).toBeDefined();
+		expect(subagentResult.tools[0]).toBeDefined();
+		const parentToolInstance = parentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI };
+		const subagentToolInstance = subagentResult.tools[0]!.tool as unknown as { __boundApi: CustomToolAPI };
 		const parentApi = parentToolInstance.__boundApi;
 		const subagentApi = subagentToolInstance.__boundApi;
 
