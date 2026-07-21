@@ -39,7 +39,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | reviewed 41/41, ported 3 + 4 N/A/subsumed, 34 deferred to dedicated large-feature sessions (model hub, ask dialog, vendored coreutils, agent suspension, task restructure, TUI loader, bash fixup removal, tool-arg recovery) |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | triaged 21/21, ported 3 + 3 N/A, 15 deferred (model perf tracking, Model Hub, sequential queueing, retry-fallback divergence, cache invalidation) |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
-| 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | pending |
+| 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | pending |
 | 8 | v16.5.1 | 14b5da76a | 431 | +190 | pending |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
@@ -734,3 +734,59 @@ resolved:
 Checkpoint 5 fully triaged: 6/6 commits accounted for — 4 ported
 (2 of them partial: the tips/keyboard-nav commits had a Model-Hub-
 coupled portion correctly excluded), 2 N/A.
+
+### Checkpoint 6 — v16.4.8 (6 commits) — fully triaged
+
+6 commits between `20c0a2e41`..`v16.4.8`. Fully resolved:
+
+- [x] `b6f83021c` fix(coding-agent): ensured top-level declarations
+  persist in async cells — jeopi commit `5ec5081c1`. JS eval cells
+  lost top-level `function`/`var` declarations across cells when the
+  defining cell contained top-level `await` (the async IIFE wrapper
+  scoped them to the cell's function scope instead of publishing them
+  to the worker global, so a later cell saw `ReferenceError`).
+  `demoteTopLevelLexicals` now also targets top-level `var`/`function`
+  declarations (not just demoted const/let/class) when `publishGlobals`
+  is set. Direct 1:1 port including both new cross-cell-persistence
+  tests. Verified: `bun test js-static-import-rewrite.test.ts` (22/22
+  pass) + full `bun run check:ts`.
+- [x] `dabe233c6` feat(coding-agent/web): improved perplexity results —
+  jeopi commit `b92081cbf`. `skip_search_enabled` flipped `true`→`false`
+  (was letting the backend classifier skip retrieval and return an
+  ungrounded refusal) plus `always_search_override: true` as a second
+  guarantee; declares no tool-approval UI/no local browser agent so the
+  stream never stalls on an unrenderable confirmation. Direct 1:1 port
+  (no existing test asserts the request body shape). Verified: full
+  `bun run check:ts`.
+- [x] `bb35e7918`+`fc35e17cb` fix(ast): auto-wrap multi-node patterns
+  instead of erroring (+ same-day rustfmt/clippy fixup, squashed) —
+  jeopi commit `6f03b0182`. A pattern like `"@types/bun": $V` parses to
+  multiple root AST nodes and was rejected outright; `compile_pattern`/
+  `compile_search_patterns` now retry wrapped in a minimal single-node
+  context for languages with a wrapper template (JSON: `{ <frag> }`
+  selecting `pair`, quoting bare metavars), falling back to the
+  original error unchanged if the wrap still fails or the language has
+  no template. Added regression tests (none existed upstream): JSON
+  auto-wrap success + captured metavar text via both entry points, and
+  a Rust (no-template) fragment still erroring as before. Verified:
+  `cargo test -p pi-ast` (62/62 pass) + `cargo fmt -p pi-ast` (no diff)
+  + full `bun run check:rs`.
+- [x] `6bd51d4ad` refactor(coding-agent): decoupled tip weight test
+  from tips.txt data — jeopi commit `9c77369b5`. `pickWeightedTip` now
+  takes the tip list and a uniform sample explicitly instead of reading
+  module-level `TIPS`/`Math.random()`, exported for tests; the
+  weighted-selection test sweeps a synthetic tip list so a `tips.txt`
+  shipping zero `[NEW]` tips (which jeopi's now does, after this
+  checkpoint range's earlier `93db3913d` port) no longer fails the
+  suite. Direct 1:1 port. Verified: `bun test welcome.test.ts` (3/3
+  pass) + full `bun run check:ts`.
+- [x] **N/A** `01d3fc9b6` "chore: bump version to 16.4.8" — pure
+  upstream bookkeeping (package.json/Cargo.toml/lockfile version bumps,
+  release CHANGELOG finalization), same pattern as every checkpoint.
+
+Checkpoint 6 fully triaged: 6/6 commits accounted for — 4 ported
+(all direct 1:1, no adaptation needed), 1 N/A. Note: this checkpoint's
+tip-weight-decoupling port (`9c77369b5`) directly de-risks checkpoint
+5's `93db3913d` port, which had already zeroed out `[NEW]` tips in
+`tips.txt` — confirms that earlier port didn't leave the test suite
+fragile.
