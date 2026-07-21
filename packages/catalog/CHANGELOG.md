@@ -7,6 +7,7 @@
 - Fixed SAP AI Core Claude ids in version-first order (`anthropic--claude-4.8-opus`) parsing as unknown, restoring Anthropic adaptive thinking metadata and capability gates. Ported from oh-my-pi (upstream `c1480b29e`).
 - Fixed GitHub Copilot Business and Enterprise discovery downgrading vision-capable models to text-only unconditionally; the catalog now honors upstream's `supports.vision` flag on non-personal endpoints (only an explicit `false`, or an omitted flag, falls back to text-only) instead of ignoring it outright. Ported from oh-my-pi (upstream `e58d2c460`, `4bae9a42a`, `b0f22caf8`).
 - Fixed stale cached model limits overriding updated static catalog limits after a static catalog fingerprint mismatch: same-id cache rows are now sanitized (`contextWindow`/`maxTokens` reset to `null`, deferring to the fresh static entry) instead of passed through verbatim, while cache-only ids (no static counterpart) keep their cached limits. Ported from oh-my-pi (upstream `b7aa046ed`).
+- Fixed Cursor discovery to preserve `GetUsableModels` max-mode metadata for premium models and invalidate stale pre-max-mode cache rows (bumped the Cursor cache namespace so old cache entries written before `cursorMaxMode` was tracked can never satisfy a fresh-cache read). Ported from oh-my-pi (upstream `358811115`, `f98ef2e1e`).
 
 ## [16.2.29] - 2026-07-10
 
