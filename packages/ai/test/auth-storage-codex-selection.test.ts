@@ -368,6 +368,43 @@ describe("AuthStorage codex oauth ranking", () => {
 		expect(apiKey).toBe("api-acct-solo");
 	});
 
+	test("yields an exhausted Pro account over an idle Plus account for a Pro-gated model", async () => {
+		if (!authStorage) throw new Error("test setup failed");
+
+		// Regression: with the only Pro account usage-blocked and an unblocked
+		// Plus account present, resolution used to return NO credential at all
+		// ("No API key found") because the old last-resort fallback only fired
+		// when the top-ranked candidate happened to be blocked — and the idle
+		// Plus account ranked first. The Pro-fitting last-resort pass must
+		// yield the exhausted Pro account instead, so the caller gets real
+		// usage-limit semantics from the wire.
+		await authStorage.set("openai-codex", [
+			{ type: "oauth", ...createCredential("acct-plus", "plus@example.com") },
+			{ type: "oauth", ...createCredential("acct-pro", "pro@example.com") },
+		]);
+
+		const plusReport = createCodexUsageReport({
+			accountId: "acct-plus",
+			primary: { usedFraction: 0.05, resetInMs: 30 * 60 * 1000 },
+			secondary: { usedFraction: 0.05, resetInMs: 6 * 24 * 60 * 60 * 1000 },
+		});
+		plusReport.metadata = { ...plusReport.metadata, planType: "plus" };
+		usageByAccount.set("acct-plus", plusReport);
+
+		const proReport = createCodexUsageReport({
+			accountId: "acct-pro",
+			primary: { usedFraction: 1, resetInMs: 2 * HOUR_MS },
+			secondary: { usedFraction: 1, resetInMs: 6 * 24 * 60 * 60 * 1000 },
+		});
+		proReport.metadata = { ...proReport.metadata, planType: "pro", limitReached: true };
+		usageByAccount.set("acct-pro", proReport);
+
+		const apiKey = await authStorage.getApiKey("openai-codex", "session-spark-pro-gated-all-blocked", {
+			modelId: "gpt-5.3-codex-spark",
+		});
+		expect(apiKey).toBe("api-acct-pro");
+	});
+
 	test("prefers Pro accounts for codex spark models over Plus accounts", async () => {
 		if (!authStorage) throw new Error("test setup failed");
 
