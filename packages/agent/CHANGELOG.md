@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed skipped sibling tool results caused by system advisor steering so they no longer claim a queued user message caused the skip. `hasSteeringMessages` may now return a `SteeringQueueState` (`{ queued, source }`) instead of a plain boolean; the skipped-tool-result wording distinguishes queued user messages, pending system advisories, and peer IRC interrupts. Ported from oh-my-pi (upstream `74c63fa6c`).
+
 ## [16.2.30] - 2026-07-10
 
 ### Fixed
