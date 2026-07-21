@@ -36,7 +36,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 |---|-----|-----------------|--------------------|-------|--------|
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | triaged 10/10, ported 5 + 3 N/A, 2 deferred (large feature) |
-| 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | in progress: 2/~41 ported + 1 N/A (dense checkpoint — model hub UI, ask dialog UI, vendored coreutils, agent suspension all land here) |
+| 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | reviewed 41/41, ported 3 + 4 N/A/subsumed, 34 deferred to dedicated large-feature sessions (model hub, ask dialog, vendored coreutils, agent suspension, task restructure, TUI loader, bash fixup removal, tool-arg recovery) |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | pending |
@@ -417,7 +417,7 @@ same bucket/reason as checkpoint 1's deferred items). Checkpoint 2's
 mechanical work is complete — everything left needs a dedicated
 large-feature session, same as checkpoint 1's tail.
 
-### Checkpoint 3 — v16.4.5 (~41 substantive commits) — in progress, dense
+### Checkpoint 3 — v16.4.5 (~41 substantive commits) — reviewed, tail deferred
 
 41 commits between `29a6a6800` and `3d1f9a4a3` (chores/merges excluded).
 Denser with large new features than checkpoints 1–2 — several multi-commit
@@ -492,14 +492,86 @@ Ported so far:
   does not exist in jeopi at all; coupled to the checkpoint-1-deferred
   web-search-provider rewrite (`ea632a518`/`4c167eaa6`). Out of scope
   until that rewrite lands.
+- [x] `0828c53ca` feat(coding-agent): integrated liveness monitoring into
+  irc wait operations — jeopi commit `4cb3ad47c`. `IrcBus.wait()` gained
+  an `options.liveness: { registry, senderId }` param that checks
+  `AgentRegistry.listVisibleTo()` for a running peer on commitment and on
+  every registry change, aborting with a named error the moment none
+  remain. `IrcTool.#executeWait()` always passes it now. Direct 1:1
+  port. Verified: `bun test .../tools/irc.test.ts` (43/43 pass, incl. 4
+  new liveness tests) + full `bun run check:ts`.
+- [x] `a643e9446` chore: remove redundant tests — applicable portion
+  ported as jeopi commit `0a6472415` (the `params:`→`parameters:` typo
+  fix in `sdk-extensions-per-session-binding.test.ts`, same bug
+  independently found and fixed in the sibling `sdk-custom-tools-*` file
+  while porting `459682cc6`, confirmed correct by this later upstream
+  commit). Rest (`grep.rs` `SearchWorker`/`search_one_file` formatting,
+  deleted `web-search-browser-headers.test.ts`) is coupled to
+  not-yet-ported features (allocation-free grep, web-search rewrite) —
+  N/A to jeopi's current code shape.
+- [x] **N/A** `5c56144f6` "Update VOUCHED list" — pure upstream
+  bookkeeping (`.github/VOUCHED.td` contributor list), same pattern as
+  checkpoint 1/2's equivalent chores.
+- [ ] `f47fd9300` (scout agent prompt `blocking: true` removal) —
+  reviewed, coupled to a not-yet-identified larger task/job per-item
+  blocking feature landing earlier in this checkpoint (referenced by its
+  own CHANGELOG bullet as already-shipped); deferred with that feature.
+- [ ] **Reviewed, deferred — genuine feature removal, not a quick win**:
+  `172691f6e` feat: removed redundant pre-execution bash command fixup
+  logic — deletes `crates/pi-shell/src/fixup.rs` (530 lines), the native
+  `apply_bash_fixups`/`BashFixupResult` napi exports, jeopi's
+  `bash-command-fixup.ts` (currently the full implementation, not yet a
+  compat shim), the `bash.stripTrailingHeadTail` settings-schema entry,
+  and the call site in `bash.ts`; rewrites 3 docs files. All of it
+  exists in jeopi unchanged (confirmed by reading
+  `bash-command-fixup.ts`, `bash.ts`'s `applyBashFixups` call site, and
+  `settings-schema.ts`'s `bash.stripTrailingHeadTail` entry) — fully
+  applicable, but a real architecture/behavior change (bash commands
+  with trailing `| head`/`| tail`/`2>&1` stop being auto-stripped) that
+  needs its own careful pass (native rebuild + docs + settings + call
+  site), not a rushed one.
+- [ ] **Reviewed, deferred — large**: `0b9bdaaed` feat(ai): automated
+  recovery for malformed tool arguments — 479 lines across
+  `dialect/glm.ts` (125 new) and `utils/validation.ts` (237 changed,
+  core tool-argument validation/coercion path). Comparable in risk to
+  touching shared validation logic across every provider; needs
+  dedicated review.
+- [ ] **Reviewed, deferred — coupled to task/job restructure**:
+  `d39a3ed45` chore: fix stale tests (confirmed jeopi's
+  `task-async-fallback.test.ts` still uses the pre-restructure
+  `id`/`description`/`assignment` `TaskParams` shape, not upstream's
+  `name`/`task`), `8e006a5c8` (agent selection instructions,
+  `task/index.ts`), `441037025` (thinking-level config precedence,
+  `task/agents.ts`+`task/executor.ts`+`task/types.ts`) — all touch the
+  `task/` module family that `cb2153e9a` (flat task structure) rewrites.
+- [x] **N/A** `3c2c9f5bc` "docs(coding-agent): update changelog for u10"
+  — pure upstream changelog bookkeeping (issue-linked entry for a
+  publish branch), not applicable to jeopi's own changelog cadence.
+- [ ] **Reviewed, deferred — large TUI feature pair**: `c22d5dffb` +
+  `62172339b` + `276092eac` (tui loader/anchored-container sequence) —
+  confirmed jeopi's `loader.ts` has no `requestDirectWrite` at all (only
+  `requestComponentRender`), so all three are coupled to `276092eac`
+  introducing that mechanism (149 new lines in `tui.ts`) — a genuine
+  perf feature (bypasses the full compose/diff pipeline for loader
+  ticks), not a quick fix.
+- [ ] **Reviewed, deferred — coupled to model hub**: `c6b83c1d9` (session
+  selector tiered search perf, 537 lines across `session-selector.ts`/
+  `fuzzy.ts`/`autocomplete.ts`) and `1eab12e28` (skill completion
+  matching, `autocomplete.ts`) both touch `packages/tui/src/autocomplete.ts`
+  in ways that may conflict/sequence with each other — needs a combined
+  review, not independently portable.
 
-Status: **in progress**, 2/~41 ported. This is the densest checkpoint
-seen so far — most remaining commits belong to 5+ distinct large
-subsystems (model hub, ask dialog, vendored coreutils, agent suspension,
-task/job restructure) each individually comparable in scope to
-checkpoint 1's deferred items. Recommend a dedicated session per
-subsystem rather than attempting checkpoint-wide mechanical porting.
-Next candidates for quick wins: the TUI loader sequence
-(`c22d5dffb`/`62172339b`/`276092eac`) and `0b9bdaaed` (malformed
-tool-argument auto-recovery, `packages/ai`) — flagged above as
-smaller/self-contained but not yet reviewed line-by-line.
+Status: **in progress**, 3/~41 ported + 4 N/A/subsumed. Checkpoint 3's
+mechanical/self-contained work is now exhausted — every remaining item
+has been individually reviewed and falls into a large-feature bucket
+with a concrete, checked reason (not a guess): model hub UI (5
+commits), `ask` dialog UI (6 commits), vendored coreutils (4 commits),
+agent suspension (2 commits), task/job restructure (5 commits, confirmed
+via actual `task/` file inspection), TUI loader direct-write mechanism
+(3 commits), bash command fixup removal (1 commit, real behavior
+change), malformed tool-argument recovery (1 commit, core validation
+logic), session-selector/autocomplete perf (2 commits, need combined
+review). None of these are safe to rush — each needs a dedicated
+session. Recommend moving to checkpoint 4 (v16.4.6, only 22 commits) to
+keep breadth-first progress, circling back to checkpoint 3's deferred
+list in a future dedicated pass.
