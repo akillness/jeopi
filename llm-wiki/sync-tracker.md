@@ -126,14 +126,27 @@ to a dedicated pass):
   (`#buildInMemoryTextResult`), so upstream's third edit site (a separate
   expansion block) wasn't needed here. No upstream test shipped with this
   fix — added `read-raw-range-no-padding.test.ts`.
-- [ ] Remaining ~29 substantive commits in this checkpoint — not yet
-  ported. Next candidates: `530faffd2` (glob timeout status),
-  `d993b13c8` (browser interaction reliability), `54af1c03f` (ACP
-  provider error surfacing), `159484ca6` (commit-before-teardown, larger
+- [x] `530faffd2` fix(coding-agent): clarified glob timeout status — jeopi
+  commit `45981dd9b`. Added renderer regression tests (upstream shipped
+  none).
+- [x] `51cc34ac6` fix(agent): surfaced empty-stop retry failures
+  unconditionally — jeopi commit `cab921422`. jeopi lacks upstream's
+  `#clearPendingRecoveredRetryErrors` helper; kept jeopi's existing
+  `#refusalBackoff` reset instead. Added a regression test for the
+  previously-uncovered `#retryAttempt===0` path.
+- [x] `54af1c03f` fix(coding-agent): ensured ACP provider errors are
+  surfaced to clients — jeopi commit `9c6331bd1`. jeopi lacks upstream's
+  `#flushMissedFinalAssistantText`; the new `#flushUnreportedTurnError`
+  call was inserted standalone. Includes the `jeopi acp` stderr TTY hint.
+- [x] `d993b13c8` fix(coding-agent): strengthened browser interaction
+  reliability and error transparency — jeopi commit `a14120108`. Wire
+  envelope keys renamed `__omp*` → `__jeopi*`. Added a unit test for the
+  eval envelope encode/decode contract (upstream shipped none).
+- [ ] Remaining ~25 substantive commits in this checkpoint — not yet
+  ported. Next candidates: `159484ca6` (commit-before-teardown, larger
   multi-file change — `commit/agentic/{agent,index}.ts` + git env
-  handling), `51cc34ac6` (agent empty-stop retry surfacing), `45143e8c7`
-  (natives glob traversal depth cap — Rust, `crates/pi-natives`, needs a
-  cargo build to verify).
+  handling), `45143e8c7` (natives glob traversal depth cap — Rust,
+  `crates/pi-natives`, needs a cargo build to verify).
 - [ ] Large features flagged for dedicated review before porting: vibe
   mode (4 commits), plan-subagent removal (conflicts with jeopi's
   `planner` role-agent — needs a design decision, not a mechanical port),
@@ -142,8 +155,8 @@ to a dedicated pass):
   favor of `legacy-pi-virtual-module.ts` — touches jeopi's own
   `legacy-pi-compat.ts` naming, needs careful review).
 
-Status: **in progress**, 10/~69 upstream commits ported and verified
-(`bun test` + full `bun check` clean after each; 7 jeopi commits, some
+Status: **in progress**, 14/~69 upstream commits ported and verified
+(`bun test` + full `bun check` clean after each; 11 jeopi commits, some
 squashing multiple upstream commits that touched the same function in
 sequence). Continuing commit-by-commit in following turns. At this rate
 (~1469 total upstream commits across 16 release checkpoints), full
