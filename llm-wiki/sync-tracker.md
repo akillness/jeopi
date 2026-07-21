@@ -142,11 +142,18 @@ to a dedicated pass):
   reliability and error transparency — jeopi commit `a14120108`. Wire
   envelope keys renamed `__omp*` → `__jeopi*`. Added a unit test for the
   eval envelope encode/decode contract (upstream shipped none).
-- [ ] Remaining ~25 substantive commits in this checkpoint — not yet
-  ported. Next candidates: `159484ca6` (commit-before-teardown, larger
-  multi-file change — `commit/agentic/{agent,index}.ts` + git env
-  handling), `45143e8c7` (natives glob traversal depth cap — Rust,
-  `crates/pi-natives`, needs a cargo build to verify).
+- [x] `159484ca6` fix(commit): created commits before agent teardown —
+  jeopi commit `a97f5205f`. `runCommitAgentSession` gained an
+  `onComplete(state)` callback invoked before `session.dispose()` in the
+  `finally` block; `runAgenticCommit` restructured around it
+  (`completeAgentCommitState` extracted). Missing changelog
+  entries/split-plan mapping/proposal now throw instead of writing to
+  stderr and returning cleanly. Dropped the forced
+  `GPG_TTY="not a tty"` override in both `non-interactive-env.ts` and
+  `git.ts` so GUI pinentry works again for signing-enabled repos.
+- [ ] Remaining ~24 substantive commits in this checkpoint — not yet
+  ported. Next candidate: `45143e8c7` (natives glob traversal depth cap —
+  Rust, `crates/pi-natives`, needs a cargo build to verify).
 - [ ] Large features flagged for dedicated review before porting: vibe
   mode (4 commits), plan-subagent removal (conflicts with jeopi's
   `planner` role-agent — needs a design decision, not a mechanical port),
@@ -155,8 +162,8 @@ to a dedicated pass):
   favor of `legacy-pi-virtual-module.ts` — touches jeopi's own
   `legacy-pi-compat.ts` naming, needs careful review).
 
-Status: **in progress**, 14/~69 upstream commits ported and verified
-(`bun test` + full `bun check` clean after each; 11 jeopi commits, some
+Status: **in progress**, 15/~69 upstream commits ported and verified
+(`bun test` + full `bun check` clean after each; 12 jeopi commits, some
 squashing multiple upstream commits that touched the same function in
 sequence). Continuing commit-by-commit in following turns. At this rate
 (~1469 total upstream commits across 16 release checkpoints), full
