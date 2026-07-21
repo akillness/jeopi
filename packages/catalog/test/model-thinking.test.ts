@@ -228,6 +228,35 @@ describe("model thinking derivation", () => {
 		});
 	});
 
+	it("derives Anthropic adaptive thinking for SAP hai-proxy version-first Claude ids", () => {
+		const opus48 = createModel({
+			id: "anthropic--claude-4.8-opus",
+			api: "anthropic-messages",
+			provider: "custom",
+		});
+		const opus46 = createModel({
+			id: "anthropic--claude-4.6-opus",
+			api: "anthropic-messages",
+			provider: "custom",
+		});
+
+		// jeopi's non-official-endpoint Anthropic-adaptive policy applies the
+		// broader custom-provider effort vocabulary (including minimal/effortMap)
+		// regardless of exact patch version once the id is recognized — the
+		// contract this upstream fix restores is the mode itself, not the exact
+		// effort-tier shape (which is governed by unrelated jeopi policy).
+		expect(opus48.thinking?.mode).toBe("anthropic-adaptive");
+		expect(opus48.thinking?.supportsDisplay).toBe(true);
+		expect(getSupportedEfforts(opus48)).toEqual([
+			Effort.Minimal,
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+			Effort.XHigh,
+		]);
+		expect(opus46.thinking?.mode).toBe("anthropic-adaptive");
+	});
+
 	it("maps GLM-5.2 reasoning effort per host dialect", () => {
 		const zai = createModel({
 			id: "glm-5.2",

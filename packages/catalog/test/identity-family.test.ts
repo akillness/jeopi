@@ -11,6 +11,7 @@ import {
 	isOpenAIGptOssModelId,
 	isReasoningGlmModelId,
 	modelFamilyToken,
+	parseAnthropicModel,
 	supportsAdaptiveThinkingDisplay,
 	supportsMidConversationSystemMessages,
 } from "jeopi-catalog/identity";
@@ -45,6 +46,22 @@ describe("isClaudeModelId", () => {
 	});
 });
 
+describe("parseAnthropicModel", () => {
+	test("parses SAP hai-proxy version-first Claude ids without accepting Haiku", () => {
+		expect(parseAnthropicModel("anthropic--claude-4.8-opus")).toEqual({
+			family: "anthropic",
+			kind: "opus",
+			version: { major: 4, minor: 8, patch: 0 },
+		});
+		expect(parseAnthropicModel("anthropic--claude-4.6-opus")).toEqual({
+			family: "anthropic",
+			kind: "opus",
+			version: { major: 4, minor: 6, patch: 0 },
+		});
+		expect(parseAnthropicModel("anthropic--claude-4.8-haiku")).toBeNull();
+	});
+});
+
 describe("supportsAdaptiveThinkingDisplay", () => {
 	test("allows Claude Fable 5, Opus 4.7 or newer, and Sonnet 5 or newer only", () => {
 		expect(supportsAdaptiveThinkingDisplay("claude-fable-5")).toBe(true);
@@ -55,6 +72,8 @@ describe("supportsAdaptiveThinkingDisplay", () => {
 		// Dotted and dashed version separators are equivalent.
 		expect(supportsAdaptiveThinkingDisplay("claude-opus-4.7")).toBe(true);
 		expect(supportsAdaptiveThinkingDisplay("anthropic/claude-opus-4.8")).toBe(true);
+		expect(supportsAdaptiveThinkingDisplay("anthropic--claude-4.8-opus")).toBe(true);
+		expect(supportsAdaptiveThinkingDisplay("anthropic--claude-4.6-opus")).toBe(false);
 		expect(supportsAdaptiveThinkingDisplay("claude-opus-4-6")).toBe(false);
 		expect(supportsAdaptiveThinkingDisplay("claude-opus-4.6")).toBe(false);
 		expect(supportsAdaptiveThinkingDisplay("claude-opus-4-20250514")).toBe(false);
@@ -67,6 +86,7 @@ describe("hasOpus47ApiRestrictions", () => {
 		expect(hasOpus47ApiRestrictions("claude-fable-5")).toBe(true);
 		expect(hasOpus47ApiRestrictions("claude-opus-4-7")).toBe(true);
 		expect(hasOpus47ApiRestrictions("claude-opus-4.8")).toBe(true);
+		expect(hasOpus47ApiRestrictions("anthropic--claude-4.7-opus")).toBe(true);
 		expect(hasOpus47ApiRestrictions("claude-sonnet-5")).toBe(true);
 		expect(hasOpus47ApiRestrictions("us.anthropic.claude-sonnet-5")).toBe(true);
 		expect(hasOpus47ApiRestrictions("claude-opus-4-6")).toBe(false);
@@ -81,6 +101,8 @@ describe("supportsMidConversationSystemMessages", () => {
 		expect(supportsMidConversationSystemMessages("claude-opus-4-8")).toBe(true);
 		expect(supportsMidConversationSystemMessages("claude-sonnet-5")).toBe(true);
 		expect(supportsMidConversationSystemMessages("us.anthropic.claude-sonnet-5")).toBe(true);
+		expect(supportsMidConversationSystemMessages("anthropic--claude-4.8-opus")).toBe(true);
+		expect(supportsMidConversationSystemMessages("anthropic--claude-4.7-opus")).toBe(false);
 		expect(supportsMidConversationSystemMessages("claude-opus-4-7")).toBe(false);
 		expect(supportsMidConversationSystemMessages("claude-sonnet-4-6")).toBe(false);
 	});

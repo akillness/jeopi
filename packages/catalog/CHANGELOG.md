@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed SAP AI Core Claude ids in version-first order (`anthropic--claude-4.8-opus`) parsing as unknown, restoring Anthropic adaptive thinking metadata and capability gates. Ported from oh-my-pi (upstream `c1480b29e`).
+
 ## [16.2.29] - 2026-07-10
 
 ### Fixed
