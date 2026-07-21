@@ -151,19 +151,41 @@ to a dedicated pass):
   stderr and returning cleanly. Dropped the forced
   `GPG_TTY="not a tty"` override in both `non-interactive-env.ts` and
   `git.ts` so GUI pinentry works again for signing-enabled repos.
-- [ ] Remaining ~24 substantive commits in this checkpoint — not yet
-  ported. Next candidate: `45143e8c7` (natives glob traversal depth cap —
-  Rust, `crates/pi-natives`, needs a cargo build to verify).
+- [x] `b35e4c413` fix(tui): honored move overlay width — jeopi commit
+  `b310e3abe`.
+- [x] `c1480b29e` fix(catalog): parsed version-first claude ids — jeopi
+  commit `8af173a8f`. Test adjusted to assert jeopi's actual (broader,
+  non-official-endpoint) custom-provider effort vocabulary rather than
+  upstream's narrower expected shape — unrelated prior divergence in
+  `compat/anthropic.ts`, not this commit's scope.
+- [x] `e58d2c460` + `4bae9a42a` + `b0f22caf8` fix(providers): GitHub
+  Copilot vision honored on non-personal endpoints — jeopi commit
+  `aa6b34984`. Squashed (3-commit iteration on the same policy). Touches
+  `packages/catalog` (model-manager merge, openai-compat discovery,
+  wire/github-copilot) and `packages/coding-agent`
+  (snapcompact-inline.ts).
+- [ ] Remaining ~21 substantive commits in this checkpoint — not yet
+  ported. Next candidates: `3f52e26a7` (ai: CCA schema annotation
+  conflicts), `3b6c3409e` (ai: paranoid auth storage schema handling),
+  `7d72ee9e0` + `dabb2291a` (advisor: empty/invalid tool lists, 2
+  commits), `f53411295` + `449310eb1` (startup changelog rendering, 2
+  commits), `1c6f5dc18` (agent delegation prompt refinement),
+  `45143e8c7` (natives glob traversal depth cap — Rust,
+  `crates/pi-natives`, needs a cargo build to verify).
 - [ ] Large features flagged for dedicated review before porting: vibe
   mode (4 commits), plan-subagent removal (conflicts with jeopi's
   `planner` role-agent — needs a design decision, not a mechanical port),
   web search provider rewrite (10 new provider files), legacy-pi bundled
   registry rewrite (`legacy-pi-bundled-registry.ts` deleted upstream in
   favor of `legacy-pi-virtual-module.ts` — touches jeopi's own
-  `legacy-pi-compat.ts` naming, needs careful review).
+  `legacy-pi-compat.ts` naming, needs careful review), plugin system
+  restructure (`33c161d9d`), pcre2/advanced grep + browser tool rewrites
+  (`8755c3879`, `ce10e5fff`, `a9cdaf427`, `9ebc23928`, several more —
+  large Rust + TS surface, needs dedicated review), Bun.build bundling
+  migration (`d179968bb` — build infra, verify via actual binary build).
 
-Status: **in progress**, 15/~69 upstream commits ported and verified
-(`bun test` + full `bun check` clean after each; 12 jeopi commits, some
+Status: **in progress**, 20/~69 upstream commits ported and verified
+(`bun test` + full `bun check` clean after each; 15 jeopi commits, some
 squashing multiple upstream commits that touched the same function in
 sequence). Continuing commit-by-commit in following turns. At this rate
 (~1469 total upstream commits across 16 release checkpoints), full
