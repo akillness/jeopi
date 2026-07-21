@@ -120,8 +120,20 @@ to a dedicated pass):
   title path — only the marker-parsing branch of `extractGeneratedTitle`
   changed, the `set_title` tool-call branch (jeopi-specific, not present
   upstream at this point) is untouched.
-- [ ] Remaining ~30 substantive commits in this checkpoint — not yet
-  ported.
+- [x] `83fbefac2` fix(coding-agent): disabled context padding for raw
+  file reads — jeopi commit `193286f05`. jeopi's in-memory/virtual-resource
+  read path already funnels through the same fixed function
+  (`#buildInMemoryTextResult`), so upstream's third edit site (a separate
+  expansion block) wasn't needed here. No upstream test shipped with this
+  fix — added `read-raw-range-no-padding.test.ts`.
+- [ ] Remaining ~29 substantive commits in this checkpoint — not yet
+  ported. Next candidates: `530faffd2` (glob timeout status),
+  `d993b13c8` (browser interaction reliability), `54af1c03f` (ACP
+  provider error surfacing), `159484ca6` (commit-before-teardown, larger
+  multi-file change — `commit/agentic/{agent,index}.ts` + git env
+  handling), `51cc34ac6` (agent empty-stop retry surfacing), `45143e8c7`
+  (natives glob traversal depth cap — Rust, `crates/pi-natives`, needs a
+  cargo build to verify).
 - [ ] Large features flagged for dedicated review before porting: vibe
   mode (4 commits), plan-subagent removal (conflicts with jeopi's
   `planner` role-agent — needs a design decision, not a mechanical port),
@@ -130,7 +142,10 @@ to a dedicated pass):
   favor of `legacy-pi-virtual-module.ts` — touches jeopi's own
   `legacy-pi-compat.ts` naming, needs careful review).
 
-Status: **in progress**, 9/~69 upstream commits ported and verified
-(`bun test` + full `bun check` clean after each; 6 jeopi commits, some
+Status: **in progress**, 10/~69 upstream commits ported and verified
+(`bun test` + full `bun check` clean after each; 7 jeopi commits, some
 squashing multiple upstream commits that touched the same function in
-sequence). Continuing commit-by-commit in following turns.
+sequence). Continuing commit-by-commit in following turns. At this rate
+(~1469 total upstream commits across 16 release checkpoints), full
+catch-up is a multi-session effort — this tracker is the source of truth
+for exactly where the next turn should resume.
