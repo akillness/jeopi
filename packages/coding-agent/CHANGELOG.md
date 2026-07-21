@@ -18,6 +18,7 @@
 - Fixed browser screenshots capturing the wrong tab or hanging until the op timeout when multiple tabs share one Chromium (sibling headless tabs, `cdp_url`/app attach): CDP reads the *active* target's compositor surface, so a backgrounded page could stall waiting for a frame or return a sibling's pixels. The worker now activates the page (`bringToFront`) before every capture, best-effort.
 - Fixed cmux `tab.screenshot({ selector })` silently returning a full-viewport capture that models consumed as an element crop. The cmux daemon has no element-clip or full-page capture; the tool still scrolls the selector into view but now labels the image as full-viewport (same for `fullPage`) instead of mislabeling it.
 - Fixed cmux `tab.evaluate()` / `elementHandle.evaluate()` errors surfacing as the daemon's opaque `js_error: A JavaScript exception occurred`. Scripts now run inside a page-side try/catch envelope that returns the real message and stack, and a Promise return (which the daemon cannot serialize) yields an actionable "evaluates synchronously" error instead of an unsupported-type failure. Ported from oh-my-pi (upstream `d993b13c8`).
+- Fixed `jeopi commit` agent sessions so a valid proposal is committed before session teardown can dispose mnemopi/autolearn resources, missing required host outputs now fail non-zero instead of returning cleanly, and git subprocesses no longer force `GPG_TTY=not a tty` on signing-enabled repositories. Ported from oh-my-pi (upstream `159484ca6`).
 
 ## [16.4.2] - 2026-07-14
 
