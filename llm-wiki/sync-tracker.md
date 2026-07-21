@@ -36,7 +36,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 |---|-----|-----------------|--------------------|-------|--------|
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | triaged 10/10, ported 5 + 3 N/A, 2 deferred (large feature) |
-| 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | in progress: 1/~41 ported (dense checkpoint — model hub UI, ask dialog UI, vendored coreutils, agent suspension all land here) |
+| 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | in progress: 2/~41 ported + 1 N/A (dense checkpoint — model hub UI, ask dialog UI, vendored coreutils, agent suspension all land here) |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | pending |
@@ -464,17 +464,42 @@ Ported so far:
   `memmap2` dep is unaffected). Verified: `cargo test -p pi-natives grep`
   (28/28 pass) + `cargo build` clean (no mmap warnings) + `cargo fmt` +
   full `bun run check:rs`.
+- [x] `459682cc6` fix(plugins): skipped invalid custom tool entries —
+  jeopi commit `782f145c8`. `loadTool()` now returns `{ tools, errors }`
+  (both arrays) and validates each factory-array entry via
+  `isLoadableCustomTool()` before accepting it, so one malformed entry
+  (`null`, missing `name`/`description`/`parameters`/`execute`) is
+  reported per-index and skipped instead of crashing the whole load.
+  Adapted: ported without upstream's `withExitGuard()` wrapper (jeopi's
+  `loadTool()` calls the factory directly, no `withExitGuard` in this
+  file — an earlier independent divergence). New
+  `test/extensibility/custom-tool-loader.test.ts` (file didn't exist in
+  jeopi; ported the 3 new validation regression tests, not upstream's
+  pre-existing `withExitGuard`/process.exit tests since jeopi lacks that
+  feature). **Bonus finding**: the new validation surfaced a latent
+  `params:`-instead-of-`parameters:` typo in
+  `sdk-custom-tools-per-session-binding.test.ts`'s tool fixture,
+  previously silent because nothing validated tool shape — fixed.
+  Verified: `bun test` across `test/extensibility/` + dependent
+  per-session-binding files (96/96 + dependents pass) + full `bun run
+  check:ts`.
 - [ ] `f47fd9300` (scout agent prompt `blocking: true` removal) —
   reviewed, coupled to a not-yet-identified larger task/job per-item
   blocking feature landing earlier in this checkpoint (referenced by its
   own CHANGELOG bullet as already-shipped); deferred with that feature.
+- [x] **N/A** `d7a71642c` fix(coding-agent): guarded browser header
+  generation — `packages/coding-agent/src/web/search/providers/browser-headers.ts`
+  does not exist in jeopi at all; coupled to the checkpoint-1-deferred
+  web-search-provider rewrite (`ea632a518`/`4c167eaa6`). Out of scope
+  until that rewrite lands.
 
-Status: **in progress**, 1/~41 ported. This is the densest checkpoint
+Status: **in progress**, 2/~41 ported. This is the densest checkpoint
 seen so far — most remaining commits belong to 5+ distinct large
 subsystems (model hub, ask dialog, vendored coreutils, agent suspension,
 task/job restructure) each individually comparable in scope to
 checkpoint 1's deferred items. Recommend a dedicated session per
 subsystem rather than attempting checkpoint-wide mechanical porting.
-Next candidates for quick wins: the TUI loader sequence, the browser
-header generation fix, and the custom-tool-loader fix — all flagged
-above as smaller/self-contained but not yet reviewed line-by-line.
+Next candidates for quick wins: the TUI loader sequence
+(`c22d5dffb`/`62172339b`/`276092eac`) and `0b9bdaaed` (malformed
+tool-argument auto-recovery, `packages/ai`) — flagged above as
+smaller/self-contained but not yet reviewed line-by-line.
