@@ -110,6 +110,7 @@ const localOnlyWorkspacePackages = ["packages/mnemopi", "python/robomp/web"];
 // entry used to sit here but the file never existed — bun silently ignores
 // unmatched filters when at least one other filter matches.)
 const repoScriptTests = [
+	"scripts/ci-build-native.test.ts",
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-release-notes.test.ts",
 	"scripts/link-jeopi.test.ts",
@@ -338,7 +339,14 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 				{
 					label: "scripts",
 					cwd: ".",
-					command: ["bun", "test", "--parallel=4", ...onlyFailuresArgs, "scripts/ci-concurrency.test.ts"],
+					command: [
+						"bun",
+						"test",
+						"--parallel=4",
+						...onlyFailuresArgs,
+						"scripts/ci-concurrency.test.ts",
+						"scripts/ci-build-native.test.ts",
+					],
 				},
 			];
 		case "native":

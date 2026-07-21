@@ -36,6 +36,7 @@
 - Browser selector ops no longer burn their whole deadline on a selector that matches nothing: a watchdog polls while the action runs and aborts after ~2s of confirmed zero matches with the inspection hint. `waitFor`/`waitForSelector` opt out via an explicit `{ timeout }` (and `hidden: true` waits are exempt — zero matches is their success condition). The per-action ceiling for present-but-unactionable elements also dropped from 15s to 8s. Ported from oh-my-pi (upstream `9ebc23928`).
 - Fixed context promotion docs to match the explicit `contextPromotionTarget` runtime behavior and `contextPromotion.enabled` default. Ported from oh-my-pi (upstream `cbe083224`).
 - Fixed `GenerateImage` rejecting OpenAI Codex-compatible proxy bearer keys when the token does not expose a `chatgpt-account-id`. Ported from oh-my-pi (upstream `748b2dff1`).
+- Fixed the generic Windows release binary (`jeopi-windows-x64.exe`) requiring an AVX2-capable CPU by building it with Bun's baseline x64 runtime instead of the modern target, so older Windows 10 CPUs no longer fail to launch it. Ported from oh-my-pi (upstream `bc7a143c1`).
 
 ## [16.4.2] - 2026-07-14
 
