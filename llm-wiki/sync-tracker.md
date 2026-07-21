@@ -34,7 +34,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 
 | # | tag | upstream commit | cumulative commits | delta | status |
 |---|-----|-----------------|--------------------|-------|--------|
-| 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 28 + 9 N/A/subsumed/coupled-skip, 13 deferred (large features) |
+| 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
 | 2 | v16.4.4 | 29a6a6800 | 82 | +13 | pending |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | pending |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
@@ -269,14 +269,18 @@ to a dedicated pass):
   - `ce10e5fff` feat: pcre2 + advanced grep, `8755c3879` feat(pi-uu-grep):
     advanced regex/filtering — large paired Rust+TS grep rewrite (2100+
     lines combined).
-  - Browser tool standardization pair — **must port together**:
-    `a9cdaf427` (new `run-output.ts` `RunOutput`/`ActionableHandle`
-    infra + 314-line `tab-worker.ts` refactor + match-count timeout
-    diagnosis) and `9ebc23928` (zero-match watchdog) directly build on
-    `a9cdaf427`'s `toActionableHandle`/`{selector, zeroMatchAfterMs}`
-    shape — confirmed while attempting `9ebc23928` standalone: jeopi's
-    current `#runOp`/`#createTabApi` has neither the match-count hint
-    nor the options-object selector param `9ebc23928`'s diff assumes.
+  - [x] Browser tool standardization pair (ported together — `9ebc23928`
+    directly builds on `a9cdaf427`'s handle/op shape): jeopi commit
+    `2dc5312fd`. New `run-output.ts` (`RunOutput`/`cloneSafe`/
+    `safeJsonStringify`, deduped from 3 copies), `ActionableHandle`/
+    `toActionableHandle`/`fillViaHandle`, `#selectorTimeoutHint`
+    match-count diagnosis, `#zeroMatchWatchdog` (2s zero-match fail-fast
+    raced via `Promise.race`/`AbortController`), `ACTION_OP_TIMEOUT_MS`
+    15s→8s, `CmuxElementHandle.press()`. Adapted: jeopi has no
+    `markHandled` wrapper in `run-cancellation.ts` (ported without it)
+    and no `postmortem` module in `cmux-tab.ts` (kept plain
+    `ToolAbortError`). Verified: full `bun run check:ts` clean +
+    targeted `bun test .../tools/browser` (56/56 pass).
   - `33c161d9d` refactor: plugin system + build logic restructure (761
     insertions / 5332 deletions — largest single diff in the checkpoint).
 - [ ] **Partial**: `system-prompt.md` delegation-section refinement from
@@ -287,26 +291,30 @@ to a dedicated pass):
 
 Checkpoint 1 triage is now **complete** — every one of the ~69 commits
 between `7aa1d581` and `6328671d1` has been individually inspected and
-falls into: ported (28), subsumed/already-equivalent (2), N/A to a fork
+falls into: ported (30), subsumed/already-equivalent (2), N/A to a fork
 (5), skipped as coupled to an N/A/skipped commit (2), or deferred pending
 a dedicated large-feature session (vibe mode, plan-subagent removal,
-web search rewrite, pcre2/grep rewrite, browser tool standardization,
-plugin restructure — ~13 commits, all flagged above with the concrete
-reason). No further "quick win" commits remain in checkpoint 1 — every
-item left requires either a multi-file feature port or a user
-architecture decision (plan-subagent removal).
+web search rewrite, pcre2/grep rewrite, plugin restructure — ~11
+commits, all flagged above with the concrete reason). No further "quick
+win" commits remain in checkpoint 1 — every item left requires either a
+multi-file feature port or a user architecture decision (plan-subagent
+removal).
 
-Status: **in progress**, 28/~69 upstream commits ported (1 partially —
+Status: **in progress**, 30/~69 upstream commits ported (1 partially —
 `eager-task.md` done, `system-prompt.md` deferred), 2 subsumed, 5 N/A,
-2 skipped-as-coupled, and 13 deferred pending dedicated review — all
+2 skipped-as-coupled, and 11 deferred pending dedicated review — all
 verified/triaged (`bun test`/`cargo test` + full `bun check`/`check:rs`
-clean after each port; 23 jeopi commits, some squashing multiple
+clean after each port; 24 jeopi commits, some squashing multiple
 upstream commits touching the same function). Checkpoint 1's mechanical
-work is exhausted; the next unit of progress is either (a) tackle one
-deferred large feature (recommend the browser-tool-standardization pair
-`a9cdaf427`+`9ebc23928` first — smallest of the deferred set at ~400
-lines combined and unblocks future browser-tool commits in later
-checkpoints), or (b) move on to checkpoint 2 (v16.4.4, only 13 commits)
-and circle back. At this rate (~1469 total upstream commits across 16
+work is exhausted; remaining deferred items are all genuinely large
+(vibe mode ~2500 lines/7 commits, web search rewrite 10 new provider
+files, pcre2/grep rewrite ~2100 lines combined Rust+TS, plugin
+restructure 761+/5332- lines) or blocked on a user architecture decision
+(plan-subagent removal conflicts with jeopi's `planner` role-agent). The
+next unit of progress is either (a) tackle one deferred large feature
+end-to-end (pcre2/grep rewrite `ce10e5fff`+`8755c3879` is the next
+smallest self-contained candidate), or (b) move on to checkpoint 2
+(v16.4.4, only 13 commits) and circle back to checkpoint 1's deferred
+list later. At this rate (~1469 total upstream commits across 16
 checkpoints), full catch-up is a multi-session effort — this tracker is
 the source of truth for exactly where the next turn should resume.
