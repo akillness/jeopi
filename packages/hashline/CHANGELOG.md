@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Rejected ambiguous swaps that risk silent deletion of range boundaries: a one-sided boundary echo (payload restates the keeper line just outside the range) is only auto-repaired when the payload is long enough to be the widened range's full content — a shorter payload could instead mean the range itself shifted by the echo, which keeps the far boundary line(s) the repair would otherwise silently delete. The edit is now rejected with a message telling the author to re-issue it. Ported from oh-my-pi (upstream `e45796908`).
+- Prevented ambiguous auto-repairing of structural closing lines when payload placement is unclear: sparing a deleted closer re-inserts it after the payload, which claims the payload belongs inside the block the closer terminates. That claim now requires evidence — the payload carries the closer's unmatched opener, or its indentation sits deeper than the closer — otherwise the edit is rejected instead of guessing whether the new content belongs before or after the closer. Ported from oh-my-pi (upstream `e45796908`).
+
 ## [16.2.14] - 2026-07-02
 
 ### Changed
