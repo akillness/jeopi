@@ -306,7 +306,7 @@ function getModelDefinedEfforts<TApi extends Api>(
 		if (isZaiThinkingFormat(compat) || isOpenRouterThinkingFormat(compat)) {
 			return DEFAULT_REASONING_EFFORTS_WITH_XHIGH;
 		}
-		if (isUmansGlm52ReasoningEffortModel(spec) || isOllamaCloudGlm52ReasoningEffortModel(spec)) {
+		if (isAnthropicMessagesGlm52ReasoningEffortModel(spec) || isOllamaCloudGlm52ReasoningEffortModel(spec)) {
 			return GLM_52_HIGH_MAX_REASONING_EFFORTS;
 		}
 	}
@@ -325,8 +325,12 @@ function isOllamaCloudGlm52ReasoningEffortModel<TApi extends Api>(spec: ModelSpe
 	return spec.api === "ollama-chat" && spec.provider === "ollama-cloud" && isGlm52ReasoningEffortModelId(spec.id);
 }
 
-function isUmansGlm52ReasoningEffortModel<TApi extends Api>(spec: ModelSpec<TApi>): boolean {
-	return spec.api === "anthropic-messages" && spec.provider === "umans" && isGlm52ReasoningEffortModelId(spec.id);
+function isAnthropicMessagesGlm52ReasoningEffortModel<TApi extends Api>(spec: ModelSpec<TApi>): boolean {
+	return (
+		spec.api === "anthropic-messages" &&
+		(spec.provider === "umans" || spec.provider === "zai") &&
+		isGlm52ReasoningEffortModelId(spec.id)
+	);
 }
 
 function isMinimaxReasoningModelOnAnthropicEndpoint<TApi extends Api>(spec: ModelSpec<TApi>): boolean {
@@ -382,7 +386,8 @@ function inferDetectedEffortMap<TApi extends Api>(
 	//     `xhigh` 400s — collapse minimal->none, low/medium/high->high, xhigh->max.
 	//   - OpenRouter: `max` 400s and `xhigh` IS its max tier, so it passes `xhigh`
 	//     through literally (no map; the tier is exposed via getModelDefinedEfforts).
-	//   - Umans and Ollama Cloud expose only high/max on their GLM-5.2 routes.
+	//   - Umans, Ollama Cloud, and Z.ai's anthropic-messages proxy expose only
+	//     high/max on their GLM-5.2 routes.
 	//   - Other openai-compat hosts (Fireworks, resellers) keep their distinct
 	//     lower tiers and host quirks (e.g. Fireworks rejects `minimal`, so
 	//     `minimal->none` stays) and only remap the top `xhigh` UI tier onto the
@@ -391,7 +396,7 @@ function inferDetectedEffortMap<TApi extends Api>(
 	if (isGlm52 && isZaiThinkingFormat(compat)) {
 		return ZAI_GLM_52_REASONING_EFFORT_MAP;
 	}
-	if (isUmansGlm52ReasoningEffortModel(spec) || isOllamaCloudGlm52ReasoningEffortModel(spec)) {
+	if (isAnthropicMessagesGlm52ReasoningEffortModel(spec) || isOllamaCloudGlm52ReasoningEffortModel(spec)) {
 		return GLM_52_XHIGH_MAX_EFFORT_MAP;
 	}
 	if (isSakanaFuguReasoningModel(spec)) {
@@ -581,7 +586,7 @@ function inferThinkingControlMode<TApi extends Api>(
 			if (isMinimaxReasoningModelOnAnthropicEndpoint(spec)) {
 				return "anthropic-adaptive";
 			}
-			if (isUmansGlm52ReasoningEffortModel(spec)) {
+			if (isAnthropicMessagesGlm52ReasoningEffortModel(spec)) {
 				return "anthropic-budget-effort";
 			}
 			if (parsedModel.family === "anthropic") {
