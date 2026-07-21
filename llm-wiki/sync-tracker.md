@@ -35,7 +35,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | # | tag | upstream commit | cumulative commits | delta | status |
 |---|-----|-----------------|--------------------|-------|--------|
 | 1 | v16.4.3 | 6328671d1 | 69 | +69 | triaged 69/69, ported 30 + 9 N/A/subsumed/coupled-skip, 11 deferred (large features) |
-| 2 | v16.4.4 | 29a6a6800 | 82 | +13 | pending |
+| 2 | v16.4.4 | 29a6a6800 | 82 | +13 | in progress: 3/10 ported |
 | 3 | v16.4.5 | 3d1f9a4a3 | 132 | +50 | pending |
 | 4 | v16.4.6 | 20c0a2e41 | 154 | +22 | pending |
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | pending |
@@ -318,3 +318,62 @@ smallest self-contained candidate), or (b) move on to checkpoint 2
 list later. At this rate (~1469 total upstream commits across 16
 checkpoints), full catch-up is a multi-session effort — this tracker is
 the source of truth for exactly where the next turn should resume.
+
+### Checkpoint 2 — v16.4.4 (10 substantive commits) — in progress
+
+10 commits between `6328671d1` and `29a6a6800`. Notable: small-model
+preprocessing centralization (`93635e7b6`, large — new `message-preproc.ts`
+module), Windows Bun.build-compiled binary CLI dispatch fix (`3d2568060`,
+likely coupled to the checkpoint-1-deferred Bun.build migration), native
+install artifact portability (`bc7a143c1`), test null-safety hardening
+(`337feb297`).
+
+- [x] `cbe083224` docs(coding-agent): corrected context promotion docs —
+  text-only, no jeopi commit hash needed for code (see combined commit
+  below). Cross-checked against actual runtime
+  (`AgentSession#resolveContextPromotionTarget` only resolves the explicit
+  `contextPromotionTarget`, no same-provider fallback) and
+  `settings-schema.ts` (`contextPromotion.enabled` default already
+  `false`) before editing — confirmed the docs were genuinely stale, not
+  a hypothetical.
+- [x] `3272b6574` feat(pi-natives): prioritized shallow paths for fuzzy
+  search ties — Rust (`crates/pi-natives/src/fd.rs`), `path_depth()` tie
+  -break in `fuzzy_find_sync`'s sort. Direct 1:1 port; regression test's
+  hidden-dir fixture renamed `.omp/...` → `.jeopi/...`. Both commits above
+  landed together as jeopi commit `935a34034`. Verified: `cargo test -p
+  pi-natives` (148/148 pass) + `cargo fmt` + full `bun run check:rs`.
+- [x] `748b2dff1` fix(tools): allowed opaque codex image keys — jeopi
+  commit `7087f7272`. `buildOpenAIImageHeaders()` no longer throws when
+  `getCodexAccountId()` finds no account id in the bearer token (proxy/
+  opaque keys); omits `chatgpt-account-id` instead of failing the
+  request. Direct 1:1 port. Verified: `bun test
+  .../test/tools/image-gen.test.ts` (6/6 pass, incl. 2 new tests) + tsgo
+  + biome.
+- [ ] `93635e7b6` feat(coding-agent): centralized preprocessing/guidance
+  for small models — 687+/128- lines across `tiny/message-preproc.ts`
+  (new, 133 lines), `tiny/text.ts` (heavily refactored), `tiny/worker.ts`,
+  `title-generator.ts`. Not yet reviewed for jeopi's `tiny/` divergence.
+- [ ] `29a6a6800` fix(coding-agent): preserved chat envelope in title
+  preprocessing — builds on `93635e7b6`'s new `message-preproc.ts`; port
+  together with it.
+- [ ] `bc7a143c1` fix(setup): used portable native install artifacts — not
+  yet reviewed.
+- [ ] `337feb297` test: improved test null safety and type assertions —
+  touches 7 test files across `packages/ai` and `packages/coding-agent`;
+  not yet reviewed for applicability (may be upstream-specific flake
+  fixes).
+- [ ] `3d2568060` fix(coding-agent): dispatched CLI entry in
+  Bun.build-compiled Windows binaries — likely coupled to the
+  checkpoint-1-deferred Bun.build bundling migration (jeopi still uses
+  the CLI-invoked `bun build` in `bundle-dist.ts`, not `Bun.build()` API,
+  per the `d179968bb` N/A finding); needs verification before deciding
+  applicable/coupled.
+- [ ] `cf1b3fc3f`, `6bc4302f6` — chore version bump / changelog update,
+  expected N/A (upstream-only bookkeeping, same pattern as checkpoint 1's
+  `f7930048d`/`056fc5f69`).
+
+Status: **in progress**, 3/10 substantive commits ported (2 jeopi
+commits: `935a34034`, `7087f7272`), 7 remaining (1 large feature not yet
+reviewed, 1 likely-coupled Windows/Bun.build fix, 1 test-hardening batch
+not yet reviewed, 2 expected-N/A chores, 1 depends on the not-yet
+reviewed `93635e7b6`).
