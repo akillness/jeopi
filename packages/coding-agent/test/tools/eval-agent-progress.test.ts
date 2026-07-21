@@ -145,4 +145,25 @@ describe("eval renderer: agent() progress below the cell box", () => {
 		expect(inside).not.toContain("0-Scout");
 		expect(below).toContain("0-Scout");
 	});
+
+	it("shows only the most recent non-agent status events behind an earlier-count marker", () => {
+		const events: EvalStatusEvent[] = Array.from({ length: 5 }, (_, i) => ({
+			op: "read",
+			path: `/tmp/file-${i}.ts`,
+			chars: 100,
+		}));
+
+		const lines = render(events);
+		const bottom = boxBottomIndex(lines);
+		const inside = lines.slice(0, bottom + 1).join("\n");
+
+		// Collapsed view keeps only the 3 most recent events, oldest first among
+		// those kept — the tail window is a live-progress edge, not a log.
+		expect(inside).toContain("file-4.ts");
+		expect(inside).toContain("file-3.ts");
+		expect(inside).toContain("file-2.ts");
+		expect(inside).not.toContain("file-1.ts");
+		expect(inside).not.toContain("file-0.ts");
+		expect(inside).toContain("2 earlier");
+	});
 });
