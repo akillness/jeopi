@@ -16,6 +16,7 @@
 - Fixed the OAuth completion page copy to tell users they can close the tab manually when browsers such as Firefox ignore best-effort `window.close()` calls. Ported from oh-my-pi (upstream `5e781a9c7`).
 - Fixed Cursor `max_mode` requests to send discovered max-mode metadata on both model payload fields (`modelDetails.maxMode` and the new `requestedModel`), so premium models that require max mode no longer silently run without it. Ported from oh-my-pi (upstream `358811115`).
 - Fixed provider credential changes leaving persisted session-sticky OAuth credential mappings active, so existing sessions reselect accounts after login/logout instead of reusing stale `session:sticky:<provider>:<sessionId>` rows: `#resetProviderAssignments` (called on every credential add/remove/login) now also purges every persisted sticky cache row for that provider via a new `deleteCachePrefix` store method, implemented for both `SqliteAuthCredentialStore` (SQL `substr` prefix match) and `RemoteAuthCredentialStore` (in-memory prefix scan). Other providers' sticky rows are untouched. Ported from oh-my-pi (upstream `7029789e7`).
+- Fixed Codex saved-reset redemption to include the selected account in the consume request body, so `/usage reset` applies to the chosen OpenAI account in multi-account setups instead of an ambiguous default. Ported from oh-my-pi (upstream `1d9889810`).
 
 ## [16.2.28] - 2026-07-08
 
