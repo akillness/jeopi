@@ -9,6 +9,7 @@
 - Fixed `fuzzyFind` burying shallow matches below deeply nested ones on score ties: `@scripts` in the prompt ranked `packages/*/scripts` above the cwd-root `scripts/` directory because ties broke lexicographically on the full path. Ties now prefer shallower paths first. Ported from oh-my-pi (upstream `3272b6574`).
 - Fixed macOS `pi-natives` package installs depending on Homebrew's dynamic `libpcre2-8.0.dylib`; release builds now force pcre2-sys to link PCRE2 statically. Ported from oh-my-pi (upstream `bc7a143c1`).
 - Fixed native `grep`/`search` reading files via `mmap` for anything above 128 KiB: a file truncated or rewritten by another process mid-search could SIGBUS the whole native addon or hand back mutated bytes mid-scan. Reads are now bounded, owned buffers (capped at the existing 4 MiB search limit) captured before matching runs, so a concurrent rewrite can no longer fault the process or change the bytes actually searched. Ported from oh-my-pi (upstream `b87cfc7e1`, `f359a5f29`).
+- Fixed `ast_edit` rejecting byte-identical duplicate replacements as "Overlapping replacements detected": multiple rewrite ops matching the same node with the same output now collapse into one deterministic edit (deduped in both the preview listing/counts and the apply pass), so only genuinely divergent overlaps error. Ported from oh-my-pi (upstream `a9adf20af`).
 
 ## [16.2.14] - 2026-07-02
 
