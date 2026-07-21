@@ -5,7 +5,7 @@ import { getMemoryRoot } from "../memories";
 import { AgentRegistry } from "../registry/agent-registry";
 import { buildDirectoryResource } from "./filesystem-resource";
 import { validateRelativePath } from "./skill-protocol";
-import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
+import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
 const DEFAULT_MEMORY_FILE = "memory_summary.md";
 const MEMORY_NAMESPACE = "root";
@@ -25,6 +25,11 @@ export function memoryRootsFromRegistry(): string[] {
 		if (root && !roots.includes(root)) roots.push(root);
 	}
 	return roots;
+}
+
+function memoryRootsForContext(context?: ResolveContext): string[] {
+	if (context?.cwd) return [getMemoryRoot(getAgentDir(), context.cwd)];
+	return memoryRootsFromRegistry();
 }
 
 function ensureWithinRoot(targetPath: string, rootPath: string): void {
@@ -127,16 +132,16 @@ async function tryResolveInRoot(url: InternalUrl, memoryRoot: string): Promise<I
 /**
  * Protocol handler for memory:// URLs.
  *
- * Walks every active session's memory root. Worktree-based subagents have
- * their own root; first one containing the file wins. Parent and subagent
- * sharing a cwd see the same file regardless of order.
+ * Resolves file-backed roots against the calling session cwd when provided.
+ * Contextless callers fall back to the live-session registry for legacy
+ * cross-session lookups.
  */
 export class MemoryProtocolHandler implements ProtocolHandler {
 	readonly scheme = "memory";
 	readonly immutable = true;
 
-	async resolve(url: InternalUrl): Promise<InternalResource> {
-		const roots = memoryRootsFromRegistry();
+	async resolve(url: InternalUrl, context?: ResolveContext): Promise<InternalResource> {
+		const roots = memoryRootsForContext(context);
 
 		if (roots.length === 0) {
 			throw new Error(
@@ -166,8 +171,8 @@ export class MemoryProtocolHandler implements ProtocolHandler {
 		throw new Error(`Memory file not found: ${url.href}`);
 	}
 
-	async complete(): Promise<UrlCompletion[]> {
-		if (memoryRootsFromRegistry().length === 0) return [];
+	async complete(_query?: string, context?: ResolveContext): Promise<UrlCompletion[]> {
+		if (memoryRootsForContext(context).length === 0) return [];
 		return [{ value: MEMORY_NAMESPACE, description: "Project memory summary" }];
 	}
 }

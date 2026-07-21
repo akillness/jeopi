@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { Skill } from "jeopi-cli/extensibility/skills";
-import { resolveLocalUrlToPath } from "jeopi-cli/internal-urls";
+import { type ResolveContext, resolveLocalUrlToPath } from "jeopi-cli/internal-urls";
 import { expandInternalUrls, expandSkillUrls } from "jeopi-cli/tools/bash-skill-urls";
 import { ToolError } from "jeopi-cli/tools/tool-errors";
 
@@ -24,6 +24,7 @@ function createInternalRouter(resources: Record<string, { sourcePath?: string; e
 	canHandle: (input: string) => boolean;
 	resolve: (
 		input: string,
+		context?: ResolveContext,
 	) => Promise<{ url: string; content: string; contentType: "text/plain"; sourcePath?: string; immutable: boolean }>;
 } {
 	return {
@@ -167,6 +168,30 @@ describe("expandInternalUrls", () => {
 		await expect(expandInternalUrls(command, { skills, internalRouter: router })).resolves.toBe(
 			`cat ${shellEscape("/tmp/session/reviewer_0.md")} ${shellEscape("/tmp/artifacts/12.bash.log")} ${shellEscape("/tmp/memories/memory_summary.md")} ${shellEscape("/tmp/rules/rs-no-unwrap.md")} ${shellEscape(expectedSkillPath)}`,
 		);
+	});
+
+	it("passes caller cwd to the router when expanding memory URLs", async () => {
+		const cwd = "/tmp/session-b";
+		const sourcePath = "/tmp/session-b-memory/memory_summary.md";
+		let observedCwd: string | undefined;
+		const router = {
+			canHandle: (input: string) => input === "memory://root/memory_summary.md",
+			resolve: async (input: string, context?: ResolveContext) => {
+				observedCwd = context?.cwd;
+				return {
+					url: input,
+					content: "",
+					contentType: "text/plain" as const,
+					sourcePath,
+					immutable: true,
+				};
+			},
+		};
+
+		await expect(
+			expandInternalUrls("cat memory://root/memory_summary.md", { skills: [], internalRouter: router, cwd }),
+		).resolves.toBe(`cat ${shellEscape(sourcePath)}`);
+		expect(observedCwd).toBe(cwd);
 	});
 
 	it("expands quoted non-skill URLs and shell-escapes quotes in paths", async () => {
