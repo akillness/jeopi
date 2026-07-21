@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed native filesystem searches (`glob`, `grep`, and AST search/edit) treating an explicitly rooted ignored directory as still excluded by its ancestor rule. Walks now discard only ancestor ignore patterns that cover the requested root, while preserving unrelated parent rules and ignore files discovered inside the root. Ported from oh-my-pi (upstream `5a4a6670b`).
+
 ## [16.2.14] - 2026-07-02
 
 ### Added

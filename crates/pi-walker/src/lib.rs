@@ -15,7 +15,7 @@ use std::{
 	ffi::{OsStr, OsString},
 	fmt,
 	hash::{Hash, Hasher},
-	io,
+	io::{self, BufRead},
 	path::{Path, PathBuf},
 	sync::Arc,
 };
@@ -2344,13 +2344,65 @@ fn has_repo_marker(dir: &Path) -> bool {
 	dir.join(".git").exists() || dir.join(".jj").exists()
 }
 
-fn load_gitignore(root: &Path, file: &Path) -> Option<ignore::gitignore::Gitignore> {
+fn ignore_line_covers_root(
+	matcher_root: &Path,
+	source: &Path,
+	line: &str,
+	explicit_root: &Path,
+) -> bool {
+	let mut builder = ignore::gitignore::GitignoreBuilder::new(matcher_root);
+	builder.add_line(Some(source.to_path_buf()), line).is_ok()
+		&& builder.build().is_ok_and(|matcher| {
+			matcher
+				.matched_path_or_any_parents(explicit_root, true)
+				.is_ignore()
+		})
+}
+
+/// Load an ignore source, removing ancestor rules that cover an explicit walk
+/// root.
+///
+/// Unrelated parent rules remain active, while ignore files discovered at or
+/// below the root are loaded without filtering.
+fn load_gitignore(
+	matcher_root: &Path,
+	file: &Path,
+	explicit_root: Option<&Path>,
+) -> Option<ignore::gitignore::Gitignore> {
 	if !file.is_file() {
 		return None;
 	}
-	let mut builder = ignore::gitignore::GitignoreBuilder::new(root);
+	let mut builder = ignore::gitignore::GitignoreBuilder::new(matcher_root);
 	let _ = builder.add(file);
-	builder.build().ok().filter(|matcher| !matcher.is_empty())
+	let matcher = builder.build().ok().filter(|matcher| !matcher.is_empty())?;
+	let Some(explicit_root) = explicit_root else {
+		return Some(matcher);
+	};
+	if !matcher
+		.matched_path_or_any_parents(explicit_root, true)
+		.is_ignore()
+	{
+		return Some(matcher);
+	}
+
+	let handle = std::fs::File::open(file).ok()?;
+	let mut filtered = ignore::gitignore::GitignoreBuilder::new(matcher_root);
+	let source = Some(file.to_path_buf());
+	for (index, line) in io::BufReader::new(handle).lines().enumerate() {
+		let Ok(line) = line else {
+			break;
+		};
+		let line = if index == 0 {
+			line.trim_start_matches('\u{feff}')
+		} else {
+			line.as_str()
+		};
+		if ignore_line_covers_root(matcher_root, file, line, explicit_root) {
+			continue;
+		}
+		let _ = filtered.add_line(source.clone(), line);
+	}
+	filtered.build().ok().filter(|matcher| !matcher.is_empty())
 }
 
 impl IgnoreState {
@@ -2359,10 +2411,29 @@ impl IgnoreState {
 		let git_exclude = dir.join(".git/info/exclude");
 		Arc::new(Self {
 			parent,
-			ignore_matcher: load_gitignore(dir, &dir.join(".ignore")),
-			gitignore_matcher: load_gitignore(dir, &dir.join(".gitignore")),
+			ignore_matcher: load_gitignore(dir, &dir.join(".ignore"), None),
+			gitignore_matcher: load_gitignore(dir, &dir.join(".gitignore"), None),
 			git_exclude_matcher: if has_git {
-				load_gitignore(dir, &git_exclude)
+				load_gitignore(dir, &git_exclude, None)
+			} else {
+				None
+			},
+			has_git,
+		})
+	}
+
+	/// Like [`Self::build`], but ancestor rules that cover `explicit_root` are
+	/// discarded — an ancestor `.gitignore` ignoring the walk root itself must
+	/// not suppress an explicitly rooted walk.
+	fn build_parent(dir: &Path, parent: Option<Arc<Self>>, explicit_root: &Path) -> Arc<Self> {
+		let has_git = has_repo_marker(dir);
+		let git_exclude = dir.join(".git/info/exclude");
+		Arc::new(Self {
+			parent,
+			ignore_matcher: load_gitignore(dir, &dir.join(".ignore"), Some(explicit_root)),
+			gitignore_matcher: load_gitignore(dir, &dir.join(".gitignore"), Some(explicit_root)),
+			git_exclude_matcher: if has_git {
+				load_gitignore(dir, &git_exclude, Some(explicit_root))
 			} else {
 				None
 			},
@@ -2383,7 +2454,7 @@ impl IgnoreState {
 
 		let mut parent = None;
 		for ancestor in ancestors.into_iter().rev() {
-			parent = Some(Self::build(ancestor, parent));
+			parent = Some(Self::build_parent(ancestor, parent, root));
 		}
 		parent
 	}
@@ -3764,6 +3835,44 @@ mod tests {
 		assert!(
 			!paths.iter().any(|path| path == "ignored.txt"),
 			"collect_entries should exclude .gitignore matches without a .git marker, got: {paths:?}"
+		);
+	}
+
+	#[test]
+	fn explicit_ignored_root_keeps_unrelated_parent_and_nested_ignore_rules() {
+		let tree = temp_tree("explicit-ignored-root");
+		fs::create_dir_all(tree.path().join(".git")).expect("repo marker should be created");
+		fs::write(tree.path().join(".gitignore"), "*.log\nignored/**\n")
+			.expect("repo gitignore should be written");
+		let project = tree.path().join("ignored").join("package");
+		let nested = project.join("nested");
+		fs::create_dir_all(&nested).expect("ignored project tree should be created");
+		fs::write(project.join("keep.ts"), "keep").expect("kept file should be written");
+		fs::write(project.join("trace.log"), "trace").expect("parent-ignored file should be written");
+		fs::write(nested.join(".gitignore"), "generated.ts\n")
+			.expect("nested gitignore should be written");
+		fs::write(nested.join("generated.ts"), "generated")
+			.expect("nested ignored file should be written");
+		fs::write(nested.join("keep.ts"), "nested keep").expect("nested kept file should be written");
+
+		let scan = collect_entries(
+			&project,
+			WalkOptions { use_gitignore: true, cache: false, ..test_options() },
+			|| Ok::<(), Infallible>(()),
+		)
+		.expect("collection should not fail");
+		let mut paths = scan
+			.entries
+			.into_iter()
+			.map(|entry| entry.path)
+			.collect::<Vec<_>>();
+		paths.sort();
+
+		assert_eq!(
+			paths,
+			vec!["keep.ts", "nested", "nested/.gitignore", "nested/keep.ts"],
+			"explicitly rooted walk should drop only the ancestor rule covering the root itself, \
+			 keep unrelated parent rules (*.log), and process nested ignore files normally"
 		);
 	}
 
