@@ -5,6 +5,7 @@
 ### Fixed
 
 - Fixed the live collab transcript rendering duplicate tool cards and a stale `thinking…` shimmer while a committed tool call is still running. Ported from oh-my-pi (upstream `70316a7f8`).
+- Fixed deduped active transcript tool cards rendering the stale raw arguments captured in the committed assistant message instead of the tool's current in-flight execution args. Ported from oh-my-pi (upstream `8480a84b3`).
 
 ## [16.2.27] - 2026-07-07
 
