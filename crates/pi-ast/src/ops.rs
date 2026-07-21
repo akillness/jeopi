@@ -100,21 +100,131 @@ pub fn compile_pattern(
 	strictness: &MatchStrictness,
 	lang: SupportLang,
 ) -> Result<Pattern> {
-	let mut compiled = if let Some(selector) = selector.map(str::trim).filter(|s| !s.is_empty()) {
+	let selector = selector.map(str::trim).filter(|s| !s.is_empty());
+	let mut compiled = if let Some(selector) = selector {
 		Pattern::contextual(pattern, selector, lang)
+			.map_err(|err| anyhow!("Invalid pattern: {err}"))?
 	} else {
-		Pattern::try_new(pattern, lang)
-	}
-	.map_err(|err| anyhow!("Invalid pattern: {err}"))?;
+		match Pattern::try_new(pattern, lang) {
+			Ok(compiled) => compiled,
+			// A fragment like `"key": $V` parses to multiple root nodes and is
+			// rejected as `MultipleNode`; auto-wrap it in a single-node context
+			// before giving up. Any other error, or a failed fallback, keeps the
+			// original message so genuinely-bad patterns behave as before.
+			Err(err @ PatternError::MultipleNode(_)) => {
+				match compile_wrapped_fallback(pattern, strictness, lang) {
+					Some(compiled) => return Ok(compiled),
+					None => return Err(anyhow!("Invalid pattern: {err}")),
+				}
+			},
+			Err(err) => return Err(anyhow!("Invalid pattern: {err}")),
+		}
+	};
 	compiled.strictness = strictness.clone();
 	Ok(compiled)
+}
+
+/// Language-specific wrapper template used to turn a multi-node fragment into a
+/// single selectable node. `None` for languages without a template — those keep
+/// the original `MultipleNode` error.
+const fn wrapper_template(lang: SupportLang) -> Option<(&'static str, &'static str, &'static str)> {
+	// (prefix, suffix, selector-kind); the fragment is spliced between
+	// prefix/suffix.
+	match lang {
+		SupportLang::Json => Some(("{", "}", "pair")),
+		_ => None,
+	}
+}
+
+/// Retry a fragment that failed as `MultipleNode` by wrapping it in a minimal
+/// valid context and selecting the node kind that spans it. Returns the
+/// compiled pattern (with `strictness` applied) or `None` if this language has
+/// no template or the wrapped form still fails to compile.
+fn compile_wrapped_fallback(
+	pattern: &str,
+	strictness: &MatchStrictness,
+	lang: SupportLang,
+) -> Option<Pattern> {
+	let (prefix, suffix, selector) = wrapper_template(lang)?;
+	// JSON only accepts a bare `$V` inside a string, so quote value-position
+	// metavars; ast-grep still reads the quoted `"$V"` as capture `V`.
+	let prepared = if lang == SupportLang::Json {
+		quote_bare_metavars(pattern)
+	} else {
+		pattern.to_string()
+	};
+	let context = format!("{prefix} {prepared} {suffix}");
+	let mut compiled = Pattern::contextual(&context, selector, lang).ok()?;
+	compiled.strictness = strictness.clone();
+	Some(compiled)
+}
+
+/// Wrap bare `$NAME` / `$$$NAME` metavars in double quotes so a JSON wrapper
+/// parses. Metavars already inside a string literal (including `"$V"`) are left
+/// untouched; a quote toggles in/out of string context.
+fn quote_bare_metavars(pattern: &str) -> String {
+	let bytes = pattern.as_bytes();
+	let mut out = String::with_capacity(pattern.len() + 4);
+	let mut in_string = false;
+	let mut index = 0;
+	while index < bytes.len() {
+		let byte = bytes[index];
+		if byte == b'"' && (index == 0 || bytes[index - 1] != b'\\') {
+			in_string = !in_string;
+			out.push('"');
+			index += 1;
+			continue;
+		}
+		if byte == b'$' && !in_string {
+			// Consume `$`, an optional `$$` ellipsis, then the identifier.
+			let start = index;
+			index += 1;
+			if bytes[index..].starts_with(b"$$") {
+				index += 2;
+			}
+			while index < bytes.len() && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
+			{
+				index += 1;
+			}
+			out.push('"');
+			out.push_str(&pattern[start..index]);
+			out.push('"');
+			continue;
+		}
+		// Copy this byte's full UTF-8 char so multi-byte content is preserved.
+		let char_end = next_char_boundary(bytes, index);
+		out.push_str(&pattern[index..char_end]);
+		index = char_end;
+	}
+	out
+}
+
+/// Byte index of the end of the UTF-8 character starting at `index`.
+fn next_char_boundary(bytes: &[u8], index: usize) -> usize {
+	let mut end = index + 1;
+	while end < bytes.len() && (bytes[end] & 0b1100_0000) == 0b1000_0000 {
+		end += 1;
+	}
+	end
 }
 
 pub fn compile_search_patterns(
 	pattern: &str,
 	language: SupportLang,
 ) -> Result<Vec<Pattern>, PatternError> {
-	let mut compiled = vec![Pattern::try_new(pattern, language)?];
+	let mut compiled = match Pattern::try_new(pattern, language) {
+		Ok(compiled) => vec![compiled],
+		// Multi-node fragments (e.g. `"key": $V`) get the same auto-wrap fallback
+		// as the edit path; other errors propagate unchanged.
+		Err(err @ PatternError::MultipleNode(_)) => {
+			match compile_wrapped_fallback(pattern, &MatchStrictness::Smart, language) {
+				Some(compiled) => vec![compiled],
+				None => return Err(err),
+			}
+		},
+		Err(err) => return Err(err),
+	};
+
 	if language == SupportLang::Rust {
 		let trimmed = pattern.trim_end();
 		if let Some(contextual) = compile_rust_contextual_pattern(trimmed) {
@@ -295,15 +405,54 @@ fn compile_rust_contextual_pattern(pattern: &str) -> Option<Pattern> {
 
 #[cfg(test)]
 mod tests {
-	use ast_grep_core::source::Edit;
+	use ast_grep_core::{source::Edit, tree_sitter::LanguageExt};
 
-	use super::{SupportLang, apply_edits, compile_search_patterns};
+	use super::{
+		MatchStrictness, SupportLang, apply_edits, compile_pattern, compile_search_patterns,
+	};
 
 	#[test]
 	fn compile_search_patterns_compiles_rust_patterns() {
 		let patterns = compile_search_patterns("foo($$$ARGS)", SupportLang::Rust)
 			.expect("rust pattern should compile");
 		assert!(!patterns.is_empty());
+	}
+
+	#[test]
+	fn compile_pattern_auto_wraps_multi_node_json_fragment() {
+		// `"key": $V` parses to two root nodes (a bare string and an incomplete
+		// pair) in raw JSON and used to be rejected outright as `MultipleNode`.
+		let compiled =
+			compile_pattern(r#""@types/bun": $V"#, None, &MatchStrictness::Smart, SupportLang::Json)
+				.expect("multi-node JSON fragment should auto-wrap and compile");
+		let source = r#"{"@types/bun": "^1.0.0"}"#;
+		let ast = SupportLang::Json.ast_grep(source);
+		let matched = ast
+			.root()
+			.find(compiled)
+			.expect("wrapped pattern should match the pair");
+		assert_eq!(
+			matched
+				.get_env()
+				.get_match("V")
+				.map(|n| n.text().into_owned()),
+			Some("^1.0.0".to_string())
+		);
+	}
+
+	#[test]
+	fn compile_pattern_still_errors_on_multi_node_without_template() {
+		// Rust has no wrapper template, so a multi-node fragment keeps failing.
+		let err = compile_pattern("foo(); bar();", None, &MatchStrictness::Smart, SupportLang::Rust)
+			.expect_err("multi-node Rust fragment has no wrapper template");
+		assert!(err.to_string().contains("Invalid pattern"));
+	}
+
+	#[test]
+	fn compile_search_patterns_auto_wraps_multi_node_json_fragment() {
+		let patterns = compile_search_patterns(r#""@types/bun": $V"#, SupportLang::Json)
+			.expect("multi-node JSON fragment should auto-wrap and compile");
+		assert_eq!(patterns.len(), 1);
 	}
 
 	#[test]
