@@ -11,6 +11,7 @@
 
 - Task delegation guidance (`eager-task.md`, forced-delegation mode) now says explicitly that top-level scoping, decomposition, and cross-slice contracts are the primary agent's job — never spawn a subagent to produce the overall plan — and that a single runnable slice should be done inline rather than handed to a lone subagent (a lossy handoff, not parallelism). Ported from oh-my-pi (upstream `1c6f5dc18`, `eager-task.md` portion only — jeopi's `system-prompt.md` delegation section has diverged structurally from upstream's and needs separate manual review before porting the rest of this commit).
 - Reduced browser action timeout from 15s to 8s to improve agent iteration speed. Ported from oh-my-pi (upstream `9ebc23928`).
+- `tab.evaluate` now always runs in the page's main JavaScript world instead of the puppeteer-default isolated world: page-defined globals (`window.myFlag`, app state, framework internals) are visible without an explicit `//!world=main` directive comment. Ported from oh-my-pi (upstream `8c8afaf47`).
 - Removed the stale `[NEW]` marker from the `/advisor` startup tip. Ported from oh-my-pi (upstream `93db3913d`, `tips.txt` portion only — the accompanying new `->` prompt-queueing tip references jeopi's not-yet-ported sequential message queueing feature, and the Model Hub selection-visual/PageUp-PageDown-clamp fixes in the same commit are coupled to jeopi's not-yet-ported Model Hub feature).
 
 ### Fixed
