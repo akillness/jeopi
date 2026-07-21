@@ -6,6 +6,10 @@
 
 - `jeopi acp` now prints a short hint on stderr when launched from an interactive terminal (stdin is a TTY): the command speaks JSON-RPC over stdout and is meant to be spawned by an ACP client such as Zed, so running it by hand previously showed nothing at all. Ported from oh-my-pi (upstream `54af1c03f`).
 
+### Changed
+
+- Task delegation guidance (`eager-task.md`, forced-delegation mode) now says explicitly that top-level scoping, decomposition, and cross-slice contracts are the primary agent's job — never spawn a subagent to produce the overall plan — and that a single runnable slice should be done inline rather than handed to a lone subagent (a lossy handoff, not parallelism). Ported from oh-my-pi (upstream `1c6f5dc18`, `eager-task.md` portion only — jeopi's `system-prompt.md` delegation section has diverged structurally from upstream's and needs separate manual review before porting the rest of this commit).
+
 ### Fixed
 
 - Bare `skill://name` URLs (no relative path) now resolve to the skill directory for path-only tool operations (`bash` `skill://` expansion, `search`/`find` on internal URLs) instead of `SKILL.md`; `read` still returns `SKILL.md` instructions for the bare form. Ported from oh-my-pi (upstream `cf4e510ac`).
