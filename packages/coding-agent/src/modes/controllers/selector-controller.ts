@@ -601,8 +601,9 @@ export class SelectorController {
 					const concreteThinking = isAuto ? undefined : thinkingLevel;
 					try {
 						if (role === null) {
-							// Temporary: update agent state but don't persist the model to settings
-							await this.ctx.session.setModelTemporary(model);
+							// Temporary: update agent state but don't persist the model to settings.
+							const roleThinkingLevel = this.ctx.session.resolveTemporaryModelThinkingLevel(model);
+							await this.ctx.session.setModelTemporary(model, roleThinkingLevel);
 							if (isAuto) {
 								this.ctx.session.setThinkingLevel(AUTO_THINKING, true);
 							}

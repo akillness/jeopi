@@ -527,6 +527,30 @@ describe("AgentSession role model thinking behavior", () => {
 		expect(session.autoResolvedThinkingLevel()).toBeUndefined();
 	});
 
+	it("applies matching role thinking to temporary model picks", async () => {
+		const defaultModel = getAnthropicModelOrThrow("claude-sonnet-4-5");
+		const temporaryModel = getAnthropicModelOrThrow("claude-sonnet-4-6");
+
+		await createSession({
+			initialModelId: defaultModel.id,
+			initialThinkingLevel: Effort.Low,
+			modelRoles: {
+				smol: `${temporaryModel.provider}/${temporaryModel.id}:high`,
+			},
+		});
+
+		const roleResolved = session.resolveRoleModelWithThinking("smol");
+		expect(roleResolved.model?.id).toBe(temporaryModel.id);
+		expect(roleResolved.thinkingLevel).toBe(Effort.High);
+
+		const roleThinkingLevel = session.resolveTemporaryModelThinkingLevel(temporaryModel);
+		await session.setModelTemporary(temporaryModel, roleThinkingLevel);
+
+		expect(session.model?.provider).toBe(temporaryModel.provider);
+		expect(session.model?.id).toBe(temporaryModel.id);
+		expect(session.thinkingLevel).toBe(Effort.High);
+	});
+
 	it("ignores a stale recorded role and cycles from the active model", async () => {
 		const defaultModel = getAnthropicModelOrThrow("claude-sonnet-4-5");
 		const slowModel = getAnthropicModelOrThrow("claude-sonnet-4-6");
