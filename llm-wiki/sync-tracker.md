@@ -928,14 +928,8 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 55. **Deferred — quota-routing bundle** `8d4e4fde5` fix(ai): resolved Z.AI API-key usage probes — config-reference resolution plus model-quota-only ranking correction for #54; must land with that feature.
 56. **Deferred — quota-routing bundle** `ecd2b7122` test(ai): updated Z.AI feature-quota expectation — test-only follow-up coupled to #54/#55.
 
-**Not yet reviewed:** ~129 remaining. Next concrete candidate: `26792f7b5`
-(TUI sparse-compacted transcript segment guard). Continue from its direct diff; the
-quota-routing bundle above remains an explicit dedicated-session obligation, not a
-skip. Given the volume of this checkpoint, expect several more large/risky items
-(the `org`-scoped Anthropic OAuth credential identity rework spans
-~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
-rework spans ~6 commits `74715f8cc`..`74be4d5f6`, and the eval-runtime
-isolation rework spans ~9 commits `c40ccdc68`..`ffa879ba2` — these
-look like coherent multi-commit features/rewrites needing the same
-dedicated-review treatment as checkpoint 7's large buckets, not
-commit-by-commit porting).
+57. **N/A/subsumed** `26792f7b5` fix(tui): skip sparse compacted segments in `isBlockUncommitted` — jeopi's later `127cca511` refactor (descendant of this upstream commit) removed `NativeScrollbackReplay`, `#compactedChildStart`, `isBlockUncommitted`, and the compaction path entirely. Current IRC/ephemeral removal uses `isWithinLiveRegion`, so the sparse-segment crash path no longer exists.
+
+**Not yet reviewed:** ~128 remaining. Next concrete candidate: `c40ccdc68`
+(eval-runtime isolation rework; its eight follow-ups through `ffa879ba2` form the
+already-identified dedicated-review bundle).
