@@ -6,6 +6,10 @@
 
 - Added a terminal stderr guard (`suppressTerminalStderr`/`restoreTerminalStderr`): dup2-redirects fd 2 to the jeopi log file while a TUI owns the terminal so macOS runtime diagnostics cannot paint into the viewport. The postmortem fatal handlers restore fd 2 before printing so crash reports stay visible. Ported from oh-my-pi (upstream `4eaca82fa` by @Kormákur, `17486d200` by @Kormákur).
 
+### Fixed
+
+- Fixed Mermaid ASCII routing to stop unbounded pathfinder searches when an edge attachment point is unreachable. ([#5293](https://github.com/can1357/oh-my-pi/issues/5293), upstream `cc2041ab7`).
+
 ## [16.2.24] - 2026-07-03
 
 ### Added
