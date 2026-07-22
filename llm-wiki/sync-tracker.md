@@ -930,6 +930,8 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 
 57. **N/A/subsumed** `26792f7b5` fix(tui): skip sparse compacted segments in `isBlockUncommitted` — jeopi's later `127cca511` refactor (descendant of this upstream commit) removed `NativeScrollbackReplay`, `#compactedChildStart`, `isBlockUncommitted`, and the compaction path entirely. Current IRC/ephemeral removal uses `isWithinLiveRegion`, so the sparse-segment crash path no longer exists.
 
-**Not yet reviewed:** ~128 remaining. Next concrete candidate: `c40ccdc68`
-(eval-runtime isolation rework; its eight follow-ups through `ffa879ba2` form the
-already-identified dedicated-review bundle).
+58. **Subsumed** `c40ccdc68`, `9c9da2387`, `1a527d9a2`, `55d9fcfd1`, `95620ccd6`, `3c0a09ff5`, `640d7c83b`, `891967485`, `a83f461b3`, and `ffa879ba2` — current jeopi already uses the later worker-host JS-eval architecture: CLI dispatches `__omp_worker_js_eval`, workers receive a buffered init inbox, `WorkerCore` updates runtime CWD per run, real-worker initialization falls back to inline only on startup failure, and clone errors propagate as `ToolError`. The full original runtime refactor is therefore superseded rather than a safe patch target. Verified current contracts with `bun test` eval lifecycle/kernel suites (14 pass) and `bun run ci:test:smoke` (real JS-eval worker probe passed).
+
+**Not yet reviewed:** ~118 remaining. Next concrete candidate: `aa470b9e3`
+(forward `sessionId` to `getApiKey` for subagent auth fallback; small direct
+coding-agent fix after the eval bundle).
