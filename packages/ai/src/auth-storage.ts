@@ -36,6 +36,7 @@ import type {
 } from "./usage";
 import { resolveUsedFraction } from "./usage";
 import { claudeRankingStrategy, claudeUsageProvider } from "./usage/claude";
+import { cursorUsageProvider } from "./usage/cursor";
 import { googleGeminiCliUsageProvider } from "./usage/gemini";
 import { githubCopilotUsageProvider } from "./usage/github-copilot";
 import { antigravityRankingStrategy, antigravityUsageProvider } from "./usage/google-antigravity";
@@ -507,6 +508,7 @@ const DEFAULT_USAGE_PROVIDERS: UsageProvider[] = [
 	zaiUsageProvider,
 	opencodeGoUsageProvider,
 	githubCopilotUsageProvider,
+	cursorUsageProvider,
 ];
 
 const DEFAULT_USAGE_PROVIDER_MAP = new Map<Provider, UsageProvider>(
