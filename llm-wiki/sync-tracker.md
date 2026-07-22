@@ -893,11 +893,13 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 25. `4eaca82fa`+`17486d200` → `29d285217` (squashed, external contribution by @Kormákur; `9af5835b2`'s same-day test removal folded in — new `stderr-guard.ts`/test land at final combined state directly): new `packages/utils` terminal stderr guard (`suppressTerminalStderr`/`restoreTerminalStderr`) dup2-redirects fd 2 to the jeopi log file while the TUI owns the terminal, so macOS libmalloc/framework runtime diagnostics can no longer paint into the viewport; `ProcessTerminal` suppresses on `start()` and restores on `stop()`/emergency-restore, and the postmortem fatal handlers restore fd 2 before printing so crash reports stay visible
 26. `e41b32c87`+`936e83e3d`+`cf6d25f1b` → `989603013` (squashed streamed-diff fix series): transient `diff`/`patch`/`udiff` fences now incrementally syntax-highlight newline-complete rows before they can enter immutable native scrollback while keeping the live partial row lightweight; a per-line cache prevents re-highlighting the committed prefix, closed fences include their last non-newline row, and completed blank rows survive both first render and cache growth. Added real `TUI`/`VirtualTerminal` scrollback regressions plus actual theme highlighter chunk-parity coverage.
 27. **N/A/subsumed** `46a898f87` chore: remove verbosity from changelog — only removed an upstream external-reference sentence from the stderr-guard changelog entry; jeopi's ported `packages/coding-agent` entry was written without that upstream-only reference, so no product or documentation change remains.
+28. **N/A** `4b5c32a09` Merge PR #4950 — merge commit for already-ported `b097019fe` local-image MCP resolution; carries no independent change after the direct port and its extension follow-up.
+29. **Subsumed** `8c387307e` fix(mcp): stabilize local image regression coverage — its only change is resolving the fixture path with `fs.realpath()` after writing; `917059ba4` already used that stricter macOS-safe expectation while porting the precursor fix, and `bun test packages/coding-agent/test/mcp-tool-args.test.ts` currently passes all 6 tests.
 
-**Not yet reviewed:** ~159 remaining. Next concrete candidate: `8c387307e`
-(test-only stabilization follow-up to the already-ported `b097019fe` local-image
-MCP fix), after its paired `4b5c32a09` merge is recorded as N/A. Continue with
-`git log --reverse --oneline v16.5.0..v16.5.1` from `cf6d25f1b`. Given the volume of this checkpoint, expect several more large/risky items
+**Not yet reviewed:** ~157 remaining. Next concrete candidate: `ba7bcf4cd`
+(after triaging the paired `eb9146da3`/`334050d50` merge commits for
+already-ported collab transcript and magic-keyword changes as N/A).
+Continue with `git log --reverse --oneline v16.5.0..v16.5.1` from `8c387307e`. Given the volume of this checkpoint, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
 rework spans ~6 commits `74715f8cc`..`74be4d5f6`, and the eval-runtime
