@@ -381,6 +381,52 @@ describe("lsp regressions", () => {
 		}
 	});
 
+	it("sends initial workspace configuration after initialized before semantic requests", async () => {
+		const tempDir = TempDir.createSync("@jeopi-lsp-initial-config-");
+		try {
+			const server = installFakeLsp((message, srv) => {
+				if (message.method === "initialize") {
+					srv.send({ jsonrpc: "2.0", id: message.id, result: { capabilities: { hoverProvider: true } } });
+				} else if (message.method === "textDocument/hover") {
+					srv.send({ jsonrpc: "2.0", id: message.id, result: { contents: "configured hover" } });
+				} else if (message.method === "shutdown") {
+					srv.send({ jsonrpc: "2.0", id: message.id, result: null });
+				} else if (message.method === "exit") {
+					srv.exit(0);
+				}
+			});
+			const config: ServerConfig = {
+				command: "fake-lsp",
+				fileTypes: ["ts"],
+				rootMarkers: [],
+				settings: { "typescript-language-server": { preferences: { includePackageJsonAutoImports: "on" } } },
+			};
+
+			const client = await lspClient.getOrCreateClient(config, tempDir.path(), 1_000);
+			const result = await lspClient.sendRequest(
+				client,
+				"textDocument/hover",
+				{
+					textDocument: { uri: fileToUri(path.join(tempDir.path(), "src", "configured.ts")) },
+					position: { line: 0, character: 0 },
+				},
+				undefined,
+				50,
+			);
+
+			expect(result).toEqual({ contents: "configured hover" });
+			expect(server.received.slice(0, 4).map(message => message.method)).toEqual([
+				"initialize",
+				"initialized",
+				"workspace/didChangeConfiguration",
+				"textDocument/hover",
+			]);
+			expect(server.received[2]?.params).toEqual({ settings: config.settings });
+		} finally {
+			await lspClient.shutdownAll();
+			tempDir.removeSync();
+		}
+	});
 	it("drains every workspace/configuration pull during lazy cold start when a pull id collides with an in-flight request", async () => {
 		// #3001: basedpyright/pyright pull `workspace/configuration` repeatedly
 		// during cold start and gate document analysis on every pull being
