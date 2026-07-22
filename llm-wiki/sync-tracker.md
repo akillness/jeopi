@@ -41,7 +41,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | triaged 75/75, ported 19 + 1 N/A, 55 deferred to dedicated large-feature sessions (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls, Model Hub, ACP SDK major bump, misc large/experimental) |
-| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 27/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
+| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 31/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
 | 11 | v17.0.1 | 6ae7cdbf9 | 756 | +157 | pending |
@@ -890,10 +890,11 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 22. `c95a2b993` → `7267d7bff` (external contribution by @belchetz): OpenAI Responses `content_filter` terminal events now classify under a dedicated non-retriable `Flag.ContentBlocked` instead of reusing the retriable `Flag.ProviderFinishError`, so a safety-filter block stays a hard failure without a same-model retry loop
 23. `f34034fa7` → `928fc2285` (external contribution by @oldschoola): Z.ai GLM-5.2 on the `anthropic-messages` proxy now derives `anthropic-budget-effort` mode (matching Umans' two-tier high/max scale) instead of generic `budget` mode with five synthetic tiers — adapted to jeopi's `Effort` enum (no `Max` tier: exposes `[High, XHigh]` + `effortMap: {xhigh: "max"}` instead of upstream's literal `[high, max]`); bundled `models.json`'s stale entry deliberately left untouched since `buildModel()` always re-derives `thinking` from this policy at runtime, so the stored blob is inert
 24. `38af95646` → `5608f3beb`: OpenAI Chat Completions request parsing now accepts assistant tool-call replay messages with `content: null` as absent content instead of rejecting the whole request
+25. `4eaca82fa`+`17486d200` → `29d285217` (squashed, external contribution by @Kormákur; `9af5835b2`'s same-day test removal folded in — new `stderr-guard.ts`/test land at final combined state directly): new `packages/utils` terminal stderr guard (`suppressTerminalStderr`/`restoreTerminalStderr`) dup2-redirects fd 2 to the jeopi log file while the TUI owns the terminal, so macOS libmalloc/framework runtime diagnostics can no longer paint into the viewport; `ProcessTerminal` suppresses on `start()` and restores on `stop()`/emergency-restore, and the postmortem fatal handlers restore fd 2 before printing so crash reports stay visible
 
-**Not yet reviewed:** ~164 remaining. Next in queue: resume via
+**Not yet reviewed:** ~162 remaining. Next in queue: resume via
 `git log --reverse --oneline v16.5.0..v16.5.1` starting after
-`38af95646`. Given the volume of this checkpoint, expect several more large/risky items
+`4eaca82fa`. Given the volume of this checkpoint, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
 rework spans ~6 commits `74715f8cc`..`74be4d5f6`, and the eval-runtime
