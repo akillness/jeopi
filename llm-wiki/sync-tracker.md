@@ -41,7 +41,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | triaged 75/75, ported 19 + 1 N/A, 55 deferred to dedicated large-feature sessions (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls, Model Hub, ACP SDK major bump, misc large/experimental) |
-| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 35/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
+| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 36/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
 | 11 | v17.0.1 | 6ae7cdbf9 | 756 | +157 | pending |
@@ -850,7 +850,7 @@ false-positive), 1 N/A, 55 deferred to dedicated large-feature
 sessions with concrete reasons recorded per item/bucket above. No
 "not yet reviewed" items remain for this checkpoint.
 
-### Checkpoint 8 — v16.5.1 (190 commits) — IN PROGRESS (35/190 ported)
+### Checkpoint 8 — v16.5.1 (190 commits) — IN PROGRESS (36/190 ported)
 
 190 commits between `3047c27c3`..`14b5da76a`. Largest checkpoint by
 commit count, but structurally different from checkpoints 1/3/4/7:
@@ -865,7 +865,7 @@ paired substantive commit is triaged. This means the *effective*
 number of distinct changes is well under 190 — full per-commit list
 via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 
-**Ported (35 upstream commits represented by 28 jeopi commits):**
+**Ported (36 upstream commits represented by 29 jeopi commits):**
 1. `aeed4d10d` → `bb1f0008a`: Markdown HTML comments (`<!-- -->`) stripped during TUI terminal normalization instead of rendering literally
 2. `dac54080d` → `3a8a00f3d`: autolearn auto-continue no longer nudges after an aborted turn (Esc/cancel) — reads `stopReason` from the `agent_end` event's own messages since the session-level abort flag is unreliable by delivery time
 3. `1a3e137f1` → `0112a4309`: `jeopi -p` text-mode print writes a one-shot "Working..." stderr indicator before the first prompt so it doesn't look hung
@@ -898,11 +898,14 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 30. **N/A** `eb9146da3` Merge PR #4952 — merge commit for already-ported `70316a7f8`/`8480a84b3` collab transcript dedup fixes, represented by `b68bafab1` and `892226c28`.
 31. **N/A** `334050d50` Merge PR #4968 — merge commit for already-ported `e7c678dbe` punctuation-aware magic-keyword boundary builder, represented by `963f10a18`.
 32. `ba7bcf4cd` → `69a2d74db`: magic-keyword boundary matching now rejects immediate direct calls (`ultrathink()`) and C++-style qualified symbol references (`foo::ultrathink`) so code cannot inject hidden workflow notices or rainbow editor highlights; prose punctuation remains accepted. Updated the existing magic-keyword changelog entry and added behavioral coverage for every keyword form.
+33. **N/A** `edc051143` Merge PR #4967 — merge commit for already-ported `63adfeece` pinned-plugin replacement repair, represented by `088352a76`.
+34. **N/A** `946ba4bce` Merge PR #5044 — merge commit for already-ported `6fab752eb`/`d670dd5d9` max-time duration and validation fixes, represented by `0e2458b77`.
+35. `9bda84b68` → `02c955f20`: selecting a temporary model (`Alt+P`, `/switch`, `/model --temporary`) now scans configured built-in and custom roles for a matching model with an explicit thinking suffix, then carries that thinking level into the session-only switch; bare roles and unmatched models preserve existing model-default behavior. Added an Anthropic-only role-thinking regression to avoid new-provider auth-fixture coupling.
+36. **N/A** `a57244830` Merge PR #5297 — integration merge for `9bda84b68`; its conflict resolution folds the same temporary-picker call into the concurrently evolved selector, with no independent behavior beyond the direct port above.
 
-**Not yet reviewed:** ~154 remaining. Next concrete candidate: `a57244830`
-(role-thinking behavior for temporary model picks), after triaging `edc051143` and
-`946ba4bce` as N/A merge commits for already-ported plugin and max-time fixes.
-Continue with `git log --reverse --oneline v16.5.0..v16.5.1` from `ba7bcf4cd`. Given the volume of this checkpoint, expect several more large/risky items
+**Not yet reviewed:** ~150 remaining. Next concrete candidate: `5105b2cd`
+(browser stealth logger crash). Continue with
+`git log --reverse --oneline v16.5.0..v16.5.1` from `a57244830`. Given the volume of this checkpoint, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
 rework spans ~6 commits `74715f8cc`..`74be4d5f6`, and the eval-runtime
