@@ -1149,20 +1149,32 @@ export function resolveModelOverride(
 	modelPatterns: string[],
 	modelRegistry: ModelLookupRegistry,
 	settings?: Settings,
-): { model?: Model<Api>; thinkingLevel?: ConfiguredThinkingLevel; explicitThinkingLevel: boolean } {
+): {
+	model?: Model<Api>;
+	thinkingLevel?: ConfiguredThinkingLevel;
+	explicitThinkingLevel: boolean;
+	warning?: string;
+} {
 	if (modelPatterns.length === 0) return { explicitThinkingLevel: false };
 	const availableModels = modelRegistry.getAvailable();
 	const matchPreferences = getModelMatchPreferences(settings);
+	let warning: string | undefined;
 	for (const pattern of modelPatterns) {
-		const { model, thinkingLevel, explicitThinkingLevel } = resolveModelRoleValue(pattern, availableModels, {
+		const {
+			model,
+			thinkingLevel,
+			explicitThinkingLevel,
+			warning: patternWarning,
+		} = resolveModelRoleValue(pattern, availableModels, {
 			settings,
 			matchPreferences,
 		});
 		if (model) {
-			return { model, thinkingLevel, explicitThinkingLevel };
+			return { model, thinkingLevel, explicitThinkingLevel, warning: patternWarning };
 		}
+		if (!warning && patternWarning) warning = patternWarning;
 	}
-	return { explicitThinkingLevel: false };
+	return { explicitThinkingLevel: false, warning };
 }
 
 /**
@@ -1176,6 +1188,10 @@ export function resolveModelOverride(
  * `modelRoles.task` pointing at an unqualified id whose only available
  * provider variant has no configured credentials — see #985).
  *
+ * `sessionId` is forwarded to `getApiKey` so that session-sticky OAuth
+ * credentials resolve correctly during the pre-flight auth check. Without it,
+ * providers with multiple OAuth accounts may return `undefined` even though
+ * the credential is usable once the subagent session starts — see #5325.
  * Keyless-by-design providers (llama.cpp, ollama, lm-studio) advertise the
  * `kNoAuth` sentinel from `getApiKey` to signal that they do not require
  * credentials. Those are treated as authenticated here so an explicitly
@@ -1191,18 +1207,20 @@ export async function resolveModelOverrideWithAuthFallback(
 	parentActiveModelPattern: string | undefined,
 	modelRegistry: ModelLookupRegistry & Pick<ModelRegistry, "getApiKey">,
 	settings?: Settings,
+	sessionId?: string,
 ): Promise<{
 	model?: Model<Api>;
 	thinkingLevel?: ConfiguredThinkingLevel;
 	explicitThinkingLevel: boolean;
 	authFallbackUsed: boolean;
+	warning?: string;
 }> {
 	const primary = resolveModelOverride(modelPatterns, modelRegistry, settings);
 	if (!primary.model || !parentActiveModelPattern) {
 		return { ...primary, authFallbackUsed: false };
 	}
 
-	const primaryKey = await modelRegistry.getApiKey(primary.model);
+	const primaryKey = await modelRegistry.getApiKey(primary.model, sessionId);
 	if (primaryKey === kNoAuth || isAuthenticated(primaryKey)) {
 		return { ...primary, authFallbackUsed: false };
 	}
@@ -1214,7 +1232,7 @@ export async function resolveModelOverrideWithAuthFallback(
 	if (modelsAreEqual(fallback.model, primary.model)) {
 		return { ...primary, authFallbackUsed: false };
 	}
-	const fallbackKey = await modelRegistry.getApiKey(fallback.model);
+	const fallbackKey = await modelRegistry.getApiKey(fallback.model, sessionId);
 	if (!isAuthenticated(fallbackKey)) {
 		return { ...primary, authFallbackUsed: false };
 	}

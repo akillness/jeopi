@@ -174,3 +174,59 @@ describe("issue #985: subagent dispatch auth fallback", () => {
 		expect(result.model?.id).toBe("qwen3.6-plus-free");
 	});
 });
+
+describe("issue #5325: sessionId forwarded to getApiKey for session-sticky OAuth", () => {
+	test("forwards sessionId to getApiKey for the primary model", async () => {
+		let receivedSessionId: string | undefined;
+		const registry: ModelLookupRegistry & {
+			getApiKey(model: Model<Api>, sessionId?: string): Promise<string | undefined>;
+		} = {
+			getAvailable: () => [parentModel, unauthedTaskModel],
+			getApiKey: async (model: Model<Api>, sessionId?: string) => {
+				if (model.provider === "opencode-zen") {
+					receivedSessionId = sessionId;
+					return sessionId ? "sk-resolved-token" : undefined;
+				}
+				if (model.provider === "deepseek") return "sk-test";
+				return undefined;
+			},
+		} as never;
+
+		const result = await resolveModelOverrideWithAuthFallback(
+			["qwen3.6-plus-free"],
+			"deepseek/deepseek-v4-pro",
+			registry,
+			undefined,
+			"subagent-session-123",
+		);
+
+		expect(receivedSessionId).toBe("subagent-session-123");
+		expect(result.authFallbackUsed).toBe(false);
+		expect(result.model?.provider).toBe("opencode-zen");
+		expect(result.model?.id).toBe("qwen3.6-plus-free");
+	});
+
+	test("still falls back when getApiKey returns undefined with sessionId", async () => {
+		const registry: ModelLookupRegistry & {
+			getApiKey(model: Model<Api>, sessionId?: string): Promise<string | undefined>;
+		} = {
+			getAvailable: () => [parentModel, unauthedTaskModel],
+			getApiKey: async (model: Model<Api>, _sessionId?: string) => {
+				if (model.provider === "deepseek") return "sk-test";
+				return undefined;
+			},
+		} as never;
+
+		const result = await resolveModelOverrideWithAuthFallback(
+			["qwen3.6-plus-free"],
+			"deepseek/deepseek-v4-pro",
+			registry,
+			undefined,
+			"subagent-session-456",
+		);
+
+		expect(result.authFallbackUsed).toBe(true);
+		expect(result.model?.provider).toBe("deepseek");
+		expect(result.model?.id).toBe("deepseek-v4-pro");
+	});
+});
