@@ -68,16 +68,24 @@ afterEach(() => {
 });
 
 describe("git subprocess safety", () => {
-	it("passes non-interactive credential env to git", async () => {
+	it("does not invent a bogus GPG_TTY while still passing non-interactive credential env to git", async () => {
+		const originalGpgTty = process.env.GPG_TTY;
 		const calls: SpawnOptions[] = [];
 		vi.spyOn(Bun, "spawn").mockImplementation(createSpawnMock(() => createFakeProcess(), calls));
 
-		await git.push("/work/pi");
+		delete process.env.GPG_TTY;
+		try {
+			await git.push("/work/pi");
+		} finally {
+			if (originalGpgTty !== undefined) {
+				process.env.GPG_TTY = originalGpgTty;
+			}
+		}
 
 		expect(calls[0]?.env?.GIT_TERMINAL_PROMPT).toBe("0");
 		expect(calls[0]?.env?.GIT_ASKPASS).toBeDefined();
 		expect(calls[0]?.env?.SSH_ASKPASS).toBeDefined();
-		expect(calls[0]?.env?.GPG_TTY).toBe("not a tty");
+		expect(calls[0]?.env).not.toHaveProperty("GPG_TTY");
 	});
 
 	it("bounds captured stdout", async () => {
