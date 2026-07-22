@@ -296,6 +296,54 @@ def test_build_extra_env_stages_agent_home(tmp_path: Path, settings: Settings, m
     assert (agent_home / ".jeopi" / "agent" / "models.yml").stat().st_mode & 0o777 == 0o644
 
 
+def test_stage_agent_home_preserves_agent_run_permissions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    stage_home = tmp_path / "agent-home-stage"
+    agent_home = tmp_path / "agent-home"
+    run_dir = agent_home / ".jeopi" / "run"
+    client_dir = run_dir / "daemons" / "project" / "clients"
+    state_file = client_dir / "state.json"
+    stage_home.mkdir()
+    client_dir.mkdir(parents=True)
+    state_file.write_text("{}\n", encoding="utf-8")
+    run_dir.chmod(0o700)
+    client_dir.chmod(0o700)
+    state_file.chmod(0o600)
+    monkeypatch.setattr(worker, "_AGENT_HOME_STAGE", stage_home)
+    monkeypatch.setattr(worker, "_AGENT_HOME", agent_home)
+
+    worker._stage_agent_home()
+
+    assert stat.S_IMODE(run_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(client_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(state_file.stat().st_mode) == 0o600
+
+
+def test_build_extra_env_prepares_agent_run_dir_for_all_slots(
+    tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_home = tmp_path / "agent-home"
+    run_dir = agent_home / ".jeopi" / "run"
+    client_dir = run_dir / "daemons" / "project" / "clients"
+    state_file = client_dir / "state.json"
+    client_dir.mkdir(parents=True)
+    state_file.write_text("{}\n", encoding="utf-8")
+    run_dir.chmod(0o700)
+    client_dir.chmod(0o700)
+    state_file.chmod(0o600)
+    monkeypatch.setattr(worker, "_AGENT_HOME", agent_home)
+    monkeypatch.setattr(worker.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(worker.grp, "getgrnam", lambda _name: SimpleNamespace(gr_gid=worker.os.getgid()))
+
+    env = worker._build_extra_env(settings)
+
+    assert env["HOME"] == str(agent_home)
+    for directory in (run_dir, run_dir / "daemons", run_dir / "daemons" / "project", client_dir):
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o2770
+        assert directory.stat().st_gid == worker.os.getgid()
+    assert stat.S_IMODE(state_file.stat().st_mode) == 0o660
+    assert state_file.stat().st_gid == worker.os.getgid()
+
+
 @pytest.mark.asyncio
 async def test_run_rpc_omits_home_when_agent_home_absent(
     tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch

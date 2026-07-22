@@ -69,6 +69,17 @@ chown -R root:root /srv/agent-home || true
 find /srv/agent-home -type d -exec chmod 0755 {} +
 find /srv/agent-home -type f -exec chmod 0644 {} +
 
+# jeopi registers daemon project presence under ~/.jeopi/run at startup,
+# nesting per-project dirs (daemons/<hash>/clients) that any slot user must be
+# able to create and enter regardless of which slot first made them: setgid +
+# group omp keeps the whole tree group-writable (entrypoint umask 0002 carries
+# into slot processes, so new entries stay group-writable too).
+mkdir -p /srv/agent-home/.jeopi/run
+chgrp -R omp /srv/agent-home/.jeopi/run
+chmod -R g+rwX /srv/agent-home/.jeopi/run
+find /srv/agent-home/.jeopi/run -type d -exec chmod g+s {} +
+chmod 2770 /srv/agent-home/.jeopi/run
+
 touch /data/robomp.sqlite
 chown root:root /data/robomp.sqlite
 chmod 0600 /data/robomp.sqlite
