@@ -934,6 +934,8 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 
 59. `aa470b9e3` → `57b3d27fd`: subagent preflight model-auth resolution now passes the subagent id to both primary and fallback `getApiKey` lookups, preserving session-sticky OAuth credentials instead of unnecessarily replacing a configured task model with the parent's model. Model-pattern warnings now reach the executor logger. Added sticky-session and genuine-broken-auth regressions; focused suites pass 123 tests and coding-agent `tsgo` passes.
 
-**Not yet reviewed:** ~117 remaining. Next concrete candidate: `570f8af57`
-(GPT-5.6 Codex web-search support; inspect its catalog/request-shape diff before
-porting).
+60. **Deferred — Codex Responses Lite bundle** `570f8af57` fix(coding-agent): support GPT-5.6 Codex web search — current jeopi has GPT-5.6 Codex catalog entries and a `responsesLite` request-transform option, but lacks the upstream compatibility-metadata builder, the `useResponsesLite` catalog policy, and the wire constants this request path relies on. A direct port would hard-code unstable model IDs and fabricate session/thread/window metadata; port it with the upstream Codex metadata/catalog transport family in one verified pass.
+
+**Not yet reviewed:** ~116 remaining. Next concrete candidate: `b190a3c15`
+(auth-broker nested `auth.broker.url`/`token` YAML resolution; inspect its small
+configuration-path diff).
