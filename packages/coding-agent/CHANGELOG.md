@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.3] - 2026-07-22
+
 ### Added
 
 - `jeopi acp` now prints a short hint on stderr when launched from an interactive terminal (stdin is a TTY): the command speaks JSON-RPC over stdout and is meant to be spawned by an ACP client such as Zed, so running it by hand previously showed nothing at all. Ported from oh-my-pi (upstream `54af1c03f`).

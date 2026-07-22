@@ -21,7 +21,7 @@
     },
     "packages/agent": {
       "name": "jeopi-agent-core",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
         "jeopi-ai": "catalog:",
@@ -39,7 +39,7 @@
     },
     "packages/ai": {
       "name": "jeopi-ai",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/catalog": {
       "name": "jeopi-catalog",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -69,7 +69,7 @@
     },
     "packages/coding-agent": {
       "name": "jeopi-cli",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "bin": {
         "jeopi": "dist/cli.js",
       },
@@ -147,7 +147,7 @@
     },
     "packages/hashline": {
       "name": "jeopi-hashline",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "dependencies": {
         "diff": "catalog:",
         "lru-cache": "catalog:",
@@ -158,7 +158,7 @@
     },
     "packages/mnemopi": {
       "name": "jeopi-mnemopi",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
@@ -184,7 +184,7 @@
     },
     "packages/natives": {
       "name": "jeopi-natives",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
@@ -192,7 +192,7 @@
     },
     "packages/snapcompact": {
       "name": "jeopi-snapcompact",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "dependencies": {
         "jeopi-ai": "catalog:",
         "jeopi-natives": "catalog:",
@@ -205,7 +205,7 @@
     },
     "packages/stats": {
       "name": "jeopi-stats",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "bin": {
         "jeopi-stats": "./src/index.ts",
       },
@@ -231,7 +231,7 @@
     },
     "packages/swarm-extension": {
       "name": "jeopi-swarm-extension",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "bin": {
         "jeopi-swarm": "src/cli.ts",
       },
@@ -257,7 +257,7 @@
     },
     "packages/tui": {
       "name": "jeopi-tui",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "dependencies": {
         "jeopi-natives": "catalog:",
         "jeopi-utils": "catalog:",
@@ -298,7 +298,7 @@
     },
     "packages/utils": {
       "name": "jeopi-utils",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "dependencies": {
         "handlebars": "catalog:",
         "jeopi-natives": "catalog:",
@@ -311,7 +311,7 @@
     },
     "packages/wire": {
       "name": "jeopi-wire",
-      "version": "16.4.2",
+      "version": "16.4.3",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
@@ -374,18 +374,18 @@
     "fflate": "0.8.3",
     "ghostty-web": "^0.4.0",
     "handlebars": "^4.7.9",
-    "jeopi-agent-core": "16.4.2",
-    "jeopi-ai": "16.4.2",
-    "jeopi-catalog": "16.4.2",
-    "jeopi-cli": "16.4.2",
-    "jeopi-hashline": "16.4.2",
-    "jeopi-mnemopi": "16.4.2",
-    "jeopi-natives": "16.4.2",
-    "jeopi-snapcompact": "16.4.2",
-    "jeopi-stats": "16.4.2",
-    "jeopi-tui": "16.4.2",
-    "jeopi-utils": "16.4.2",
-    "jeopi-wire": "16.4.2",
+    "jeopi-agent-core": "16.4.3",
+    "jeopi-ai": "16.4.3",
+    "jeopi-catalog": "16.4.3",
+    "jeopi-cli": "16.4.3",
+    "jeopi-hashline": "16.4.3",
+    "jeopi-mnemopi": "16.4.3",
+    "jeopi-natives": "16.4.3",
+    "jeopi-snapcompact": "16.4.3",
+    "jeopi-stats": "16.4.3",
+    "jeopi-tui": "16.4.3",
+    "jeopi-utils": "16.4.3",
+    "jeopi-wire": "16.4.3",
     "linkedom": "^0.18.12",
     "lint-staged": "^17.0.7",
     "lru-cache": "11.5.1",

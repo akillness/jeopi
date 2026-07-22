@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.3] - 2026-07-22
+
 ### Fixed
 
 - Rejected ambiguous swaps that risk silent deletion of range boundaries: a one-sided boundary echo (payload restates the keeper line just outside the range) is only auto-repaired when the payload is long enough to be the widened range's full content — a shorter payload could instead mean the range itself shifted by the echo, which keeps the far boundary line(s) the repair would otherwise silently delete. The edit is now rejected with a message telling the author to re-issue it. Ported from oh-my-pi (upstream `e45796908`).

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.3] - 2026-07-22
+
 ### Added
 
 - Added diagnostic response headers to auth-gateway inference endpoints: `x-request-id`/`request-id` (correlates with gateway logs; surfaced by OpenAI/Anthropic SDKs) and LiteLLM-style `x-litellm-model-id`/`x-litellm-model-api-base` on every response, plus `x-litellm-response-cost`, `x-litellm-response-duration-ms`, and `openai-processing-ms` on non-streaming responses. Ported from oh-my-pi (upstream `3e5b7da6f`).
