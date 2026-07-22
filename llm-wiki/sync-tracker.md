@@ -906,10 +906,11 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 36. **N/A** `a57244830` Merge PR #5297 — integration merge for `9bda84b68`; its conflict resolution folds the same temporary-picker call into the concurrently evolved selector, with no independent behavior beyond the direct port above.
 37. **Deferred — shared Puppeteer patch rebase** `5105b2cd` fix(browser): prevent stealth logger crashes — upstream replaces all stealth-added `debugError` failure handlers with `debugCatchError`, which is safe when debug logging is disabled. jeopi's only local patch targets 25.1 while its lock installs 25.3, so it is inactive; the replacement must move with checkpoint 1's deferred `980d24e24` as one validated 25.3 stealth-patch rebase, not a dead edit to `patches/puppeteer-core@25.1.0.patch`.
 38. **Deferred — merge-repair bundle** `5e74444c2` fix(test): repair auth-storage-rotation merge resolution and normalize changelogs — its meaningful test repairs depend on the unported credential-rotation/org-identity feature family, while the remaining edits are changelog normalization and formatting. The upstream `puppeteer-stealth-patch.test.ts` fragment is a prohibited source-grep test in jeopi; retain the later real CDP smoke coverage when the shared patch rebase lands.
+39. **Subsumed** `cfb5d71c0` fix(test): align merged regression tests with current provider ids and RPC response union — jeopi's current search-provider tests already use `duckduckgo` (not removed `bing`), and no stale `fakeProvider("bing")`, excluded-bing, or `command: command.type` test fixture remains. No behavior change or non-duplicative contract test is needed.
 
-**Not yet reviewed:** ~148 remaining. Next concrete candidate: `cfb5d71c0`
-(merged regression-test alignment). Continue with
-`git log --reverse --oneline v16.5.0..v16.5.1` from `5e74444c2`. Given the volume of this checkpoint, expect several more large/risky items
+**Not yet reviewed:** ~147 remaining. Next concrete candidate: `22374ab21`
+(test alignment for retry rollover, flags, and Python detach semantics). Continue with
+`git log --reverse --oneline v16.5.0..v16.5.1` from `cfb5d71c0`. Given the volume of this checkpoint, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
 rework spans ~6 commits `74715f8cc`..`74be4d5f6`, and the eval-runtime
