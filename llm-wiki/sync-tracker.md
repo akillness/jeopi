@@ -41,7 +41,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | triaged 75/75, ported 19 + 1 N/A, 55 deferred to dedicated large-feature sessions (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls, Model Hub, ACP SDK major bump, misc large/experimental) |
-| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 36/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
+| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 37/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
 | 11 | v17.0.1 | 6ae7cdbf9 | 756 | +157 | pending |
@@ -852,7 +852,7 @@ false-positive), 1 N/A, 55 deferred to dedicated large-feature
 sessions with concrete reasons recorded per item/bucket above. No
 "not yet reviewed" items remain for this checkpoint.
 
-### Checkpoint 8 — v16.5.1 (190 commits) — IN PROGRESS (36/190 ported)
+### Checkpoint 8 — v16.5.1 (190 commits) — IN PROGRESS (37/190 ported)
 
 190 commits between `3047c27c3`..`14b5da76a`. Largest checkpoint by
 commit count, but structurally different from checkpoints 1/3/4/7:
@@ -867,7 +867,7 @@ paired substantive commit is triaged. This means the *effective*
 number of distinct changes is well under 190 — full per-commit list
 via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 
-**Ported (36 upstream commits represented by 29 jeopi commits):**
+**Ported (37 upstream commits represented by 30 jeopi commits):**
 1. `aeed4d10d` → `bb1f0008a`: Markdown HTML comments (`<!-- -->`) stripped during TUI terminal normalization instead of rendering literally
 2. `dac54080d` → `3a8a00f3d`: autolearn auto-continue no longer nudges after an aborted turn (Esc/cancel) — reads `stopReason` from the `agent_end` event's own messages since the session-level abort flag is unreliable by delivery time
 3. `1a3e137f1` → `0112a4309`: `jeopi -p` text-mode print writes a one-shot "Working..." stderr indicator before the first prompt so it doesn't look hung
@@ -907,10 +907,12 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 37. **Deferred — shared Puppeteer patch rebase** `5105b2cd` fix(browser): prevent stealth logger crashes — upstream replaces all stealth-added `debugError` failure handlers with `debugCatchError`, which is safe when debug logging is disabled. jeopi's only local patch targets 25.1 while its lock installs 25.3, so it is inactive; the replacement must move with checkpoint 1's deferred `980d24e24` as one validated 25.3 stealth-patch rebase, not a dead edit to `patches/puppeteer-core@25.1.0.patch`.
 38. **Deferred — merge-repair bundle** `5e74444c2` fix(test): repair auth-storage-rotation merge resolution and normalize changelogs — its meaningful test repairs depend on the unported credential-rotation/org-identity feature family, while the remaining edits are changelog normalization and formatting. The upstream `puppeteer-stealth-patch.test.ts` fragment is a prohibited source-grep test in jeopi; retain the later real CDP smoke coverage when the shared patch rebase lands.
 39. **Subsumed** `cfb5d71c0` fix(test): align merged regression tests with current provider ids and RPC response union — jeopi's current search-provider tests already use `duckduckgo` (not removed `bing`), and no stale `fakeProvider("bing")`, excluded-bing, or `command: command.type` test fixture remains. No behavior change or non-duplicative contract test is needed.
+40. `cfb5d71c0` → `a2f15c9df` (follow-up correction to #39): `--max-time` is a string-value flag that validates its consumed value. The flag-table contract test now accepts its `CliUsageError` for a flag-like token as proof it consumed the token rather than activating `--profile`; other provider-id/RPC fixture fragments were already absent or current in jeopi.
+41. **Subsumed** `22374ab21` test(coding-agent): retry rollover, flag-table, and Python detach alignment — Python detach semantics were corrected in `c60dd9d64`; this port's flag-table correction is recorded above; the four-sibling retry fixture is not present in jeopi's narrower retry-cap suite, whose current two-sibling test already asserts distinct rotation without pinning order.
 
-**Not yet reviewed:** ~147 remaining. Next concrete candidate: `22374ab21`
-(test alignment for retry rollover, flags, and Python detach semantics). Continue with
-`git log --reverse --oneline v16.5.0..v16.5.1` from `cfb5d71c0`. Given the volume of this checkpoint, expect several more large/risky items
+**Not yet reviewed:** ~145 remaining. Next queued item: `3efbce97b`
+(Merge PR #5295, LSP initial workspace configuration). Continue with
+`git log --reverse --oneline v16.5.0..v16.5.1` from `22374ab21`. Given the volume of this checkpoint, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
 rework spans ~6 commits `74715f8cc`..`74be4d5f6`, and the eval-runtime
