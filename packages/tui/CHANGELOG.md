@@ -7,6 +7,7 @@
 - Fixed ordinary navigation keys (arrows, page up/down, etc.) paying a full frame of input-render-grace latency meant only for the Ctrl+C/Esc double-press gesture window: the grace period now arms only when the incoming key is Ctrl+C or Esc, so idle-state keyboard navigation repaints immediately again. Ported from oh-my-pi (upstream `1822603b2`, TUI portion only — the accompanying Model Hub/model-browser keyboard-navigation changes are coupled to jeopi's not-yet-ported Model Hub feature).
 - Fixed forced renders (tool finalization, `resetDisplay`, image reconciliation) landing during a resize drag preempting the alternate-screen viewport fast path: each one left the borrowed alt screen, erased native scrollback (ED3), and visibly replayed the whole transcript on the normal screen mid-drag — then the settle replayed it again. Forced intent now folds into the single authoritative settle paint. Ported from oh-my-pi (upstream `485d207a7`).
 - Hid empty HTML comment separators in Markdown-rendered TUI output instead of showing `<!-- -->` literally. Ported from oh-my-pi (upstream `aeed4d10d`).
+- Fixed unmanaged macOS stderr writes (libmalloc/framework diagnostics) corrupting the viewport: `ProcessTerminal` now suppresses fd 2 via the jeopi-utils stderr guard while it owns the terminal and restores it in `stop()` and the emergency-restore path. Ported from oh-my-pi (upstream `4eaca82fa` by @Kormákur).
 
 ## [16.2.25] - 2026-07-05
 
