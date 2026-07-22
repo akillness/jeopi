@@ -23,8 +23,8 @@ describe("auth-broker config.yml key resolution", () => {
 		agentDir = "";
 	});
 
-	async function writeConfig(yaml: string): Promise<void> {
-		await Bun.write(path.join(agentDir, "config.yml"), yaml);
+	async function writeConfig(yaml: string, filename = "config.yml"): Promise<void> {
+		await Bun.write(path.join(agentDir, filename), yaml);
 	}
 
 	test("nested YAML keys resolve broker url and token", async () => {
@@ -60,6 +60,17 @@ describe("auth-broker config.yml key resolution", () => {
 		await withEnv(CLEAR_BROKER_ENV, async () => {
 			const config = await resolveAuthBrokerConfig({ agentDir });
 			expect(config).toEqual({ url: "https://nested.example", token: "nested-token" });
+		});
+	});
+
+	test("config.yaml nested keys resolve broker url and token", async () => {
+		await writeConfig(
+			["auth:", "  broker:", "    url: https://broker.example", "    token: yaml-token", ""].join("\n"),
+			"config.yaml",
+		);
+		await withEnv(CLEAR_BROKER_ENV, async () => {
+			const config = await resolveAuthBrokerConfig({ agentDir });
+			expect(config).toEqual({ url: "https://broker.example", token: "yaml-token" });
 		});
 	});
 });

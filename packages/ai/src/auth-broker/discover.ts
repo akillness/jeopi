@@ -1,6 +1,6 @@
 /**
  * Broker-aware auth-storage discovery used by both the coding-agent runtime and
- * the catalog model generator. Keeps the precedence logic (env → config.yml →
+ * the catalog model generator. Keeps the precedence logic (env → config YAML →
  * token file → local SQLite) in one place so build-time tooling sees the same
  * credentials as the TUI.
  */
@@ -90,20 +90,23 @@ function readDottedString(record: Record<string, unknown>, dottedKey: string): s
 }
 
 async function readConfigYaml(agentDir: string): Promise<ConfigSnapshot> {
-	const configPath = path.join(agentDir, "config.yml");
-	try {
-		const raw = await Bun.file(configPath).text();
-		const parsed = YAML.parse(raw);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-		const record = parsed as Record<string, unknown>;
-		const url = readDottedString(record, "auth.broker.url");
-		const token = readDottedString(record, "auth.broker.token");
-		return { url, token };
-	} catch (err) {
-		if (isEnoent(err)) return {};
-		logger.warn("auth-broker config.yml unreadable", { error: String(err) });
-		return {};
+	for (const filename of ["config.yml", "config.yaml"]) {
+		const configPath = path.join(agentDir, filename);
+		try {
+			const raw = await Bun.file(configPath).text();
+			const parsed = YAML.parse(raw);
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+			const record = parsed as Record<string, unknown>;
+			const url = readDottedString(record, "auth.broker.url");
+			const token = readDottedString(record, "auth.broker.token");
+			return { url, token };
+		} catch (err) {
+			if (isEnoent(err)) continue;
+			logger.warn("auth-broker config unreadable", { filename, error: String(err) });
+			return {};
+		}
 	}
+	return {};
 }
 
 function resolveSnapshotTtlMs(): number {
@@ -121,7 +124,8 @@ function resolveSnapshotTtlMs(): number {
  * Resolve broker connection configuration using the same precedence as the TUI:
  *
  * 1. `JEOPI_AUTH_BROKER_URL` / `JEOPI_AUTH_BROKER_TOKEN` env vars.
- * 2. `auth.broker.url` / `auth.broker.token` in `<agentDir>/config.yml`.
+ * 2. `auth.broker.url` / `auth.broker.token` in `<agentDir>/config.yml` or
+ *    `<agentDir>/config.yaml`.
  * 3. `<config-root>/auth-broker.token` file (paired with a URL from env/config).
  *
  * Returns `null` when no broker URL is configured — callers should fall back to

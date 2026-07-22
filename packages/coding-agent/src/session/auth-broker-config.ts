@@ -9,13 +9,13 @@
  * Precedence (highest first):
  *   1. `JEOPI_AUTH_BROKER_URL` / `JEOPI_AUTH_BROKER_TOKEN` env vars.
  *   2. `auth.broker.url` / `auth.broker.token` in `~/.jeopi/agent/config.yml`
- *      (hidden from the settings UI; `!command` resolution supported).
+ *      or `~/.jeopi/agent/config.yaml` (hidden from the settings UI; `!command` resolution supported).
  *   3. Token file `~/.jeopi/auth-broker.token` (paired with URL from env or config).
  *
  * Returns null when no broker URL is configured — caller falls back to the
  * local SQLite store.
  *
- * Reads config.yml directly (instead of going through `Settings.init`) because
+ * Reads config YAML directly (instead of going through `Settings.init`) because
  * `discoverAuthStorage` runs before the settings singleton is initialized in
  * `runRootCommand`, and we want hand-edited config entries to be honoured at
  * boot without forcing a startup reorder.
@@ -36,10 +36,10 @@ export { type AuthBrokerClientConfig, getAuthBrokerTokenFilePath };
 
 /**
  * Process-lifetime memo for {@link resolveAuthBrokerConfig}. Keyed on the env
- * inputs (plus agent dir, which decides which config.yml is read) so tests
+ * inputs (plus agent dir, which decides which config YAML is read) so tests
  * that flip `JEOPI_AUTH_BROKER_*` between cases still observe the change, while
  * repeated resolution within one CLI invocation (startup, subagent sessions)
- * skips the config.yml read and any `!command` token resolution.
+ * skips the config YAML read and any `!command` token resolution.
  */
 let cachedConfigKey: string | null = null;
 let cachedConfigPromise: Promise<AuthBrokerClientConfig | null> | null = null;

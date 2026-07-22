@@ -20,7 +20,7 @@
 - Fixed Codex saved-reset redemption to include the selected account in the consume request body, so `/usage reset` applies to the chosen OpenAI account in multi-account setups instead of an ambiguous default. Ported from oh-my-pi (upstream `1d9889810`).
 - Fixed OpenAI Responses `content_filter` terminal events being auto-retried as provider finish errors; `kind: "content-blocked"` provider errors now classify under a dedicated `Flag.ContentBlocked` (kept out of the retriable set) instead of reusing `Flag.ProviderFinishError` (which is retriable), so a safety-filter block stays a hard failure without a same-model retry loop. Ported from oh-my-pi (upstream `c95a2b993` by @belchetz).
 - Fixed OpenAI Chat Completions request parsing to accept assistant tool-call replay messages with `content: null` as absent content, instead of rejecting the whole request when a client (or the gateway's own prior response) round-trips a `null` content field alongside `tool_calls`. Ported from oh-my-pi (upstream `38af95646`).
-- Fixed auth-broker config discovery to accept nested `auth.broker.url` and `auth.broker.token` YAML keys while preserving the legacy flat dotted form (nested values win). ([#4734](https://github.com/can1357/oh-my-pi/issues/4734), upstream `b190a3c15`).
+- Fixed auth-broker config discovery to accept nested `auth.broker.url` and `auth.broker.token` YAML keys from either `config.yml` or `config.yaml`, while preserving the legacy flat dotted form (nested values win). ([#4734](https://github.com/can1357/oh-my-pi/issues/4734), upstream `b190a3c15` and `5c16dcb15`).
 
 ## [16.2.28] - 2026-07-08
 
