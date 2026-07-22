@@ -938,7 +938,9 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 
 61. `b190a3c15` → `af78cbc37`: auth-broker discovery now resolves standard nested `auth.broker.url`/`auth.broker.token` config YAML while retaining legacy flat dotted keys; nested values win. Added nested, flat, and precedence regressions (3 pass); AI `tsgo` passes.
 62. `465f463ad` → `100ae8c9d`: preserve shared multi-slot daemon state at `~/.jeopi/run` (the renamed jeopi home path, while container slot group `omp` remains intentional): generic agent-home staging skips the run subtree, and both the entrypoint and root-only worker startup reassert group ownership, group write, and setgid directories (`2770`; files `660`). Added preservation and permission-mode/group regressions. Verified `bun run test:py` through an isolated Python environment (jeopi-rpc 53 passed; robomp 565 passed, 4 expected skips), targeted Ruff checks, and `bash -n`.
+63. **Deferred — org-scoped Anthropic identity bundle** `c11545f23` fix(ai): match legacy broker usage by identity — the required #5170 foundation is not in jeopi: upstream `044d722a3` plus ten follow-ups through `c001d660e` add `orgId`/`orgName` from OAuth through credential schema, identity/deduplication, usage-cache isolation, broker wire shape, migration, and account UI (21 files, +717/−63 before follow-ups). Current `OAuthCredential` and broker matching have no organization dimension, so this change's `all.length` guard has no meaningful candidate partition to preserve. Port the entire ordered identity series, this legacy-report correction, and its follow-ups as one migration-safe feature pass.
 
 
-**Not yet reviewed:** ~114 remaining. Next concrete candidate: `c11545f23`
-(`fix(ai): match legacy broker usage by identity`).
+
+**Not yet reviewed:** ~113 remaining. Next concrete candidate: `5c16dcb15`
+(`fix(auth-broker): preserve config.yaml discovery`).
