@@ -41,7 +41,7 @@ Commit counts are cumulative from the sync point (`7aa1d581`).
 | 5 | v16.4.7 | f933f02fc | 160 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 6 | v16.4.8 | 01d3fc9b6 | 166 | +6 | triaged 6/6, ported 4 + 2 N/A |
 | 7 | v16.5.0 | 3047c27c3 | 241 | +75 | triaged 75/75, ported 19 + 1 N/A, 55 deferred to dedicated large-feature sessions (harbor-manager/metaharness new package, downshift/boomerang workflow, launch tool, session-compaction/snapcompact bucket, vendored-coreutils continuation, hashline drift-recovery rewrite, browser safety controls, Model Hub, ACP SDK major bump, misc large/experimental) |
-| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 44/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
+| 8 | v16.5.1 | 14b5da76a | 431 | +190 | in progress: 45/190 ported (largest checkpoint yet — first checkpoint with many small external-contributor PR fixes rather than large features; each real change is a paired `fix(...)` + redundant `Merge PR #NNNN` commit, only the `fix(...)` carries a unique diff) |
 | 9 | v16.5.2 | 7d02778c6 | 538 | +107 | pending |
 | 10 | v17.0.0 | d5cd24f39 | 599 | +61 | pending (major bump) |
 | 11 | v17.0.1 | 6ae7cdbf9 | 756 | +157 | pending |
@@ -852,7 +852,7 @@ false-positive), 1 N/A, 55 deferred to dedicated large-feature
 sessions with concrete reasons recorded per item/bucket above. No
 "not yet reviewed" items remain for this checkpoint.
 
-### Checkpoint 8 — v16.5.1 (190 commits) — IN PROGRESS (44/190 ported)
+### Checkpoint 8 — v16.5.1 (190 commits) — IN PROGRESS (45/190 ported)
 
 190 commits between `3047c27c3`..`14b5da76a`. Largest checkpoint by
 commit count, but structurally different from checkpoints 1/3/4/7:
@@ -867,7 +867,7 @@ paired substantive commit is triaged. This means the *effective*
 number of distinct changes is well under 190 — full per-commit list
 via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 
-**Ported (44 upstream commits represented by 36 jeopi commits):**
+**Ported (45 upstream commits represented by 37 jeopi commits):**
 1. `aeed4d10d` → `bb1f0008a`: Markdown HTML comments (`<!-- -->`) stripped during TUI terminal normalization instead of rendering literally
 2. `dac54080d` → `3a8a00f3d`: autolearn auto-continue no longer nudges after an aborted turn (Esc/cancel) — reads `stopReason` from the `agent_end` event's own messages since the session-level abort flag is unreliable by delivery time
 3. `1a3e137f1` → `0112a4309`: `jeopi -p` text-mode print writes a one-shot "Working..." stderr indicator before the first prompt so it doesn't look hung
@@ -939,8 +939,13 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 61. `b190a3c15` → `af78cbc37`: auth-broker discovery now resolves standard nested `auth.broker.url`/`auth.broker.token` config YAML while retaining legacy flat dotted keys; nested values win. Added nested, flat, and precedence regressions (3 pass); AI `tsgo` passes.
 62. `465f463ad` → `100ae8c9d`: preserve shared multi-slot daemon state at `~/.jeopi/run` (the renamed jeopi home path, while container slot group `omp` remains intentional): generic agent-home staging skips the run subtree, and both the entrypoint and root-only worker startup reassert group ownership, group write, and setgid directories (`2770`; files `660`). Added preservation and permission-mode/group regressions. Verified `bun run test:py` through an isolated Python environment (jeopi-rpc 53 passed; robomp 565 passed, 4 expected skips), targeted Ruff checks, and `bash -n`.
 63. **Deferred — org-scoped Anthropic identity bundle** `c11545f23` fix(ai): match legacy broker usage by identity — the required #5170 foundation is not in jeopi: upstream `044d722a3` plus ten follow-ups through `c001d660e` add `orgId`/`orgName` from OAuth through credential schema, identity/deduplication, usage-cache isolation, broker wire shape, migration, and account UI (21 files, +717/−63 before follow-ups). Current `OAuthCredential` and broker matching have no organization dimension, so this change's `all.length` guard has no meaningful candidate partition to preserve. Port the entire ordered identity series, this legacy-report correction, and its follow-ups as one migration-safe feature pass.
+64. `5c16dcb15` → `8b156ecc7`: auth-broker discovery now tries `config.yml` then legacy/alternate `config.yaml`, retaining the existing nested-key and flat-key semantics for whichever file is present. Updated shared runtime guidance and the existing changelog entry. Verified focused broker config tests (4 pass) and full `bun check` (TypeScript/Biome and Rust workspace checks).
+65. **N/A** `6dba6c37f` Merge PR #4955 — merge commit for already-ported `5e781a9c7` OAuth completion close-copy fix, represented by `66096b939`.
+66. **N/A** `5ce32055d` Merge PR #5119 — merge commit for already-ported `f34034fa7` Z.ai GLM budget-effort policy, represented by `928fc2285`.
+67. **N/A** `f23f3f43e` Merge PR #4959 — merge commit for already-ported `b7aa046ed` static catalog-limit cache repair, represented by `4c6e1bee6`.
 
 
 
-**Not yet reviewed:** ~113 remaining. Next concrete candidate: `5c16dcb15`
-(`fix(auth-broker): preserve config.yaml discovery`).
+
+**Not yet reviewed:** ~109 remaining. Next concrete candidate: `9831386de`
+(`fix(agent): escape Harmony compaction markers`; its merge `3239b4e7d` must follow the direct fix).
