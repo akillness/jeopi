@@ -8,6 +8,7 @@
 - Fixed forced renders (tool finalization, `resetDisplay`, image reconciliation) landing during a resize drag preempting the alternate-screen viewport fast path: each one left the borrowed alt screen, erased native scrollback (ED3), and visibly replayed the whole transcript on the normal screen mid-drag — then the settle replayed it again. Forced intent now folds into the single authoritative settle paint. Ported from oh-my-pi (upstream `485d207a7`).
 - Hid empty HTML comment separators in Markdown-rendered TUI output instead of showing `<!-- -->` literally. Ported from oh-my-pi (upstream `aeed4d10d`).
 - Fixed unmanaged macOS stderr writes (libmalloc/framework diagnostics) corrupting the viewport: `ProcessTerminal` now suppresses fd 2 via the jeopi-utils stderr guard while it owns the terminal and restores it in `stop()` and the emergency-restore path. Ported from oh-my-pi (upstream `4eaca82fa` by @Kormákur).
+- Fixed completed rows in transient `diff`/`patch`/`udiff` fences entering native terminal scrollback without semantic syntax colors: newline-complete rows are now highlighted incrementally while the final partial row remains lightweight; closed fences and blank completed rows preserve their final layout and styling. Ported from oh-my-pi (upstream `e41b32c87`, `936e83e3d`, `cf6d25f1b`).
 
 ## [16.2.25] - 2026-07-05
 
