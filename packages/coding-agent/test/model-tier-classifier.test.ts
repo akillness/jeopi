@@ -58,14 +58,15 @@ describe("classifyDefaultTaskModelTier", () => {
 		expect(tier).toBe("smol");
 	});
 
-	it.each([Effort.Medium, Effort.High, Effort.XHigh])(
-		"returns undefined (no override) when classifyDifficulty resolves %s",
-		async effort => {
-			vi.spyOn(autoThinkingClassifier, "classifyDifficulty").mockResolvedValue(effort);
-			const tier = await classifyDefaultTaskModelTier("refactor the auth module", deps());
-			expect(tier).toBeUndefined();
-		},
-	);
+	it.each([
+		Effort.Medium,
+		Effort.High,
+		Effort.XHigh,
+	])("returns undefined (no override) when classifyDifficulty resolves %s", async effort => {
+		vi.spyOn(autoThinkingClassifier, "classifyDifficulty").mockResolvedValue(effort);
+		const tier = await classifyDefaultTaskModelTier("refactor the auth module", deps());
+		expect(tier).toBeUndefined();
+	});
 
 	it("fails open to undefined without propagating when classifyDifficulty rejects", async () => {
 		vi.spyOn(autoThinkingClassifier, "classifyDifficulty").mockRejectedValue(new Error("classifier unavailable"));

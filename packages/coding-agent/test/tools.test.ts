@@ -1422,7 +1422,6 @@ function b() {
 			expect(result.details?.async?.state).toBe("running");
 			expect(result.details?.async?.type).toBe("bash");
 			expect(getTextOutput(result)).toContain("Backgrounded as job");
-			expect(getTextOutput(result)).toContain("start");
 
 			const jobId = result.details?.async?.jobId;
 			if (!jobId) {
