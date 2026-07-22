@@ -212,12 +212,14 @@ to a dedicated pass):
   structure (no repo-scoped boundary); test adapted to jeopi's
   `collect_entries` convention. Verified with `cargo test -p pi-walker`
   (24 pass) + `cargo fmt` + full `bun run check:rs`.
-- [skip] `980d24e24` fix(patches): resolved puppeteer locator timeouts —
-  patches `puppeteer-core@25.3.0.patch`; jeopi pins `puppeteer-core@25.1.0`
-  (`patches/puppeteer-core@25.1.0.patch`, a different upstream npm
-  version with different source line numbers/hunks). Not a mechanical
-  port — needs the equivalent fix re-derived against jeopi's actual
-  pinned puppeteer-core version.
+- [deferred] `980d24e24` fix(patches): resolved Puppeteer locator timeouts — this
+  must be bundled with checkpoint 8's `5105b2cd` stealth logger fix. Although
+  jeopi's manifest still declares a `puppeteer-core@25.1.0` patch, its caret
+  dependency is lock-resolved to `puppeteer-core@25.3.0`; the stale 25.1 patch
+  is therefore not applied (the installed 25.3 `FrameManager` lacks the stealth
+  changes). A correct port requires rebasing the full stealth patch onto 25.3,
+  declaring that exact patch version, and exercising a real CDP/browser path —
+  not editing inactive patch text or source-grepping a patch fixture.
 - [skip] `3b6c3409e` fix: paranoid auth storage schema handling —
   depends on `auth_credential_refresh_leases` table/credential-refresh
   leasing, a feature jeopi's `auth-storage.ts` doesn't have at all yet
@@ -902,10 +904,12 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 34. **N/A** `946ba4bce` Merge PR #5044 — merge commit for already-ported `6fab752eb`/`d670dd5d9` max-time duration and validation fixes, represented by `0e2458b77`.
 35. `9bda84b68` → `02c955f20`: selecting a temporary model (`Alt+P`, `/switch`, `/model --temporary`) now scans configured built-in and custom roles for a matching model with an explicit thinking suffix, then carries that thinking level into the session-only switch; bare roles and unmatched models preserve existing model-default behavior. Added an Anthropic-only role-thinking regression to avoid new-provider auth-fixture coupling.
 36. **N/A** `a57244830` Merge PR #5297 — integration merge for `9bda84b68`; its conflict resolution folds the same temporary-picker call into the concurrently evolved selector, with no independent behavior beyond the direct port above.
+37. **Deferred — shared Puppeteer patch rebase** `5105b2cd` fix(browser): prevent stealth logger crashes — upstream replaces all stealth-added `debugError` failure handlers with `debugCatchError`, which is safe when debug logging is disabled. jeopi's only local patch targets 25.1 while its lock installs 25.3, so it is inactive; the replacement must move with checkpoint 1's deferred `980d24e24` as one validated 25.3 stealth-patch rebase, not a dead edit to `patches/puppeteer-core@25.1.0.patch`.
+38. **Deferred — merge-repair bundle** `5e74444c2` fix(test): repair auth-storage-rotation merge resolution and normalize changelogs — its meaningful test repairs depend on the unported credential-rotation/org-identity feature family, while the remaining edits are changelog normalization and formatting. The upstream `puppeteer-stealth-patch.test.ts` fragment is a prohibited source-grep test in jeopi; retain the later real CDP smoke coverage when the shared patch rebase lands.
 
-**Not yet reviewed:** ~150 remaining. Next concrete candidate: `5105b2cd`
-(browser stealth logger crash). Continue with
-`git log --reverse --oneline v16.5.0..v16.5.1` from `a57244830`. Given the volume of this checkpoint, expect several more large/risky items
+**Not yet reviewed:** ~148 remaining. Next concrete candidate: `cfb5d71c0`
+(merged regression-test alignment). Continue with
+`git log --reverse --oneline v16.5.0..v16.5.1` from `5e74444c2`. Given the volume of this checkpoint, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
 rework spans ~6 commits `74715f8cc`..`74be4d5f6`, and the eval-runtime
