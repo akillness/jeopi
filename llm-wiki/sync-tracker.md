@@ -922,13 +922,16 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 50. **N/A** `eccf030a7` chore: tldr changelog — upstream-only shortening of historical release entries; forcing it would violate jeopi's immutable released-section policy without changing runtime behavior.
 51. **N/A** `14b5da76a` chore: bump version to 16.5.1 — pure upstream release bookkeeping. jeopi keeps sync ports under Unreleased and will perform its own version/release flow only after the complete forward sync is verified.
 
-**Not yet reviewed:** ~134 remaining. Next concrete candidate: `0ab90f63e`
-(quota-limited credential rotation; inspect with its nearby follow-ups `b929ed164`,
-`2010f01cd`, `8d4e4fde5`, and `ecd2b7122` before deciding whether it is a
-coherent auth-routing feature bundle). The first-parent `bda0d5ddc..v16.5.1`
-walk now ends at the checkpoint tag; remaining candidates are merge-side-branch
-commits from the full `git log --reverse --no-merges v16.5.0..v16.5.1` list.
-Given the volume of this checkpoint, expect several more large/risky items
+52. **Deferred — quota-routing bundle** `0ab90f63e` fix(auth): rotate through quota-limited accounts — foundational cross-package retry/credential-rotation rewrite (14 files, +1008/−163) spanning `auth-retry`, `AuthStorage`, stream retries, API-key resolution, and retry-cap contracts. It must be ported with its gateway/Z.AI successors and a full auth-routing regression pass, not as an isolated fast fix.
+53. **Deferred — quota-routing bundle** `b929ed164` fix: honor gateway quota usage limits — +480/−38 follow-up that evolves the same `AuthStorage`/API-key resolver contracts and adds auth-gateway behavior; depends on #52's rotation semantics.
+54. **Deferred — quota-routing bundle** `2010f01cd` fix(ai): routed Z.AI API keys by usage — adds Z.AI ranking and API-key usage prefetch/blocking on the shared quota-routing foundation from #52/#53.
+55. **Deferred — quota-routing bundle** `8d4e4fde5` fix(ai): resolved Z.AI API-key usage probes — config-reference resolution plus model-quota-only ranking correction for #54; must land with that feature.
+56. **Deferred — quota-routing bundle** `ecd2b7122` test(ai): updated Z.AI feature-quota expectation — test-only follow-up coupled to #54/#55.
+
+**Not yet reviewed:** ~129 remaining. Next concrete candidate: `26792f7b5`
+(TUI sparse-compacted transcript segment guard). Continue from its direct diff; the
+quota-routing bundle above remains an explicit dedicated-session obligation, not a
+skip. Given the volume of this checkpoint, expect several more large/risky items
 (the `org`-scoped Anthropic OAuth credential identity rework spans
 ~10 commits `044d722a3`..`c001d660e`, the advisor staleness-coalescing
 rework spans ~6 commits `74715f8cc`..`74be4d5f6`, and the eval-runtime
