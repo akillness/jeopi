@@ -18,6 +18,26 @@ const DEFAULT_TIMEOUT = 300_000;
 const DEFAULT_HOSTNAME = "localhost";
 const CALLBACK_PATH = "/callback";
 
+function escapeJsonForHtmlScript(value: object): string {
+	const json = JSON.stringify(value) ?? "null";
+	return json.replace(/[<>&\u2028\u2029]/g, character => {
+		switch (character) {
+			case "<":
+				return "\\u003C";
+			case ">":
+				return "\\u003E";
+			case "&":
+				return "\\u0026";
+			case "\u2028":
+				return "\\u2028";
+			case "\u2029":
+				return "\\u2029";
+			default:
+				return character;
+		}
+	});
+}
+
 export type CallbackResult = { code: string; state: string };
 
 export interface OAuthCallbackFlowOptions {
@@ -230,7 +250,7 @@ export abstract class OAuthCallbackFlow {
 		});
 
 		return new Response(
-			(templateHtml as unknown as string).replaceAll("__OAUTH_STATE__", JSON.stringify(resultState)),
+			(templateHtml as unknown as string).replaceAll("__OAUTH_STATE__", () => escapeJsonForHtmlScript(resultState)),
 			{
 				status: resultState.ok ? 200 : 500,
 				headers: { "Content-Type": "text/html" },
