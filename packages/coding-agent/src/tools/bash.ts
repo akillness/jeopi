@@ -659,7 +659,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		let command = rawCommand;
 		const env = normalizeBashEnv(rawEnv);
 
-
 		// Extract leading `cd <path> && ...` into cwd when the model ignores the cwd parameter.
 		// Constrained to a single line so a `&&` that sits on a later line of a multiline
 		// script can't pull the entire script into the "cwd" capture.

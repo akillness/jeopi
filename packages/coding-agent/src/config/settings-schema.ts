@@ -3189,7 +3189,6 @@ export const SETTINGS_SCHEMA = {
 	},
 	"bashInterceptor.patterns": { type: "array", default: DEFAULT_BASH_INTERCEPTOR_RULES },
 
-
 	// Shell output minimizer
 	"shellMinimizer.enabled": {
 		type: "boolean",

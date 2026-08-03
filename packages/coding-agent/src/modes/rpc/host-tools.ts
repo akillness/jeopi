@@ -77,7 +77,6 @@ export class RpcHostToolBridge {
 	#pendingCalls = new Map<string, PendingHostToolCall>();
 	#closedError: Error | undefined;
 
-
 	constructor(output: RpcHostToolOutput) {
 		this.#output = output;
 	}
@@ -130,7 +129,6 @@ export class RpcHostToolBridge {
 		if (this.#closedError) {
 			return Promise.reject(this.#closedError);
 		}
-
 
 		const id = Snowflake.next() as string;
 		const { promise, resolve, reject } = Promise.withResolvers<AgentToolResult<unknown>>();

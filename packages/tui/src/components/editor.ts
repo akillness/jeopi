@@ -2855,10 +2855,7 @@ export class Editor implements Component, Focusable {
 		return this.#isInSubmittedSlashCommandContext() || this.#isInMidPromptSkillSlashContext();
 	}
 
-	#autocompletePrefixMatchesCursorText(
-		currentTextBeforeCursor: string,
-		item?: SelectItem | null,
-	): boolean {
+	#autocompletePrefixMatchesCursorText(currentTextBeforeCursor: string, item?: SelectItem | null): boolean {
 		if (currentTextBeforeCursor === this.#autocompletePrefix) return true;
 
 		if (item?.value.startsWith("skill:") && findTrailingSlashCommandStart(this.#autocompletePrefix) !== null) {

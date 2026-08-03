@@ -81,7 +81,6 @@ export class RpcPendingExtensionRequests extends Map<string, PendingExtensionReq
 	}
 }
 
-
 type RpcOutput = (
 	obj:
 		| RpcResponse

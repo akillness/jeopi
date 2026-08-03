@@ -328,7 +328,6 @@ fn bridge_chunks(
 	(Some(tx), Some(handle))
 }
 
-
 #[cfg(test)]
 mod tests {
 	use std::time::Duration;
