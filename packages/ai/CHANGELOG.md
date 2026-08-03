@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.4] - 2026-08-03
+
 ### Fixed
 
 - Escaped OAuth callback state before embedding it in the HTML script payload, preventing callback error text from breaking out of the response document.
