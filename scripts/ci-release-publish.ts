@@ -243,7 +243,11 @@ async function packAndPublish(dir: string, name: string): Promise<void> {
 		const result = await $`npm publish ${path.join(packDir, tarball)} --access public`.quiet().nothrow();
 		const output = `${result.stdout.toString()}${result.stderr.toString()}`.trim();
 		if (output) console.log(output);
+
 		if (result.exitCode !== 0) {
+			const authHint = getNpmPublishAuthHint(output);
+			if (authHint) console.error(authHint);
+
 			// Idempotent re-runs: tolerate this exact version already being on the
 			// registry (the `bun publish --tolerate-republish` equivalent), but
 			// surface every other failure.
@@ -261,6 +265,23 @@ async function packAndPublish(dir: string, name: string): Promise<void> {
 /** Match npm's rejection when this exact version already exists on the registry. */
 function isVersionAlreadyPublished(output: string): boolean {
 	return /cannot publish over the previously published version|EPUBLISHCONFLICT/i.test(output);
+}
+
+/**
+ * Classify npm publish output that indicates an authentication failure.
+ * The returned hint names the CI fallback variable, npm's token settings page,
+ * and the per-package trusted publisher configuration; it never includes the
+ * failed command output or a token value.
+ */
+export function getNpmPublishAuthHint(output: string): string | null {
+	if (
+		/\b(?:E401|ENEEDAUTH)\b|(?:invalid|expired)\s+(?:npm\s+)?auth(?:entication)?\s+token|auth(?:entication)?\s+token(?:\s+is)?\s+(?:invalid|expired)|(?:not|must\s+be)\s+logged\s+in|requires?\s+(?:you\s+)?to\s+be\s+logged\s+in|needs?\s+auth/i.test(
+			output,
+		)
+	) {
+		return "npm publish authentication failed. Verify the package's GitHub trusted publisher for `ci.yml`, or run `npm login` locally / set or rotate NPM_TOKEN in CI: https://docs.npmjs.com/creating-and-viewing-access-tokens";
+	}
+	return null;
 }
 
 async function publishGeneratedLeafPackage(leaf: GeneratedLeafPackage): Promise<void> {
