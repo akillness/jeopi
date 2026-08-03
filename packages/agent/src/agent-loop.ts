@@ -24,6 +24,7 @@ import {
 	encodeInbandToolHistory,
 	renderInbandToolPrompt,
 	renderToolExamples,
+	salvageLeakedToolCalls,
 	wrapInbandToolStream,
 } from "jeopi-ai/dialect";
 import * as AIError from "jeopi-ai/error";
@@ -38,7 +39,7 @@ import {
 	signalListLabel,
 } from "jeopi-ai/utils/harmony-leak";
 import { preferredDialect } from "jeopi-catalog/identity";
-import { sanitizeText, structuredCloneJSON } from "jeopi-utils";
+import { logger, sanitizeText, structuredCloneJSON } from "jeopi-utils";
 import { INTENT_FIELD } from "jeopi-wire";
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
 import {
@@ -1233,6 +1234,12 @@ async function streamAssistantResponse(
 		};
 	}
 
+	// Tool catalog as sent natively this turn. Empty under an owned dialect (the
+	// wire carries no `tools`), which is exactly when leaked-markup salvage must
+	// NOT run — that path already re-materializes in-band calls via the stream
+	// wrapper, and double-parsing would duplicate every call.
+	const nativeWireTools: Context["tools"] = ownedDialect ? undefined : llmContext.tools;
+
 	const streamFunction = streamFn || streamSimple;
 
 	const dynamicReasoning = config.getReasoning?.();
@@ -1427,6 +1434,7 @@ async function streamAssistantResponse(
 								throw new HarmonyLeakInterruption(detection, removed, recovered);
 							}
 						}
+						finalMessage = applyLeakedToolCallSalvage(finalMessage, nativeWireTools, config);
 						finalMessage = snapshotAssistantMessage(finalMessage);
 						// Expand inline macros (and any other registered rewrite) on the
 						// finalized message before it reaches the context, the UI, or tool
@@ -1529,6 +1537,7 @@ async function streamAssistantResponse(
 					throw new HarmonyLeakInterruption(detection, removed, recovered);
 				}
 			}
+			trailing = applyLeakedToolCallSalvage(trailing, nativeWireTools, config);
 			trailing = snapshotAssistantMessage(trailing);
 			if (addedPartial) {
 				context.messages[context.messages.length - 1] = trailing;
@@ -1604,6 +1613,30 @@ function recoverTransientErrorToolTurn(
 		errorId: undefined,
 		errorStatus: undefined,
 	};
+}
+
+/**
+ * Re-materialize tool calls a native-tool-calling model wrote as visible text.
+ *
+ * Without this the turn holds zero runnable tool calls, so the loop treats it
+ * as a finished answer: the raw `<invoke …>` markup renders to the user and the
+ * work the model announced never runs. `salvageLeakedToolCalls` only fires on
+ * unambiguous leaks (see its guards); anything else returns the message
+ * untouched.
+ */
+function applyLeakedToolCallSalvage(
+	message: AssistantMessage,
+	nativeWireTools: Context["tools"],
+	config: AgentLoopConfig,
+): AssistantMessage {
+	const salvaged = salvageLeakedToolCalls(message, nativeWireTools);
+	if (!salvaged) return message;
+	logger.warn("Recovered tool calls emitted as text", {
+		model: config.model.id,
+		provider: config.model.provider,
+		tools: salvaged.calls.map(call => call.name),
+	});
+	return salvaged.message;
 }
 
 function emitDiscardedHarmonyPartial(

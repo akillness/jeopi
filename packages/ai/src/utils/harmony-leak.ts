@@ -8,6 +8,7 @@
  * abort-and-retry handled by the agent loop.
  */
 import type { AssistantMessage, Model, ToolCall } from "../types";
+import { computeFenceRanges, isInsideFence } from "./fences";
 
 // Single source of truth for the marker pattern. `M` in the errata.
 // Use a fresh non-global instance for `.test()` to avoid lastIndex pitfalls.
@@ -28,8 +29,6 @@ const BODY_CASCADE_RE = /to=functions\.\w+\s+code\b[\s\S]{0,200}?to=functions\./
 
 // Fake-result framing (`R`): marker followed within 80 chars by Cell N: framing.
 const FAKE_RESULT_RE = /to=functions\.\w+[\s\S]{0,80}?code_output\s*\nCell\s+\d+:/;
-
-const FENCE_RE = /^\s*(?:```+|~~~+)/;
 
 // Non-Latin scripts seen in the corpus: CJK + ext, Cyrillic, Thai, Georgian,
 // Armenian, Kannada, Telugu, Devanagari, Arabic, Malayalam.
@@ -340,44 +339,6 @@ function makeSignal(classes: HarmonySignalClass[], start: number, end: number, t
 		if (classes.includes(cls)) sorted.push(cls);
 	}
 	return { classes: sorted, start, end, text };
-}
-
-/**
- * Precompute fenced-code-block ranges once per text. Each range is a
- * [start, end) span of bytes inside any ```/~~~ fence. O(n) once instead of
- * O(n) per detected match.
- */
-function computeFenceRanges(text: string): Array<[number, number]> {
-	const ranges: Array<[number, number]> = [];
-	let inFence = false;
-	let fenceStart = 0;
-	let lineStart = 0;
-	while (lineStart <= text.length) {
-		const newline = text.indexOf("\n", lineStart);
-		const lineEnd = newline === -1 ? text.length : newline;
-		const line = text.slice(lineStart, lineEnd);
-		if (FENCE_RE.test(line)) {
-			if (inFence) {
-				ranges.push([fenceStart, lineEnd]);
-				inFence = false;
-			} else {
-				fenceStart = lineStart;
-				inFence = true;
-			}
-		}
-		if (newline === -1) break;
-		lineStart = newline + 1;
-	}
-	if (inFence) ranges.push([fenceStart, text.length]);
-	return ranges;
-}
-
-function isInsideFence(ranges: Array<[number, number]>, position: number): boolean {
-	for (const [start, end] of ranges) {
-		if (position >= start && position < end) return true;
-		if (start > position) break;
-	}
-	return false;
 }
 
 function hasScriptMismatchNear(text: string, start: number, end: number): boolean {

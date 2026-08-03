@@ -2806,3 +2806,121 @@ describe("agentLoop streaming snapshots", () => {
 		expect(update.message).not.toBe(livePartial);
 	});
 });
+
+describe("agentLoop leaked tool-call salvage", () => {
+	// Salvage is wired to the NATIVE tool-calling path only: under an owned
+	// dialect the wire carries no tools and `wrapInbandToolStream` already
+	// re-materializes calls. An ambient `PI_DIALECT` would route these runs
+	// down that other path and make the assertions below prove nothing, so pin
+	// it off for the duration and restore it afterwards.
+	async function withNativeToolCalling<T>(fn: () => Promise<T>): Promise<T> {
+		const previous = Bun.env.PI_DIALECT;
+		delete Bun.env.PI_DIALECT;
+		try {
+			return await fn();
+		} finally {
+			if (previous === undefined) delete Bun.env.PI_DIALECT;
+			else Bun.env.PI_DIALECT = previous;
+		}
+	}
+
+	it("executes a tool the model emitted as visible text and keeps sampling", async () => {
+		const toolSchema = type({ pattern: "string", path: "string" });
+		const executed: Array<{ pattern: string; path: string }> = [];
+		const tool: AgentTool<typeof toolSchema, { pattern: string }> = {
+			name: "grep",
+			label: "Grep",
+			description: "Search files",
+			parameters: toolSchema,
+			async execute(_toolCallId, params) {
+				executed.push({ pattern: params.pattern, path: params.path });
+				return {
+					content: [{ type: "text", text: `1 match for ${params.pattern}` }],
+					details: { pattern: params.pattern },
+				};
+			},
+		};
+
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [tool] };
+		// A native-tool-calling model that wrote its call out as prose instead of
+		// emitting a `tool_use` block: the turn ends `stop` with zero runnable
+		// tool calls.
+		const leaked = [
+			"I need to audit the current state first.",
+			"",
+			'<invoke name="grep">',
+			'<parameter name="pattern">Wrong Tool</parameter>',
+			'<parameter name="path">packages/agent</parameter>',
+			"</invoke>",
+		].join("\n");
+		const mock = createMockModel({
+			responses: [{ content: [leaked], stopReason: "stop" }, { content: ["Found one call site."] }],
+		});
+		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
+
+		const messages = await withNativeToolCalling(() =>
+			agentLoop([createUserMessage("audit tool usage")], context, config, undefined, mock.stream).result(),
+		);
+
+		// The announced work ran, with the arguments recovered from the markup.
+		expect(executed).toEqual([{ pattern: "Wrong Tool", path: "packages/agent" }]);
+		expect(messages.map(m => m.role)).toEqual(["user", "assistant", "toolResult", "assistant"]);
+		const toolResult = messages[2] as ToolResultMessage;
+		expect(toolResult.toolName).toBe("grep");
+		expect(toolResult.isError).toBeFalsy();
+		expect(toolResult.content).toEqual([{ type: "text", text: "1 match for Wrong Tool" }]);
+		// The leaked turn did not end the run: the loop sampled again with the
+		// tool result in hand, and that second answer is the one the user reads.
+		// Before the fix this stopped after response #1 with zero executions.
+		expect(mock.calls).toHaveLength(2);
+		const final = messages[3];
+		if (final.role !== "assistant") throw new Error("expected assistant message");
+		expect(final.content).toEqual([{ type: "text", text: "Found one call site." }]);
+	});
+
+	it("answers a fenced tool-syntax question without running the tool", async () => {
+		const toolSchema = type({ pattern: "string" });
+		const executed: string[] = [];
+		const tool: AgentTool<typeof toolSchema, { pattern: string }> = {
+			name: "grep",
+			label: "Grep",
+			description: "Search files",
+			parameters: toolSchema,
+			async execute(_toolCallId, params) {
+				executed.push(params.pattern);
+				return { content: [{ type: "text", text: "ok" }], details: { pattern: params.pattern } };
+			},
+		};
+
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [tool] };
+		// Same markup, but quoted inside a fence: the model is documenting the
+		// call shape, not making one.
+		const documented = [
+			"Call the grep tool like this:",
+			"",
+			"```xml",
+			'<invoke name="grep">',
+			'<parameter name="pattern">TODO</parameter>',
+			"</invoke>",
+			"```",
+			"",
+			"That block is the whole invocation.",
+		].join("\n");
+		const mock = createMockModel({ responses: [{ content: [documented], stopReason: "stop" }] });
+		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
+
+		const messages = await withNativeToolCalling(() =>
+			agentLoop([createUserMessage("how do I call grep?")], context, config, undefined, mock.stream).result(),
+		);
+
+		expect(executed).toEqual([]);
+		expect(mock.calls).toHaveLength(1);
+		expect(messages.map(m => m.role)).toEqual(["user", "assistant"]);
+		const answer = messages[1];
+		if (answer.role !== "assistant") throw new Error("expected assistant message");
+		// The quoted syntax survives byte-for-byte: the answer is worthless to
+		// someone asking what the markup looks like if the fence is rewritten.
+		expect(answer.content).toEqual([{ type: "text", text: documented }]);
+		expect(answer.stopReason).toBe("stop");
+	});
+});

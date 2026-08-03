@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the agent stopping mid-task with raw `<invoke name="…">` markup printed in the reply. When a native-tool-calling model emitted its tool call as visible text instead of a `tool_use` block, the turn carried zero runnable calls, so the loop treated it as a finished answer and the announced work never ran. Such turns are now re-materialized into real tool calls and dispatched normally; the leaked markup is stripped from the visible text. Turns that merely quote tool syntax inside a fenced code block are left untouched, and owned/in-band dialect sessions are unaffected (their stream wrapper already handles this).
+
 ## [16.4.3] - 2026-07-22
 
 ### Fixed
