@@ -56,6 +56,7 @@ import {
 	buildIrcMessageCard,
 	normalizeToolArgs,
 	resolveAssistantErrorMessage,
+	splitAssistantMessageToolTimeline,
 } from "./transcript-render-helpers";
 
 type TextBlock = { type: "text"; text: string };
@@ -350,7 +351,8 @@ export class UiHelpers {
 			if (message.role !== "toolResult") flushPendingUsage();
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
-				this.ctx.addMessageToChat(message);
+				const timeline = splitAssistantMessageToolTimeline(message);
+				this.ctx.addMessageToChat(timeline.beforeTools);
 				const lastChild = this.ctx.chatContainer.children[this.ctx.chatContainer.children.length - 1];
 				const assistantComponent = lastChild instanceof AssistantMessageComponent ? lastChild : undefined;
 				if (assistantComponent) {
@@ -384,6 +386,7 @@ export class UiHelpers {
 						continue;
 					}
 					resolveWaitingPoll(content.name);
+					const afterToolSegment = timeline.afterToolCalls.get(content.id);
 
 					if (
 						content.name === "read" &&
@@ -404,6 +407,16 @@ export class UiHelpers {
 								false,
 								content.id,
 							);
+						} else if (afterToolSegment) {
+							if (!readGroup) {
+								readGroup = new ReadToolGroupComponent({
+									showContentPreview: this.ctx.settings.get("read.toolResultPreview"),
+								});
+								readGroup.setExpanded(this.ctx.toolOutputExpanded);
+								this.ctx.chatContainer.addChild(readGroup);
+							}
+							readGroup.updateArgs(content.arguments, content.id);
+							this.ctx.pendingTools.set(content.id, readGroup);
 						} else {
 							const normalizedArgs = normalizeToolArgs(content.arguments);
 							readToolCallArgs.set(content.id, normalizedArgs);
@@ -411,6 +424,7 @@ export class UiHelpers {
 								readToolCallAssistantComponents.set(content.id, assistantComponent);
 							}
 						}
+						if (afterToolSegment) this.ctx.addMessageToChat(afterToolSegment);
 						continue;
 					}
 
@@ -458,6 +472,7 @@ export class UiHelpers {
 					} else {
 						this.ctx.pendingTools.set(content.id, component);
 					}
+					if (afterToolSegment) this.ctx.addMessageToChat(afterToolSegment);
 				}
 				pendingUsage = this.ctx.settings.get("display.showTokenUsage") ? message.usage : undefined;
 				pendingUsageDuration = message.duration;

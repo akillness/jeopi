@@ -335,6 +335,42 @@ describe("title generator", () => {
 		expect(title).toBe("Fix login button on mobile");
 	});
 
+	it.each([
+		"Here's a thinking process:",
+		"Thinking process:",
+		"Reasoning process:",
+	])("rejects a markerless prose thinking preamble: %s", async responseText => {
+		const model = getModelFor("deepseek", "deepseek-v4-pro");
+		vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: responseText }],
+		} as never);
+
+		const title = await generateSessionTitle(
+			"the login button is broken on mobile",
+			createRegistry(model),
+			createSettings(model),
+		);
+
+		expect(title).toBeNull();
+	});
+
+	it("accepts a marked title after a prose thinking preamble", async () => {
+		const model = getModelFor("deepseek", "deepseek-v4-pro");
+		vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			stopReason: "stop",
+			content: [{ type: "text", text: "Thinking process:\n<title>Fix login button</title>" }],
+		} as never);
+
+		const title = await generateSessionTitle(
+			"the login button is broken on mobile",
+			createRegistry(model),
+			createSettings(model),
+		);
+
+		expect(title).toBe("Fix login button");
+	});
+
 	it("strips an unclosed <title> tag from a truncated response", async () => {
 		const model = getModelFor("deepseek", "deepseek-v4-pro");
 		vi.spyOn(ai, "completeSimple").mockResolvedValue({

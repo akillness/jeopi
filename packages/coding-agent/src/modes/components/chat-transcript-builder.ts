@@ -34,6 +34,7 @@ import {
 	buildIrcMessageCard,
 	normalizeToolArgs,
 	resolveAssistantErrorMessage,
+	splitAssistantMessageToolTimeline,
 } from "../utils/transcript-render-helpers";
 import { createAdvisorMessageCard } from "./advisor-message";
 import { AssistantMessageComponent } from "./assistant-message";
@@ -268,13 +269,16 @@ export class ChatTranscriptBuilder {
 	}
 
 	#appendAssistantMessage(message: Extract<AgentMessage, { role: "assistant" }>): void {
+		const hideThinkingBlock = this.deps.hideThinkingBlock?.() ?? false;
+		const proseOnlyThinking = this.deps.proseOnlyThinking ? this.deps.proseOnlyThinking() : true;
+		const timeline = splitAssistantMessageToolTimeline(message);
 		const assistantComponent = new AssistantMessageComponent(
-			message,
-			this.deps.hideThinkingBlock?.() ?? false,
+			timeline.beforeTools,
+			hideThinkingBlock,
 			() => this.deps.requestRender(),
-			this.deps.getMessageRenderer ? undefined : [], // placeholder for thinkingRenderers
-			undefined, // placeholder for imageBudget
-			this.deps.proseOnlyThinking ? this.deps.proseOnlyThinking() : true,
+			this.deps.getMessageRenderer ? undefined : [],
+			undefined,
+			proseOnlyThinking,
 		);
 		this.container.addChild(assistantComponent);
 
@@ -286,18 +290,30 @@ export class ChatTranscriptBuilder {
 			this.#lastAssistantUsage = message.usage;
 		}
 
-		const hasVisibleAssistantContent = assistantHasVisibleContent(message);
-		if (hasVisibleAssistantContent) {
-			// New visible turn content closes the current read run (mirrors rebuild).
+		if (assistantHasVisibleContent(message)) {
 			this.#readGroup?.seal();
 			this.#readGroup = null;
 		}
 
 		const { hasErrorStop, errorMessage } = resolveAssistantErrorMessage(message);
+		const appendAssistantSegment = (segment: Extract<AgentMessage, { role: "assistant" }> | undefined) => {
+			if (!segment || !assistantHasVisibleContent(segment)) return;
+			this.container.addChild(
+				new AssistantMessageComponent(
+					segment,
+					hideThinkingBlock,
+					() => this.deps.requestRender(),
+					this.deps.getMessageRenderer ? undefined : [],
+					undefined,
+					proseOnlyThinking,
+				),
+			);
+		};
 
 		for (const content of message.content) {
 			if (content.type !== "toolCall") continue;
 			this.#resolveWaitingPoll(content.name);
+			const afterToolSegment = timeline.afterToolCalls.get(content.id);
 
 			if (
 				content.name === "read" &&
@@ -312,10 +328,14 @@ export class ChatTranscriptBuilder {
 						false,
 						content.id,
 					);
+				} else if (afterToolSegment) {
+					const group = this.#ensureReadGroup();
+					group.updateArgs(content.arguments, content.id);
+					this.#pendingTools.set(content.id, group);
 				} else {
-					const normalizedArgs = normalizeToolArgs(content.arguments);
-					this.#readArgs.set(content.id, normalizedArgs);
+					this.#readArgs.set(content.id, normalizeToolArgs(content.arguments));
 				}
+				appendAssistantSegment(afterToolSegment);
 				continue;
 			}
 
@@ -325,7 +345,6 @@ export class ChatTranscriptBuilder {
 				content.name,
 				content.arguments,
 				{
-					// Images can't be sliced through the scroll viewport; keep them off.
 					showImages: false,
 					editFuzzyThreshold: settings.get("edit.fuzzyThreshold"),
 					editAllowFuzzy: settings.get("edit.fuzzyMatch"),
@@ -348,6 +367,7 @@ export class ChatTranscriptBuilder {
 			} else {
 				this.#pendingTools.set(content.id, component);
 			}
+			appendAssistantSegment(afterToolSegment);
 		}
 
 		this.#pendingUsage = settings.get("display.showTokenUsage") ? message.usage : undefined;

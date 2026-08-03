@@ -234,7 +234,7 @@ export interface ProviderDiscoveryState {
 	error?: string;
 }
 
-/** Result of loading custom models from models.json */
+/** Result of loading custom models config. */
 interface CustomModelsResult {
 	models?: CustomModelOverlay[];
 	overrides?: Map<string, ProviderOverride>;
@@ -271,7 +271,7 @@ interface CommandApiKeyResolution {
 	value?: string;
 }
 /**
- * Resolve a models.yml secret/config value to an actual value.
+ * Resolve a models.yml/models.yaml secret/config value to an actual value.
  * `!cmd` runs a shell command and returns trimmed stdout, otherwise env vars are
  * checked first and the input falls back to a literal value.
  */
@@ -784,7 +784,7 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Reload models from disk (built-in + custom from models.json).
+	 * Reload models from disk (built-in + custom config).
 	 */
 	async refresh(strategy: ModelRefreshStrategy = "online-if-uncached"): Promise<void> {
 		this.#reloadStaticModels();
@@ -889,7 +889,7 @@ export class ModelRegistry {
 	#reloadStaticModels(): void {
 		const currentMtime = this.#modelsConfigFile.getMtimeMs();
 		if (currentMtime !== null && currentMtime === this.#lastStaticLoadMtime) {
-			// models.json unchanged since last load; reloading would be redundant.
+			// Models config unchanged since last load; reloading would be redundant.
 			return;
 		}
 		this.#modelsConfigFile.invalidate();
@@ -913,14 +913,14 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * Get any error from loading models.json (undefined if no error).
+	 * Get any error from loading custom models config (undefined if no error).
 	 */
 	getError(): ConfigError | undefined {
 		return this.#configError;
 	}
 
 	#loadModels() {
-		// Load custom models from models.json first (to know which providers to override)
+		// Load custom config first (to know which providers to override).
 		const {
 			models: customModels = [],
 			overrides = new Map(),
@@ -1823,7 +1823,7 @@ export class ModelRegistry {
 
 	/**
 	 * Get all models (built-in + custom).
-	 * If models.json had errors, returns only built-in models.
+	 * If custom config had errors, returns only built-in models.
 	 */
 	getAll(): Model<Api>[] {
 		return this.#models;

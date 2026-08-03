@@ -47,6 +47,17 @@ describe("tool path root alias", () => {
 		expect(resolveToCwd("///", tempDir)).toBe(tempDir);
 	});
 
+	it("strips a stray leading colon from absolute and relative paths", () => {
+		expect(resolveToCwd(`:${path.join(tempDir, "search.txt")}`, tempDir)).toBe(path.join(tempDir, "search.txt"));
+		expect(resolveToCwd(":./search.txt", tempDir)).toBe(path.join(tempDir, "search.txt"));
+		expect(resolveToCwd(":../sibling.txt", tempDir)).toBe(path.resolve(tempDir, "../sibling.txt"));
+	});
+
+	it("preserves colons that are not mangled path prefixes", () => {
+		expect(resolveToCwd(":raw", tempDir)).toBe(path.join(tempDir, ":raw"));
+		expect(resolveToCwd(":name.txt", tempDir)).toBe(path.join(tempDir, ":name.txt"));
+	});
+
 	it("rejects local:/ (single-slash) as an internal URL", () => {
 		expect(() => resolveToCwd("local:/PLAN.md", tempDir)).toThrow("internal scheme");
 	});
@@ -91,6 +102,33 @@ describe("tool path root alias", () => {
 		const text = getText(result);
 		expect(text).toContain("search.txt");
 		expect(text).toContain("sample.ts");
+	});
+
+	it("reads a file addressed with a leading colon", async () => {
+		const tools = await createTools(createTestSession(tempDir));
+		const tool = tools.find(entry => entry.name === "read");
+		expect(tool).toBeDefined();
+		if (!tool) throw new Error("Missing read tool");
+
+		const result = await tool.execute("read-leading-colon", {
+			path: `:${path.join(tempDir, "search.txt")}`,
+		});
+
+		expect(getText(result)).toContain("root-alias-needle");
+	});
+
+	it("greps a file addressed with a leading colon", async () => {
+		const tools = await createTools(createTestSession(tempDir));
+		const tool = tools.find(entry => entry.name === "grep");
+		expect(tool).toBeDefined();
+		if (!tool) throw new Error("Missing search tool");
+
+		const result = await tool.execute("grep-leading-colon", {
+			pattern: "root-alias-needle",
+			paths: [`:${path.join(tempDir, "search.txt")}`],
+		});
+
+		expect(getText(result)).toContain("root-alias-needle");
 	});
 
 	it("finds from cwd when pattern is slash", async () => {

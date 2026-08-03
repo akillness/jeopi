@@ -3,6 +3,7 @@ import {
 	type AutocompleteProvider,
 	findLeadingSlashCommandStart,
 	findTrailingSlashCommandStart,
+	midPromptSkillTokenMatches,
 } from "../autocomplete";
 import { BracketedPasteHandler, decodeReencodedPasteControls } from "../bracketed-paste";
 import { getKeybindings, type KeybindingsManager } from "../keybindings";
@@ -21,7 +22,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "../utils";
-import { SelectList, type SelectListLayoutOptions, type SelectListTheme } from "./select-list";
+import { type SelectItem, SelectList, type SelectListLayoutOptions, type SelectListTheme } from "./select-list";
 
 const AUTOCOMPLETE_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	overflowSearch: false,
@@ -1116,10 +1117,21 @@ export class Editor implements Component, Focusable {
 					this.onAutocompleteUpdate?.();
 					return;
 				}
-
-				// If Tab was pressed, always apply the selection
+				// If Tab was pressed, apply the selection only while it still maps to
+				// the live buffer. This matters for debounced mid-prompt skill refreshes.
 				if (kb.matches(data, "tui.input.tab")) {
 					const selected = this.#autocompleteList.getSelectedItem();
+					const shouldGuardSkillCompletion =
+						selected?.value.startsWith("skill:") &&
+						findTrailingSlashCommandStart(this.#autocompletePrefix) !== null;
+					if (shouldGuardSkillCompletion) {
+						const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
+						const currentTextBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
+						if (!this.#autocompletePrefixMatchesCursorText(currentTextBeforeCursor, selected)) {
+							this.#cancelAutocomplete();
+							return;
+						}
+					}
 					if (selected && this.#autocompleteProvider) {
 						const shouldChainSlashCommandAutocomplete = this.#isSlashCommandNameAutocompleteSelection();
 						const result = this.#autocompleteProvider.applyCompletion(
@@ -1149,7 +1161,6 @@ export class Editor implements Component, Focusable {
 					}
 					return;
 				}
-
 				// If Enter was pressed on a slash command, apply completion and submit
 				if (
 					(kb.matches(data, "tui.input.submit") || data === "\n") &&
@@ -1158,11 +1169,11 @@ export class Editor implements Component, Focusable {
 					// Check for stale autocomplete state due to debounce
 					const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
 					const currentTextBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
-					if (!this.#autocompletePrefixMatchesCursorText(currentTextBeforeCursor)) {
+					const selected = this.#autocompleteList.getSelectedItem();
+					if (!this.#autocompletePrefixMatchesCursorText(currentTextBeforeCursor, selected)) {
 						// Autocomplete is stale - cancel and fall through to normal submission
 						this.#cancelAutocomplete();
 					} else {
-						const selected = this.#autocompleteList.getSelectedItem();
 						if (selected && this.#autocompleteProvider) {
 							const result = this.#autocompleteProvider.applyCompletion(
 								this.#state.lines,
@@ -2844,8 +2855,24 @@ export class Editor implements Component, Focusable {
 		return this.#isInSubmittedSlashCommandContext() || this.#isInMidPromptSkillSlashContext();
 	}
 
-	#autocompletePrefixMatchesCursorText(currentTextBeforeCursor: string): boolean {
+	#autocompletePrefixMatchesCursorText(
+		currentTextBeforeCursor: string,
+		item?: SelectItem | null,
+	): boolean {
 		if (currentTextBeforeCursor === this.#autocompletePrefix) return true;
+
+		if (item?.value.startsWith("skill:") && findTrailingSlashCommandStart(this.#autocompletePrefix) !== null) {
+			const currentTrailingStart = findTrailingSlashCommandStart(currentTextBeforeCursor);
+			if (currentTrailingStart !== null) {
+				const token = currentTextBeforeCursor.slice(currentTrailingStart);
+				if (!token.includes(" ") && !token.slice(1).includes("/")) {
+					const lowerToken = token.slice(1).toLowerCase();
+					if (midPromptSkillTokenMatches(lowerToken, item.value, item.description)) return true;
+				}
+			}
+			return false;
+		}
+
 		if (findTrailingSlashCommandStart(this.#autocompletePrefix) !== 0) return false;
 		const slashStart = findTrailingSlashCommandStart(currentTextBeforeCursor);
 		return slashStart !== null && currentTextBeforeCursor.slice(slashStart) === this.#autocompletePrefix;

@@ -6,7 +6,6 @@ This document covers execution/process/terminal primitives in `jeopi-natives`: `
 
 - `crates/pi-natives/src/shell.rs`
 - `crates/pi-shell/src/shell.rs`
-- `crates/pi-shell/src/fixup.rs`
 - `crates/pi-shell/src/windows.rs` (Windows-only PATH enrichment)
 - `crates/pi-shell/src/process.rs`
 - `crates/pi-natives/src/pty.rs`
@@ -19,7 +18,7 @@ This document covers execution/process/terminal primitives in `jeopi-natives`: `
 
 - **Package entrypoint** (`packages/natives/native/index.js`): loads the `.node` addon and exports generated N-API bindings.
 - **Rust N-API module layer** (`crates/pi-natives/src/*`): JS-facing shell/PTY/process/key exports and callback bridging.
-- **Runtime core** (`crates/pi-shell/src/*`): brush shell execution, cancellation cleanup, minimizer integration, command fixups, and cross-platform process references.
+- **Runtime core** (`crates/pi-shell/src/*`): brush shell execution, cancellation cleanup, minimizer integration, and cross-platform process references.
 - **Consumers** (`packages/coding-agent`, `packages/tui`): higher-level session policy, output artifact/minimizer handling, render policy, and UI key handling.
 
 ## Shell subsystem (`shell`)
@@ -33,9 +32,6 @@ Shell execution modes:
 
 Both stream merged stdout/stderr text through a threadsafe callback and return `{ exitCode?, cancelled, timedOut, minimized? }`.
 
-Related synchronous helper:
-
-- `applyBashFixups(command)` strips safe trailing `| head`/`| tail` pipeline caps and redundant trailing `2>&1` according to `pi_shell::fixup` rules. It returns `{ command, stripped }` and does not execute anything.
 
 `ShellOptions` supports `sessionEnv`, `snapshotPath`, and optional output `minimizer`. `ShellExecuteOptions` supports command-scoped `env`, session-level `sessionEnv`, `snapshotPath`, timeout/signal, and optional minimizer. `ShellRunOptions` supports command, cwd, command-scoped env, timeout, and signal.
 
@@ -250,7 +246,6 @@ Layout behavior:
 | `new Shell(options?)`             | `Shell` class                           | Persistent shell session                  |
 | `shell.run(options, onChunk?)`    | `Shell::run`                            | Reuses session on keepalive control flow  |
 | `shell.abort()`                   | `Shell::abort`                          | Aborts active run for that shell instance |
-| `applyBashFixups(command)`        | `applyBashFixups` (`apply_bash_fixups`) | Synchronous command rewrite helper        |
 | `new PtySession()`                | `PtySession` class                      | Stateful PTY session                      |
 | `pty.start(options, onChunk?)`    | `PtySession::start`                     | Interactive PTY run                       |
 | `pty.write(data)`                 | `PtySession::write`                     | Raw stdin passthrough                     |

@@ -144,13 +144,16 @@ import {
 	AdvisorEmissionGuard,
 	type AdvisorMessageDetails,
 	type AdvisorNote,
+	AdvisorOutputQuarantinedError,
 	AdvisorRuntime,
 	type AdvisorSeverity,
 	AdvisorTranscriptRecorder,
 	advisorTranscriptFilename,
+	buildAdvisorQuarantineSourceText,
 	formatAdvisorBatchContent,
 	isAdvisorInterruptImmuneTurnActive,
 	isInterruptingSeverity,
+	quarantineAdvisorUnsafeOutput,
 	resolveAdvisorDeliveryChannel,
 	slugifyAdvisorName,
 } from "../advisor";
@@ -1445,6 +1448,20 @@ function isDisplayableQueuedMessage(message: AgentMessage): boolean {
 function isAdvisorCard(message: AgentMessage): message is CustomMessage {
 	return message.role === "custom" && message.customType === "advisor";
 }
+function isTerminalTextAssistantAnswer(message: AgentMessage | undefined): message is AssistantMessage {
+	if (message?.role !== "assistant" || message.stopReason !== "stop") return false;
+	let hasText = false;
+	for (const part of message.content) {
+		if (part.type === "toolCall") return false;
+		if (part.type === "text") {
+			if (part.text.trim().length > 0) hasText = true;
+			continue;
+		}
+		if (part.type === "thinking") continue;
+		return false;
+	}
+	return hasText;
+}
 
 /**
  * A queued message the user can restore to the editor / pull back as a draft.
@@ -1887,6 +1904,7 @@ export class AgentSession {
 	// Cursor exec, TUI listeners) is held back. Without this, a client that resumes
 	// on `agent_end` can fire its next `prompt` before #promptWithMessage's finally
 	#emptyStopRetryCount = 0;
+	#acceptTerminalEmptyStopForPrompt = false;
 	#unexpectedStopRetryCount = 0;
 	#promptGeneration = 0;
 	#pendingAgentEndEmit: AgentSessionEvent | undefined;
@@ -2475,6 +2493,14 @@ export class AgentSession {
 
 			const names = config.tools === undefined ? ADVISOR_DEFAULT_TOOL_NAMES : new Set(config.tools);
 			const tools = (this.#advisorTools ?? []).filter(t => names.has(t.name));
+			const availableAdvisorToolNames = new Set<string>();
+			availableAdvisorToolNames.add(adviseTool.name);
+			for (const tool of tools) {
+				availableAdvisorToolNames.add(tool.name);
+				if (tool.customWireName !== undefined) availableAdvisorToolNames.add(tool.customWireName);
+			}
+			let quarantinedAdvisorOutput: string | undefined;
+			let currentAdvisorInput = "";
 
 			const advisorSessionId = this.#advisorSessionId(slug);
 			const appendOnlyContext = new AppendOnlyContextManager();
@@ -2519,6 +2545,13 @@ export class AgentSession {
 				streamFn: this.#advisorStreamFn,
 				onPayload: this.#onPayload,
 				onResponse: this.#onResponse,
+				transformAssistantMessage: message => {
+					quarantinedAdvisorOutput = quarantineAdvisorUnsafeOutput(
+						message,
+						availableAdvisorToolNames,
+						buildAdvisorQuarantineSourceText(currentAdvisorInput, advisorAgent.state.messages),
+					);
+				},
 				onSseEvent: this.#onSseEvent,
 				transformProviderContext: this.#transformProviderContext,
 				intentTracing: false,
@@ -2529,7 +2562,19 @@ export class AgentSession {
 			advisorAgent.setDisableReasoning(shouldDisableReasoning(advisorThinkingLevel));
 
 			const advisorAgentFacade: AdvisorAgent = {
-				prompt: input => advisorAgent.prompt(input),
+				prompt: async input => {
+					let quarantined: string | undefined;
+					try {
+						quarantinedAdvisorOutput = undefined;
+						currentAdvisorInput = input;
+						await advisorAgent.prompt(input);
+						quarantined = quarantinedAdvisorOutput;
+					} finally {
+						quarantinedAdvisorOutput = undefined;
+						currentAdvisorInput = "";
+					}
+					if (quarantined) throw new AdvisorOutputQuarantinedError(quarantined);
+				},
 				abort: reason => advisorAgent.abort(reason),
 				reset: () => {
 					advisorAgent.reset();
@@ -2635,15 +2680,23 @@ export class AgentSession {
 		return slug ? `${this.sessionId}-advisor-${slug}` : `${this.sessionId}-advisor`;
 	}
 
+	#hasTerminalTextAnswerWithoutQueuedWork(): boolean {
+		if (this.agent.hasQueuedMessages() || this.#pendingNextTurnMessages.length > 0) return false;
+		return isTerminalTextAssistantAnswer(this.agent.state.messages.at(-1));
+	}
+
 	/**
 	 * Route one accepted advice note from `advisor` to the primary. Concern and
 	 * blocker interrupt the running agent through the steering channel; once the
-	 * loop has yielded, `triggerTurn` resumes it. After a deliberate user interrupt
-	 * auto-resume is suppressed while idle/unwinding (the note becomes a preserved
-	 * card re-entering on resume); a live-streaming turn is steered in directly. A
-	 * plain nit always rides the non-interrupting YieldQueue aside. Suppression by
-	 * the per-advisor emission guard drops the note silently — the model still saw
-	 * `Recorded.`, so it isn't tempted to rephrase the same note past the dedupe.
+	 * loop has yielded, `triggerTurn` resumes it. If the loop already ended with a
+	 * terminal text answer and no queued work remains, the note is preserved as an
+	 * advisor card instead of waking a duplicate completion turn. After a deliberate
+	 * user interrupt auto-resume is suppressed while idle/unwinding (the note
+	 * becomes a preserved card re-entering on resume); a live-streaming turn is
+	 * steered in directly. A plain nit always rides the non-interrupting YieldQueue
+	 * aside. Suppression by the per-advisor emission guard drops the note silently —
+	 * the model still saw `Recorded.`, so it isn't tempted to rephrase the same note
+	 * past the dedupe.
 	 */
 	#routeAdvice(advisor: ActiveAdvisor, note: string, severity?: AdvisorSeverity): void {
 		if (!advisor.emissionGuard.accept(note)) {
@@ -2663,6 +2716,7 @@ export class AgentSession {
 			streaming: this.agent.state.isStreaming,
 			aborting: this.#abortInProgress,
 			interruptImmuneTurnActive: interrupting && this.#isAdvisorInterruptImmuneTurnActive(),
+			terminalAnswerNoQueuedWork: this.#hasTerminalTextAnswerWithoutQueuedWork(),
 		});
 		if (channel === "aside") {
 			this.yieldQueue.enqueue("advisor", { note, severity, advisor: source });
@@ -7571,6 +7625,7 @@ export class AgentSession {
 		options?: Pick<PromptOptions, "toolChoice" | "images" | "skipCompactionCheck"> & {
 			prependMessages?: AgentMessage[];
 			skipPostPromptRecoveryWait?: boolean;
+			acceptTerminalEmptyStop?: boolean;
 		},
 	): Promise<void> {
 		this.#beginInFlight();
@@ -7588,6 +7643,7 @@ export class AgentSession {
 			this.#midRunNudgeCount = 0;
 			this.#emptyStopRetryCount = 0;
 			this.#unexpectedStopRetryCount = 0;
+			this.#acceptTerminalEmptyStopForPrompt = options?.acceptTerminalEmptyStop === true;
 			// A new prompt cycle starts: drop any sticky yield-termination from the
 			// previous run so empty-stop / unexpected-stop / compaction maintenance
 			// can evaluate this turn normally.
@@ -8092,12 +8148,25 @@ export class AgentSession {
 		}
 	}
 
-	async #promptAgentInitiatedMessage(message: CustomMessage): Promise<void> {
+	async #promptAgentInitiatedMessage(
+		message: CustomMessage,
+		options?: { acceptTerminalEmptyStop?: boolean },
+	): Promise<void> {
 		this.#beginInFlight();
+		const acceptTerminalEmptyStop = options?.acceptTerminalEmptyStop === true;
 		try {
+			if (acceptTerminalEmptyStop) {
+				this.#emptyStopRetryCount = 0;
+				this.#unexpectedStopRetryCount = 0;
+				this.#yieldTerminationPending = false;
+				this.#acceptTerminalEmptyStopForPrompt = true;
+			} else {
+				this.#acceptTerminalEmptyStopForPrompt = false;
+			}
 			await this.agent.prompt(message);
 			await this.#waitForPostPromptRecovery();
 		} finally {
+			this.#acceptTerminalEmptyStopForPrompt = false;
 			this.#endInFlight();
 		}
 	}
@@ -8152,7 +8221,12 @@ export class AgentSession {
 	 */
 	async sendCustomMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details" | "attribution">,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; queueChipText?: string },
+		options?: {
+			triggerTurn?: boolean;
+			deliverAs?: "steer" | "followUp" | "nextTurn";
+			queueChipText?: string;
+			acceptTerminalEmptyStop?: boolean;
+		},
 	): Promise<boolean> {
 		const details =
 			options?.queueChipText && options.deliverAs !== "nextTurn"
@@ -8195,7 +8269,9 @@ export class AgentSession {
 					this.#queueHiddenNextTurnMessage(normalizedAppMessage, false);
 					return false;
 				}
-				await this.#promptAgentInitiatedMessage(normalizedAppMessage);
+				await this.#promptAgentInitiatedMessage(normalizedAppMessage, {
+					acceptTerminalEmptyStop: options.acceptTerminalEmptyStop === true,
+				});
 				return true;
 			}
 			this.agent.appendMessage(normalizedAppMessage);
@@ -8214,7 +8290,9 @@ export class AgentSession {
 				this.#queueHiddenNextTurnMessage(normalizedAppMessage, false);
 				return false;
 			}
-			await this.#promptAgentInitiatedMessage(normalizedAppMessage);
+			await this.#promptAgentInitiatedMessage(normalizedAppMessage, {
+				acceptTerminalEmptyStop: options.acceptTerminalEmptyStop === true,
+			});
 			return true;
 		}
 
@@ -10478,6 +10556,12 @@ export class AgentSession {
 
 	async #handleEmptyAssistantStop(assistantMessage: AssistantMessage): Promise<boolean> {
 		if (!this.#isEmptyAssistantStop(assistantMessage)) {
+			this.#emptyStopRetryCount = 0;
+			return false;
+		}
+
+		if (this.#acceptTerminalEmptyStopForPrompt && assistantMessage.stopReason === "stop") {
+			this.#acceptTerminalEmptyStopForPrompt = false;
 			this.#emptyStopRetryCount = 0;
 			return false;
 		}

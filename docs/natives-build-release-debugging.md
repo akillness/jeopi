@@ -169,7 +169,7 @@ Generated declarations currently include exports from these Rust modules:
 | Search/workspace       | `grep`, `search`, `hasMatch`, `fuzzyFind`, `glob`, `listWorkspace`, `invalidateFsScanCache`             | `grep.rs`, `fd.rs`, `glob.rs`, `workspace.rs`, `fs_cache.rs`                 |
 | AST/block/summary      | `astGrep`, `astEdit`, `blockRangeAt`, `summarizeCode`                                                   | `ast.rs`, `block.rs`, `summary.rs`                                           |
 | Text/highlight/tokens  | `visibleWidth`, `truncateToWidth`, `highlightCode`, `countTokens`                                       | `text.rs`, `highlight.rs`, `tokens.rs`                                       |
-| Shell/PTY/process/keys | `executeShell`, `Shell`, `PtySession`, `Process`, `parseKey`, `applyBashFixups`                         | `shell.rs`, `pty.rs`, `ps.rs`, `keys.rs`                                     |
+| Shell/PTY/process/keys | `executeShell`, `Shell`, `PtySession`, `Process`, `parseKey`                       | `shell.rs`, `pty.rs`, `ps.rs`, `keys.rs`                 |
 | Media/system/iso       | `encodeSixel`, clipboard, macOS appearance/power, `getWorkProfile`, `isoBackend`, `isoStart`, `isoDiff` | `sixel.rs`, `clipboard.rs`, `appearance.rs`, `power.rs`, `prof.rs`, `iso.rs` |
 
 ## Failure behavior and diagnostics

@@ -1,4 +1,4 @@
-import type { ImageContent } from "jeopi-ai";
+import type { AssistantMessage, ImageContent } from "jeopi-ai";
 import * as AIError from "jeopi-ai/error";
 import { getStreamingPartialJson } from "jeopi-ai/utils/block-symbols";
 import { type Component, Loader, TERMINAL } from "jeopi-tui";
@@ -31,6 +31,7 @@ import { vocalizer } from "../../tts/vocalizer";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { interruptHint } from "../shared";
 import { createAssistantMessageComponent } from "../utils/interactive-context-helpers";
+import { assistantHasVisibleContent, splitAssistantMessageToolTimeline } from "../utils/transcript-render-helpers";
 import { StreamingRevealController } from "./streaming-reveal";
 import { streamingStringKeysForTool, ToolArgsRevealController } from "./tool-args-reveal";
 
@@ -76,6 +77,7 @@ export class EventController {
 	#lastIntent: string | undefined = undefined;
 	#backgroundTaskCallIds = new Set<string>();
 	#readToolCallArgs = new Map<string, Record<string, unknown>>();
+	#toolTimelineComponents = new Map<string, Component>();
 	#readToolCallAssistantComponents = new Map<string, AssistantMessageComponent>();
 	#lastAssistantComponent: AssistantMessageComponent | undefined = undefined;
 	// Assistant component whose turn-ending error is currently mirrored in the
@@ -235,6 +237,24 @@ export class EventController {
 		assistantComponent.setToolResultImages(toolCallId, images);
 		return true;
 	}
+
+	#insertAfterTranscriptComponent(anchor: Component | undefined, component: Component): void {
+		const children = this.ctx.chatContainer.children;
+		const anchorIndex = anchor ? children.indexOf(anchor) : -1;
+		this.ctx.chatContainer.addChild(component);
+		if (anchorIndex < 0) return;
+		children.splice(children.length - 1, 1);
+		children.splice(anchorIndex + 1, 0, component);
+	}
+
+	#appendPostToolAssistantSegment(toolCallId: string, segment: AssistantMessage | undefined) {
+		if (!segment || !assistantHasVisibleContent(segment)) return undefined;
+		const component = createAssistantMessageComponent(this.ctx);
+		component.updateContent(segment);
+		component.markTranscriptBlockFinalized();
+		this.#insertAfterTranscriptComponent(this.#toolTimelineComponents.get(toolCallId), component);
+		return component;
+	}
 	#updateWorkingMessageFromIntent(intent: unknown): void {
 		if (this.ctx.session.isAborting) return;
 		// Streamed JSON can deliver non-string `i` (object, number, boolean) before
@@ -262,6 +282,7 @@ export class EventController {
 		this.#lastVisibleBlockCount = 0;
 		this.#renderedCustomMessages.clear();
 		this.#lastIntent = undefined;
+		this.#toolTimelineComponents.clear();
 		this.#backgroundTaskCallIds.clear();
 		this.#readToolCallArgs.clear();
 		this.#readToolCallAssistantComponents.clear();
@@ -306,6 +327,7 @@ export class EventController {
 	}
 
 	async #handleAgentStart(_event: Extract<AgentSessionEvent, { type: "agent_start" }>): Promise<void> {
+		this.#toolTimelineComponents.clear();
 		this.#lastIntent = undefined;
 		this.#readToolCallArgs.clear();
 		this.#readToolCallAssistantComponents.clear();
@@ -626,6 +648,7 @@ export class EventController {
 							const group = this.#getReadGroup();
 							group.updateArgs(content.arguments, content.id);
 							this.ctx.pendingTools.set(content.id, group);
+							this.#toolTimelineComponents.set(content.id, group);
 						}
 						continue;
 					}
@@ -672,6 +695,7 @@ export class EventController {
 					component.setExpanded(this.ctx.toolOutputExpanded);
 					this.ctx.chatContainer.addChild(component);
 					this.ctx.pendingTools.set(content.id, component);
+					this.#toolTimelineComponents.set(content.id, component);
 					this.#toolArgsReveal.bind(content.id, component);
 				} else {
 					const component = this.ctx.pendingTools.get(content.id);
@@ -745,15 +769,12 @@ export class EventController {
 				errorMessage = resolveAbortLabel(this.ctx.streamingMessage, this.ctx.viewSession.retryAttempt);
 				this.ctx.streamingMessage.errorMessage = errorMessage;
 			}
-			if (silentlyAborted || ttsrSilenced) {
-				// Silence the streaming render by downgrading stopReason to "stop" for
-				// display only — does NOT mutate the persisted message's stopReason
-				// (the marker on errorMessage drives replay-side suppression).
-				const msgWithoutAbort = { ...this.ctx.streamingMessage, stopReason: "stop" as const };
-				this.ctx.streamingComponent.updateContent(msgWithoutAbort);
-			} else {
-				this.ctx.streamingComponent.updateContent(this.ctx.streamingMessage);
-			}
+			const displayMessage: AssistantMessage =
+				silentlyAborted || ttsrSilenced
+					? { ...this.ctx.streamingMessage, stopReason: "stop" as const }
+					: this.ctx.streamingMessage;
+			const displayTimeline = splitAssistantMessageToolTimeline(displayMessage);
+			this.ctx.streamingComponent.updateContent(displayTimeline.beforeTools);
 
 			if (this.ctx.streamingMessage.stopReason !== "aborted" && this.ctx.streamingMessage.stopReason !== "error") {
 				for (const [toolCallId, component] of this.ctx.pendingTools.entries()) {
@@ -783,8 +804,13 @@ export class EventController {
 				}
 				this.ctx.lastAssistantUsage = usage;
 			}
-			this.#lastAssistantComponent = this.ctx.streamingComponent;
-			this.#lastAssistantComponent.markTranscriptBlockFinalized();
+			this.ctx.streamingComponent.markTranscriptBlockFinalized();
+			let lastPostToolAssistantComponent: AssistantMessageComponent | undefined;
+			for (const [toolCallId, segment] of displayTimeline.afterToolCalls) {
+				const component = this.#appendPostToolAssistantSegment(toolCallId, segment);
+				if (component) lastPostToolAssistantComponent = component;
+			}
+			this.#lastAssistantComponent = lastPostToolAssistantComponent ?? this.ctx.streamingComponent;
 			if (settings.get("display.showTokenUsage")) {
 				this.ctx.chatContainer.addChild(
 					createUsageRowBlock(event.message.usage, event.message.duration, event.message.ttft),
@@ -821,6 +847,7 @@ export class EventController {
 					const group = this.#getReadGroup();
 					group.updateArgs(event.args, event.toolCallId);
 					this.ctx.pendingTools.set(event.toolCallId, group);
+					this.#toolTimelineComponents.set(event.toolCallId, group);
 				}
 				this.ctx.ui.requestRender();
 				return;
@@ -846,6 +873,7 @@ export class EventController {
 			component.setExpanded(this.ctx.toolOutputExpanded);
 			this.ctx.chatContainer.addChild(component);
 			this.ctx.pendingTools.set(event.toolCallId, component);
+			this.#toolTimelineComponents.set(event.toolCallId, component);
 			this.ctx.ui.requestRender();
 		} else {
 			// The tool is about to run, so its arguments are final and validated.
@@ -918,6 +946,7 @@ export class EventController {
 					}
 					component = group;
 					this.ctx.pendingTools.set(event.toolCallId, group);
+					this.#toolTimelineComponents.set(event.toolCallId, group);
 				}
 				component.updateResult({ ...event.result, isError: event.isError }, false, event.toolCallId);
 				this.ctx.pendingTools.delete(event.toolCallId);

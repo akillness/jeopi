@@ -52,6 +52,8 @@ const THINKING_TAG_ENVELOPE_RE = /<(think|thinking|reasoning)>\s*[\s\S]*?<\/\1>/
 const THINKING_FENCE_ENVELOPE_RE = /```(?:thinking|reasoning)\b[\s\S]*?```/gi;
 const LEADING_THINKING_TAG_RE = /^\s*<(think|thinking|reasoning)>\s*[\s\S]*?<\/\1>\s*/i;
 const LEADING_THINKING_FENCE_RE = /^\s*```(?:thinking|reasoning)\b[\s\S]*?```\s*/i;
+const LEADING_PROSE_THINKING_PREAMBLE_RE =
+	/^[ \t]*(?:(?:here(?:['’]s| is)[ \t]+(?:a|the|my)[ \t]+)|my[ \t]+)?(?:thinking|thought|reasoning)[ \t]+process[ \t]*:?[ \t]*(?:\r?\n|$)/i;
 
 /**
  * Whether the model honors a forced `tool_choice` so the `set_title` tool can be
@@ -300,9 +302,11 @@ function extractGeneratedTitle(contentBlocks: AssistantMessage["content"]): stri
 	// leaked thinking envelopes plus any stray/unclosed title tag fragment.
 	const markedTitle = extractVisibleMarkedTitle(textTitle);
 	if (markedTitle !== undefined) return markedTitle;
-	return stripLeadingLeakedThinkingMarkup(textTitle)
+	const cleanedTextTitle = stripLeadingLeakedThinkingMarkup(textTitle)
 		.replace(/<\/?title>/gi, "")
 		.trim();
+	if (LEADING_PROSE_THINKING_PREAMBLE_RE.test(cleanedTextTitle)) return "";
+	return cleanedTextTitle;
 }
 
 function extractVisibleMarkedTitle(text: string): string | undefined {

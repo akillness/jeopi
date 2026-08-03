@@ -579,6 +579,10 @@ describe("Editor component", () => {
 			editor.setText("foo bar baz");
 			editor.handleInput("\x17"); // Ctrl+W
 			expect(editor.getText()).toBe("foo bar ");
+			// Underscores are word characters, so snake_case is deleted as one word.
+			editor.setText("allowed_openai_params");
+			editor.handleInput("\x17"); // Ctrl+W
+			expect(editor.getText()).toBe("");
 
 			// Trailing whitespace
 			editor.setText("foo bar   ");

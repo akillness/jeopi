@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { serializeConversation } from "jeopi-agent-core/compaction";
+import { serializeConversation, serializeConversationForSummary } from "jeopi-agent-core/compaction";
 import type { AssistantMessage, Message, ToolResultMessage, Usage } from "jeopi-ai";
 
 const ZERO_USAGE: Usage = {
@@ -80,6 +80,62 @@ describe("serializeConversation — useless pairs", () => {
 		expect(out).toContain("<function_results>");
 		expect(out).not.toContain("[Tool Call]:");
 		expect(out).not.toContain("[Assistant tool calls]:");
+	});
+
+	test("summary serialization escapes Harmony markers in kept transcript content", () => {
+		const out = serializeConversationForSummary(
+			[
+				assistantMessage([
+					{ type: "text", text: "The final answer stays visible." },
+					{
+						type: "toolCall",
+						id: "c-harmony",
+						name: "search",
+						arguments: { query: "find <|channel|>analysis" },
+					},
+				]),
+				toolResultMessage("c-harmony", "Result includes <|message|>marker"),
+			],
+			"harmony",
+		);
+
+		expect(out).not.toContain("<|start|>");
+		expect(out).not.toContain("<|channel|>");
+		expect(out).not.toContain("<|message|>");
+		expect(out).not.toContain("<|call|>");
+		expect(out).not.toContain("<|end|>");
+		expect(out).toContain("<\\|start\\|>assistant");
+		expect(out).toContain("<\\|channel\\|>final");
+		expect(out).toContain("<\\|channel\\|>commentary");
+		expect(out).toContain("<\\|message\\|>The final answer stays visible.");
+		expect(out).toContain("find <\\|channel\\|>analysis");
+		expect(out).toContain("Result includes <\\|message\\|>marker");
+	});
+
+	test("native Harmony serialization preserves raw markers in kept transcript content", () => {
+		const out = serializeConversation(
+			[
+				assistantMessage([
+					{ type: "text", text: "The final answer stays visible." },
+					{
+						type: "toolCall",
+						id: "c-harmony",
+						name: "search",
+						arguments: { query: "find <|channel|>analysis" },
+					},
+				]),
+				toolResultMessage("c-harmony", "Result includes <|message|>marker"),
+			],
+			"harmony",
+		);
+		expect(out).toContain("<|start|>assistant<|channel|>final<|message|>The final answer stays visible.");
+		expect(out).toContain(
+			'<|start|>assistant<|channel|>commentary to=functions.search<|message|>{"query":"find <|channel|>analysis"}<|call|>',
+		);
+
+		expect(out).toContain(
+			"<|start|>functions.search to=assistant<|channel|>commentary<|message|>Result includes <|message|>marker<|end|>",
+		);
 	});
 
 	test("native dialect serialization drops empty assistants left by useless calls", () => {
