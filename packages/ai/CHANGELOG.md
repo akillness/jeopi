@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.4.5] - 2026-08-03
+
 ### Added
 
 - Added `salvageLeakedToolCalls` (`jeopi-ai/dialect`), which re-materializes a native-tool-calling turn whose tool call was emitted as visible `<invoke …>` text into real `toolCall` content blocks. It only fires on unambiguous leaks: the turn must have stopped normally, carry no native tool call, keep every `<invoke` outside fenced code blocks, and name only tools available that turn — so quoted documentation is never executed.
