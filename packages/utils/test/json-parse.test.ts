@@ -1,5 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { parseJsonWithRepair, parseStreamingJson, repairJson } from "jeopi-utils/json-parse";
+import { parseJsonWithRepair, parseStreamingJson, repairJson, stripLoneSurrogates } from "jeopi-utils/json-parse";
+
+const HIGH = String.fromCharCode(0xd83d);
+const LOW = String.fromCharCode(0xde00);
+const isWellFormed = (s: string): boolean => {
+	try {
+		encodeURIComponent(s);
+		return true;
+	} catch {
+		return false;
+	}
+};
 
 describe("JSON repair", () => {
 	it("leaves valid string escapes unchanged", () => {
@@ -95,5 +106,53 @@ describe("parseStreamingJson partial parsing", () => {
 		expect(parseStreamingJson<Record<string, unknown>>('{"a":1.5e')).toEqual({});
 		expect(parseStreamingJson<Record<string, unknown>>('{"a":NaN}')).toEqual({});
 		expect(parseStreamingJson<Record<string, unknown>>('{"a":Truex}')).toEqual({});
+	});
+});
+describe("lone surrogate sanitization", () => {
+	it("replaces a lone high surrogate code unit with U+FFFD", () => {
+		expect(stripLoneSurrogates(`a${HIGH}b`)).toBe("a\uFFFDb");
+	});
+
+	it("replaces a lone low surrogate code unit with U+FFFD", () => {
+		expect(stripLoneSurrogates(`a${LOW}b`)).toBe("a\uFFFDb");
+	});
+
+	it("preserves valid surrogate pairs (astral characters)", () => {
+		const emoji = `${HIGH}${LOW}`;
+		expect(stripLoneSurrogates(`x${emoji}y`)).toBe(`x${emoji}y`);
+		expect(emoji).toBe("😀");
+	});
+
+	it("returns clean input unchanged (identity, no allocation path)", () => {
+		const clean = "hello world 😀 done";
+		expect(stripLoneSurrogates(clean)).toBe(clean);
+	});
+
+	it("sanitizes a lone surrogate carried by a raw JSON string value", () => {
+		const parsed = parseJsonWithRepair<{ t: string }>(`{"t":"a${HIGH}b"}`);
+		expect(parsed).toEqual({ t: "a\uFFFDb" });
+		expect(isWellFormed(parsed.t)).toBe(true);
+	});
+
+	it("sanitizes a lone surrogate delivered via a \\u escape", () => {
+		const parsed = parseJsonWithRepair<{ t: string }>('{"t":"a\\uD83Db"}');
+		expect(parsed).toEqual({ t: "a\uFFFDb" });
+		expect(isWellFormed(parsed.t)).toBe(true);
+	});
+
+	it("keeps an escaped valid surrogate pair intact", () => {
+		const parsed = parseJsonWithRepair<{ t: string }>('{"t":"\\uD83D\\uDE00"}');
+		expect(parsed).toEqual({ t: "😀" });
+	});
+
+	it("sanitizes lone surrogates in object keys", () => {
+		const parsed = parseJsonWithRepair<Record<string, number>>(`{"k${HIGH}":1}`);
+		expect(parsed).toEqual({ "k\uFFFD": 1 });
+	});
+
+	it("sanitizes a lone surrogate in a truncated streaming buffer", () => {
+		const parsed = parseStreamingJson<{ t: string }>(`{"t":"a${HIGH}`);
+		expect(parsed).toEqual({ t: "a\uFFFD" });
+		expect(isWellFormed(parsed.t)).toBe(true);
 	});
 });

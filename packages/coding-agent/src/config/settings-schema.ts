@@ -3913,6 +3913,19 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	"plan.autoApprove": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Auto-approve Plans",
+			description:
+				"Full Auto: skip the interactive plan-review approval wait and execute an approved plan immediately, letting planning flow straight into implementation without operator confirmation.",
+			condition: "planModeEnabled",
+		},
+	},
+
 	"goal.enabled": {
 		type: "boolean",
 		default: true,

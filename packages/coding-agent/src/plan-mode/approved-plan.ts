@@ -184,3 +184,18 @@ function finalizeApprovedPlan(planFilePath: string, planContent: string, supplie
 	const { title } = resolvePlanTitle({ suppliedTitle, planContent, planFilePath });
 	return { planFilePath, planContent, title };
 }
+
+/**
+ * Whether the planning→execution handoff runs autonomously (Full Auto) instead
+ * of blocking on the interactive plan-review popup.
+ *
+ * The plan-review popup is a human-in-the-loop approval wait: it stops the agent
+ * between planning and execution until an operator picks "Approve and execute".
+ * When the `plan.autoApprove` setting is enabled the gate is lifted — the agent
+ * produces the plan and proceeds straight to execution with no confirmation —
+ * but only for a plan that actually exists (never auto-approve an empty/missing
+ * plan, which must still fall through to the normal review/exit handling).
+ */
+export function shouldAutoApprovePlan(opts: { autoApprove: boolean; planExists: boolean }): boolean {
+	return opts.autoApprove && opts.planExists;
+}
