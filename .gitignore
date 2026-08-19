@@ -42,6 +42,12 @@ packages/ai/test/.temp-images/
 !.jeopi/
 .jeopi/plugins/
 .gjc/
+.omc/
+.omx/
+# Local knowledge-pipeline state. `llm-wiki/sync-tracker.md` is the one
+# tracked artifact here (the upstream-sync ledger) and stays committed.
+llm-wiki/*
+!llm-wiki/sync-tracker.md
 .pi_config/
 .opencode/
 .worktrees/
