@@ -111,6 +111,7 @@ export const BUNDLED_PI_REGISTRY_KEYS: ReadonlySet<string> = new Set([
 	"@oh-my-pi/pi-ai/utils/deterministic-id",
 	"@oh-my-pi/pi-ai/utils/empty-completion-retry",
 	"@oh-my-pi/pi-ai/utils/event-stream",
+	"@oh-my-pi/pi-ai/utils/fences",
 	"@oh-my-pi/pi-ai/utils/foundry",
 	"@oh-my-pi/pi-ai/utils/google-validation",
 	"@oh-my-pi/pi-ai/utils/http-inspector",

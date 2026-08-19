@@ -135,6 +135,7 @@ import * as bundledPiAiUtilsBlockSymbols from "jeopi-ai/utils/block-symbols";
 import * as bundledPiAiUtilsDeterministicId from "jeopi-ai/utils/deterministic-id";
 import * as bundledPiAiUtilsEmptyCompletionRetry from "jeopi-ai/utils/empty-completion-retry";
 import * as bundledPiAiUtilsEventStream from "jeopi-ai/utils/event-stream";
+import * as bundledPiAiUtilsFences from "jeopi-ai/utils/fences";
 import * as bundledPiAiUtilsFoundry from "jeopi-ai/utils/foundry";
 import * as bundledPiAiUtilsGoogleValidation from "jeopi-ai/utils/google-validation";
 import * as bundledPiAiUtilsHarmonyLeak from "jeopi-ai/utils/harmony-leak";
@@ -1265,6 +1266,7 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 		Record<string, unknown>
 	>,
 	"@oh-my-pi/pi-ai/utils/event-stream": bundledPiAiUtilsEventStream as unknown as Readonly<Record<string, unknown>>,
+	"@oh-my-pi/pi-ai/utils/fences": bundledPiAiUtilsFences as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-ai/utils/foundry": bundledPiAiUtilsFoundry as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-ai/utils/google-validation": bundledPiAiUtilsGoogleValidation as unknown as Readonly<
 		Record<string, unknown>

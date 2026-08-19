@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.5.0] - 2026-08-19
+
 ### Fixed
 
 - Resuming a session whose previous process died mid-turn no longer replays a non-terminal transcript to the provider. An abnormal exit recorded after an unanswered tool call (or a first-turn user message) now appends exactly one terminal aborted assistant record, so the partial history is preserved while the restored context stays valid. Applied on session load, after startup model selection (a first-turn user tail has no assistant metadata to copy from), and on `/switch`-style session reloads. Ported from oh-my-pi (upstream `e3e5bf8`, `de23690`, `a420dd1`, `bdad9ca`, `72b1ddf`, taken at their combined final state; the internal `readPendingToolCalls` wrapper was inlined into `readSessionExit` to satisfy jeopi's no-tiny-functions rule, and the recovery record's `errorMessage` names jeopi rather than OMP).

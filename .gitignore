@@ -84,3 +84,7 @@ python/robomp/.env
 
 # Local, machine-specific boot perf baseline (see packages/coding-agent/scripts/bench-guard.ts)
 packages/coding-agent/bench/boot-baseline.json
+
+# Per-platform native addon archive produced by `bun run build:native`.
+# The committed `embedded-addon.js` is the null placeholder; CI embeds per target.
+packages/natives/native/embedded-addons.*.tar.gz
