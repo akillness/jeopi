@@ -118,9 +118,20 @@ runs:
       - name: Install Linux build prerequisites (GitHub-hosted)
         if: steps.detect.outputs.on_infra == 'false' && runner.os == 'Linux'
         shell: bash
+        # This step wedged a 16.5.0 release run for over an hour: the sibling
+        # `Native: Linux x64 (modern)` job passed on the same image while
+        # `baseline` sat in an unbounded `apt-get update` against a dead Azure
+        # mirror. Mirror assignment varies per runner, so the same code either
+        # sails through or hangs forever. Bound it and repoint the mirror.
         run: |
-           sudo apt-get update
-           sudo apt-get install -y build-essential
+           set -euo pipefail
+           . "${GITHUB_ACTION_PATH}/../apt-hardening.sh"
+
+           apt_harden_sources
+
+           export DEBIAN_FRONTEND=noninteractive
+           apt_try "apt-get update" apt-get update
+           apt_try "apt-get install" apt-get install -y build-essential
       - name: Prepend rustup toolchain bin to PATH (GitHub-hosted)
         if: steps.detect.outputs.on_infra == 'false'
         shell: bash
@@ -256,9 +267,18 @@ runs:
       - name: Install LLVM tooling (GitHub-hosted, MSVC cross)
         if: steps.detect.outputs.on_infra == 'false' && endsWith(steps.resolve.outputs.cross_target, '-msvc')
         shell: bash
+        # Same unbounded-apt hazard as the prerequisites step above; this one
+        # only fires on the win32 cross build, so it would have wedged a later
+        # release rather than this one.
         run: |
-           sudo apt-get update
-           sudo apt-get install -y clang lld llvm
+           set -euo pipefail
+           . "${GITHUB_ACTION_PATH}/../apt-hardening.sh"
+
+           apt_harden_sources
+
+           export DEBIAN_FRONTEND=noninteractive
+           apt_try "apt-get update" apt-get update
+           apt_try "apt-get install" apt-get install -y clang lld llvm
       - name: Ensure baked cargo-xwin (self-hosted accelerator, MSVC cross)
         if: steps.detect.outputs.on_infra == 'true' && endsWith(steps.resolve.outputs.cross_target, '-msvc')
         uses: ./.github/actions/ensure-cargo-tool
