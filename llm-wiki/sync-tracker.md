@@ -1123,3 +1123,26 @@ outrank sequential checkpoint progress. Those were ported first.
   false negatives were produced this session before it was caught. Use
   `grep -E` or the harness grep tool, and never accept a bare zero-result
   grep as proof of absence.
+- **Unbounded `apt-get` in CI is a release-killer, and it existed at three
+  independent call sites.** A stalled Azure mirror blocks apt forever on a
+  half-open connection; because `release_binary` requires every test job to
+  report `success`, one wedged runner pushes the tag and ships nothing. Three
+  16.5.0 attempts died this way. Mirror assignment varies per runner, so
+  `Native: Linux x64 (baseline)` hung for an hour while its `(modern)` sibling
+  passed on the same image and the same action — the difference was only that
+  `baseline` sets `rust_checks`, which reaches a *second* apt step in
+  `build-native` that the first fix never touched. Hardening one site at a time
+  costs one release per site. The bounded retry + mirror repoint now live in
+  `.github/actions/apt-hardening.sh`, sourced by all three sites.
+- **`$?` after `fi` is the compound statement's status, not the failed
+  condition's.** Reading a retry's exit code after `fi` reports every exhausted
+  attempt as success — the exact bug that would let a 5-minute timeout (exit
+  124) pass as a green install. Capture the status inside `else`.
+- **A `--force-with-lease` release rewrite can smuggle in a 20 MB build
+  artifact.** `git add -A` after a local `bun run build:native` swept
+  `packages/natives/native/embedded-addons.darwin-arm64.tar.gz` into the
+  release commit and flipped the committed `embedded-addon.js` placeholder
+  (`export const embeddedAddon = null`) to a darwin-arm64-specific embed. CI
+  generates that per target; the committed state must stay the null
+  placeholder. Now gitignored — but diff the release commit against the prior
+  tag before pushing, never just `git status`.
