@@ -219,38 +219,50 @@ export type AnyUiMetadata = UiBase & {
 	options?: ReadonlyArray<SubmenuOption> | "runtime";
 };
 
-interface BooleanDef {
+/**
+ * Marks a setting whose value is a credential.
+ *
+ * Lives at the top level rather than inside `ui` so it can also describe a
+ * setting the settings panel never shows and therefore cannot carry
+ * `ui.secret`. Read it through `isCredential`, which is the single accessor
+ * both the CLI and the settings panel consult.
+ */
+interface CredentialMarker {
+	credential?: true;
+}
+
+interface BooleanDef extends CredentialMarker {
 	type: "boolean";
 	default: boolean | undefined;
 	ui?: UiBoolean;
 }
 
-interface StringDef {
+interface StringDef extends CredentialMarker {
 	type: "string";
 	default: string | undefined;
 	ui?: UiString;
 }
 
-interface NumberDef {
+interface NumberDef extends CredentialMarker {
 	type: "number";
 	default: number | undefined;
 	ui?: UiNumber;
 }
 
-interface EnumDef<T extends readonly string[]> {
+interface EnumDef<T extends readonly string[]> extends CredentialMarker {
 	type: "enum";
 	values: T;
 	default: T[number];
 	ui?: UiEnum<T>;
 }
 
-interface ArrayDef<T> {
+interface ArrayDef<T> extends CredentialMarker {
 	type: "array";
 	default: T[];
 	ui?: UiBase;
 }
 
-interface RecordDef<T> {
+interface RecordDef<T> extends CredentialMarker {
 	type: "record";
 	default: Record<string, T>;
 	ui?: UiBase;
@@ -344,7 +356,7 @@ export const SETTINGS_SCHEMA = {
 	// Env (`JEOPI_AUTH_BROKER_URL` / `JEOPI_AUTH_BROKER_TOKEN`) takes precedence so
 	// per-machine overrides remain trivial.
 	"auth.broker.url": { type: "string", default: undefined },
-	"auth.broker.token": { type: "string", default: undefined },
+	"auth.broker.token": { type: "string", default: undefined, credential: true },
 
 	autoResume: {
 		type: "boolean",
@@ -4889,6 +4901,7 @@ export const SETTINGS_SCHEMA = {
 	"searxng.token": {
 		type: "string",
 		default: undefined,
+		credential: true,
 	},
 
 	"searxng.basicUsername": {
@@ -4899,6 +4912,7 @@ export const SETTINGS_SCHEMA = {
 	"searxng.basicPassword": {
 		type: "string",
 		default: undefined,
+		credential: true,
 	},
 
 	"searxng.categories": {
@@ -4948,6 +4962,7 @@ export const SETTINGS_SCHEMA = {
 	"dev.autoqaPush.token": {
 		type: "string",
 		default: undefined,
+		credential: true,
 	},
 
 	/**
@@ -5034,6 +5049,16 @@ export function hasUi(path: SettingPath): boolean {
 export function getUi(path: SettingPath): AnyUiMetadata | undefined {
 	const def = SETTINGS_SCHEMA[path];
 	return "ui" in def ? (def.ui as AnyUiMetadata) : undefined;
+}
+
+/**
+ * True when a setting holds a credential and must never be printed in a bulk
+ * dump. The single accessor every surface consults, so the CLI and the settings
+ * panel cannot diverge on what counts as a secret.
+ */
+export function isCredential(path: SettingPath): boolean {
+	const def = SETTINGS_SCHEMA[path];
+	return "credential" in def && def.credential === true;
 }
 
 /** Get all paths for a specific tab */

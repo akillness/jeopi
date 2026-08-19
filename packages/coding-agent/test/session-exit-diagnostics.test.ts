@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent } from "jeopi-agent-core";
@@ -10,7 +10,9 @@ import { createSessionTeardown } from "jeopi-cli/modes/session-teardown";
 import { AgentSession } from "jeopi-cli/session/agent-session";
 import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import {
+	type AssistantModelMetadata,
 	collectPendingToolCalls,
+	createInterruptedTurnAbortMessage,
 	describePendingToolCalls,
 	SESSION_EXIT_CUSTOM_TYPE,
 	TOOL_EXECUTION_START_CUSTOM_TYPE,
@@ -45,6 +47,38 @@ const pendingAssistant: AssistantMessage = {
 	timestamp: Date.now(),
 };
 
+/** Terminal assistant turn: text content, no unanswered tool call. */
+const completedAssistant: AssistantMessage = {
+	...pendingAssistant,
+	content: [{ type: "text", text: "done" }],
+	stopReason: "stop",
+};
+
+const RECORDED_AT = "2026-07-11T02:20:08.800Z";
+
+const fallbackModel: AssistantModelMetadata = {
+	api: "openai-completions",
+	provider: "openai",
+	model: "fallback-model",
+};
+
+const INTERRUPTED_TURN_ERROR = "Previous jeopi process exited before completing the turn.";
+
+function userMessage(text: string): Parameters<SessionManager["appendMessage"]>[0] {
+	return { role: "user", content: text, timestamp: Date.now() };
+}
+
+function toolResult(text: string, isError = false): Parameters<SessionManager["appendMessage"]>[0] {
+	return {
+		role: "toolResult",
+		toolCallId: "toolu_repro",
+		toolName: "bash",
+		content: [{ type: "text", text }],
+		isError,
+		timestamp: Date.now(),
+	};
+}
+
 describe("session exit diagnostics", () => {
 	let session: AgentSession | undefined;
 	let authStorage: AuthStorage | undefined;
@@ -57,6 +91,7 @@ describe("session exit diagnostics", () => {
 		authStorage = undefined;
 		tempDir?.removeSync();
 		tempDir = undefined;
+		vi.restoreAllMocks();
 	});
 
 	it("records a durable tool start marker and shutdown diagnostic before a pending result exists", async () => {
@@ -266,5 +301,276 @@ describe("session exit diagnostics", () => {
 
 		expect(collectPendingToolCalls(sessionManager.getBranch())).toEqual([]);
 		expect(describePendingToolCalls(sessionManager.getBranch())).toBeUndefined();
+	});
+
+	describe("createInterruptedTurnAbortMessage", () => {
+		/**
+		 * Builds a branch ending in an unanswered tool call plus an abnormal exit
+		 * marker — the canonical "process died mid-turn" transcript.
+		 */
+		function interruptedBranch(
+			exit: Record<string, unknown> = { reason: "exit", kind: "process_exit", recordedAt: RECORDED_AT },
+		): SessionManager {
+			const sessionManager = SessionManager.inMemory();
+			sessionManager.appendMessage(userMessage("inspect the file"));
+			sessionManager.appendMessage(pendingAssistant);
+			sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, exit);
+			return sessionManager;
+		}
+
+		it("reconstructs the full terminal record from the abnormal exit marker", () => {
+			const sessionManager = interruptedBranch();
+
+			// Every field is load-bearing: content/usage must be empty so the
+			// synthetic turn cannot inflate context or cost accounting, the
+			// timestamp must come from the recorded exit rather than replay time,
+			// and the errorMessage is what the transcript renders to the user.
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch())).toEqual({
+				role: "assistant",
+				content: [],
+				api: pendingAssistant.api,
+				provider: pendingAssistant.provider,
+				model: pendingAssistant.model,
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "aborted",
+				errorMessage: INTERRUPTED_TURN_ERROR,
+				timestamp: Date.parse(RECORDED_AT),
+			});
+		});
+
+		for (const kind of ["signal", "fatal", "process_exit"] as const) {
+			it(`treats a ${kind} exit as an unfinished turn`, () => {
+				const sessionManager = interruptedBranch({ reason: kind, kind, recordedAt: RECORDED_AT });
+
+				expect(createInterruptedTurnAbortMessage(sessionManager.getBranch())).toMatchObject({
+					role: "assistant",
+					stopReason: "aborted",
+				});
+			});
+		}
+
+		it("treats a normal exit that recorded pending tool calls as an unfinished turn", () => {
+			const sessionManager = interruptedBranch({
+				reason: "manual exit",
+				kind: "normal",
+				recordedAt: RECORDED_AT,
+				pendingToolCalls: [{ toolCallId: "toolu_repro", toolName: "bash" }],
+			});
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch())).toMatchObject({
+				role: "assistant",
+				stopReason: "aborted",
+			});
+		});
+
+		it("recovers a tool-result tail while preserving the partial result in context", () => {
+			// Exit markers can trail a partial tool result: the turn still never
+			// produced a closing assistant message, so the partial result must
+			// survive alongside the appended terminal record.
+			const sessionManager = SessionManager.inMemory();
+			sessionManager.appendMessage(userMessage("inspect the file"));
+			sessionManager.appendMessage(pendingAssistant);
+			sessionManager.appendMessage(toolResult("partial result stays in history"));
+			sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, {
+				reason: "exit",
+				kind: "process_exit",
+				recordedAt: RECORDED_AT,
+			});
+
+			const recovered = createInterruptedTurnAbortMessage(sessionManager.getBranch());
+			expect(recovered).toMatchObject({ role: "assistant", content: [], stopReason: "aborted" });
+
+			sessionManager.appendMessage(recovered!);
+			const messages = sessionManager.buildSessionContext().messages;
+			expect(
+				messages.some(
+					message =>
+						message.role === "toolResult" &&
+						message.content.some(part => part.type === "text" && part.text === "partial result stays in history"),
+				),
+			).toBe(true);
+			expect(messages.at(-1)).toMatchObject({ role: "assistant", stopReason: "aborted" });
+		});
+
+		it("is idempotent: appending the recovered record closes the turn for good", () => {
+			const sessionManager = interruptedBranch();
+
+			const first = createInterruptedTurnAbortMessage(sessionManager.getBranch());
+			expect(first).toBeDefined();
+			sessionManager.appendMessage(first!);
+
+			// The in-process double call (sdk.ts invokes the helper twice per
+			// startup) must not stack another aborted turn.
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch())).toBeUndefined();
+			expect(
+				sessionManager
+					.getBranch()
+					.filter(
+						entry =>
+							entry.type === "message" &&
+							entry.message.role === "assistant" &&
+							entry.message.stopReason === "aborted",
+					),
+			).toHaveLength(1);
+		});
+
+		it("stays idempotent across a second crash that records a newer exit marker", () => {
+			// A later crash writes a fresh exit marker AFTER the recovered record,
+			// so the tail no longer postdates the exit. Only the terminal-tail
+			// check stops the next startup from stacking a second aborted turn.
+			const sessionManager = interruptedBranch();
+			sessionManager.appendMessage(createInterruptedTurnAbortMessage(sessionManager.getBranch())!);
+			sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, {
+				reason: "exit",
+				kind: "process_exit",
+				recordedAt: "2026-07-12T03:30:00.000Z",
+			});
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toBeUndefined();
+		});
+
+		it("copies model metadata from the nearest preceding assistant over the fallback", () => {
+			const sessionManager = interruptedBranch();
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toMatchObject({
+				api: pendingAssistant.api,
+				provider: pendingAssistant.provider,
+				model: pendingAssistant.model,
+			});
+		});
+
+		it("uses the fallback model for a first-turn user tail with no prior assistant", () => {
+			const sessionManager = SessionManager.inMemory();
+			sessionManager.appendMessage(userMessage("inspect the file"));
+			sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, {
+				reason: "exit",
+				kind: "process_exit",
+				recordedAt: RECORDED_AT,
+			});
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toMatchObject({
+				role: "assistant",
+				api: fallbackModel.api,
+				provider: fallbackModel.provider,
+				model: fallbackModel.model,
+				stopReason: "aborted",
+			});
+		});
+
+		it("declines to recover a user tail when no model metadata is available", () => {
+			const sessionManager = SessionManager.inMemory();
+			sessionManager.appendMessage(userMessage("inspect the file"));
+			sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, {
+				reason: "exit",
+				kind: "process_exit",
+				recordedAt: RECORDED_AT,
+			});
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch())).toBeUndefined();
+		});
+
+		it("falls back to the current clock when the recorded exit time is unparseable", () => {
+			const now = 1_800_000_000_000;
+			vi.spyOn(Date, "now").mockReturnValue(now);
+			const sessionManager = interruptedBranch({
+				reason: "exit",
+				kind: "process_exit",
+				recordedAt: "not-a-timestamp",
+			});
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch())?.timestamp).toBe(now);
+		});
+
+		it("honors the newest exit marker, so a clean restart does not replay an older crash", () => {
+			const sessionManager = interruptedBranch();
+			sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, {
+				reason: "dispose",
+				kind: "normal",
+				recordedAt: RECORDED_AT,
+			});
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch())).toBeUndefined();
+		});
+
+		it("skips recovery when no exit marker was ever persisted", () => {
+			const sessionManager = SessionManager.inMemory();
+			sessionManager.appendMessage(userMessage("inspect the file"));
+			sessionManager.appendMessage(pendingAssistant);
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toBeUndefined();
+		});
+
+		it("skips recovery after a clean shutdown with no pending tool calls", () => {
+			const sessionManager = interruptedBranch({ reason: "dispose", kind: "normal", recordedAt: RECORDED_AT });
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toBeUndefined();
+		});
+
+		it("skips recovery when the newest message postdates the exit marker", () => {
+			const sessionManager = interruptedBranch();
+			sessionManager.appendMessage(userMessage("new turn after restart"));
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toBeUndefined();
+		});
+
+		it("skips recovery when the tail assistant turn already completed", () => {
+			const sessionManager = SessionManager.inMemory();
+			sessionManager.appendMessage(userMessage("inspect the file"));
+			sessionManager.appendMessage(completedAssistant);
+			sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, {
+				reason: "exit",
+				kind: "process_exit",
+				recordedAt: RECORDED_AT,
+			});
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toBeUndefined();
+		});
+
+		for (const stopReason of ["error", "aborted"] as const) {
+			it(`skips a tool-result tail already closed by a ${stopReason} assistant turn`, () => {
+				const sessionManager = SessionManager.inMemory();
+				sessionManager.appendMessage(userMessage("inspect the file"));
+				sessionManager.appendMessage({ ...pendingAssistant, stopReason });
+				sessionManager.appendMessage(toolResult("Tool execution stopped after model failure.", true));
+				sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, {
+					reason: "exit",
+					kind: "process_exit",
+					recordedAt: RECORDED_AT,
+				});
+
+				expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toBeUndefined();
+			});
+		}
+
+		const malformedExits: Array<[string, Record<string, unknown>]> = [
+			["a non-string reason", { reason: 7, kind: "process_exit", recordedAt: RECORDED_AT }],
+			["an unknown kind", { reason: "exit", kind: "meltdown", recordedAt: RECORDED_AT }],
+			["a non-string recordedAt", { reason: "exit", kind: "process_exit", recordedAt: 1_800_000_000_000 }],
+		];
+		for (const [label, exit] of malformedExits) {
+			it(`ignores an exit marker with ${label}`, () => {
+				const sessionManager = interruptedBranch(exit);
+
+				expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toBeUndefined();
+			});
+		}
+
+		it("ignores malformed pending tool diagnostics on an otherwise clean exit", () => {
+			const sessionManager = interruptedBranch({
+				reason: "manual exit",
+				kind: "normal",
+				recordedAt: RECORDED_AT,
+				pendingToolCalls: "not an array",
+			});
+
+			expect(createInterruptedTurnAbortMessage(sessionManager.getBranch(), fallbackModel)).toBeUndefined();
+		});
 	});
 });

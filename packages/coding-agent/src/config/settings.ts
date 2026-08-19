@@ -701,6 +701,46 @@ export class Settings {
 		}
 	}
 
+	/**
+	 * Read the config file for the read-modify-write save path.
+	 *
+	 * Unlike {@link Settings.#loadYaml}, a present-but-unusable file is NEVER
+	 * reported as empty settings. `#saveNow` merges the modified keys into
+	 * whatever this returns and writes the result back, so returning `{}` for a
+	 * malformed or temporarily unreadable file would replace the user's entire
+	 * configuration — broker tokens, model roles, provider entries — with the one
+	 * key that happened to change. A missing file is the only safe empty base.
+	 *
+	 * An invalid file is moved aside first so the next save starts from a clean
+	 * slate instead of failing forever, and the original bytes survive for
+	 * recovery. Both failure modes throw; the caller re-queues the write.
+	 */
+	async #loadYamlForWrite(filePath: string): Promise<RawSettings> {
+		let content: string;
+		try {
+			content = await Bun.file(filePath).text();
+		} catch (error) {
+			if (isEnoent(error)) return {};
+			throw new Error(`Failed to read settings config ${filePath}: ${String(error)}`);
+		}
+		try {
+			const parsed = YAML.parse(content);
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+			return this.#migrateRawSettings(parsed as RawSettings);
+		} catch (error) {
+			const backupPath = `${filePath}.broken-${Date.now()}-${process.pid}`;
+			try {
+				await fs.promises.rename(filePath, backupPath);
+			} catch (renameError) {
+				throw new Error(
+					`Settings config is invalid and could not be moved aside: ${filePath}; refusing to overwrite it: ${String(renameError)}`,
+				);
+			}
+			logger.warn("Settings: moved invalid config aside", { path: filePath, backupPath, error: String(error) });
+			throw new Error(`Settings config is invalid: ${filePath} (moved to ${backupPath}): ${String(error)}`);
+		}
+	}
+
 	async #loadProjectSettings(): Promise<RawSettings> {
 		try {
 			const result = await loadCapability(settingsCapability.id, { cwd: this.#cwd });
@@ -1282,8 +1322,9 @@ export class Settings {
 
 		try {
 			await withFileLock(configPath, async () => {
-				// Re-read to preserve external changes
-				const current = await this.#loadYaml(configPath);
+				// Re-read to preserve external changes. Never treat an unreadable or
+				// malformed file as empty here — that would overwrite it wholesale.
+				const current = await this.#loadYamlForWrite(configPath);
 
 				// Apply only our modified paths
 				for (const modPath of modifiedPaths) {

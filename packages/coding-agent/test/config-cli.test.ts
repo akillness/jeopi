@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { runConfigCommand } from "jeopi-cli/cli/config-cli";
-import { resetSettingsForTest } from "jeopi-cli/config/settings";
+import { isCredential, resetSettingsForTest, type SettingPath } from "jeopi-cli/config/settings";
 import { AgentStorage } from "jeopi-cli/session/agent-storage";
 import { getConfigRootDir, setAgentDir, TempDir } from "jeopi-utils";
 
@@ -165,5 +165,177 @@ describe("config CLI schema coverage", () => {
 		expect(parsed.key).toBe("defaultThinkingLevel");
 		expect(parsed.type).toBe("enum");
 		expect(parsed.value).toBe("max");
+	});
+});
+
+/** Shape of one `config list --json` entry. */
+interface ListJsonEntry {
+	value?: unknown;
+	redacted?: true;
+	type: string;
+	description: string;
+}
+
+/** Shape of the `config get --json` payload. */
+interface GetJsonPayload {
+	key: string;
+	value: unknown;
+	type: string;
+}
+
+const REDACTED = "********";
+
+/**
+ * The slice of a `console.log` spy these helpers consume. Named locally so the
+ * helpers do not publish a contract derived from the spy factory.
+ */
+interface LogSpy {
+	mock: { calls: unknown[][] };
+	mockClear(): void;
+}
+
+describe("config CLI credential redaction", () => {
+	/** The rendered `path = value (type)` line for one setting in human output. */
+	const lineFor = (logSpy: LogSpy, settingPath: string): string => {
+		const lines = logSpy.mock.calls.map(call => Bun.stripANSI(String(call[0] ?? "")));
+		const line = lines.find(candidate => candidate.includes(`${settingPath} =`));
+		expect(line).toBeDefined();
+		return String(line);
+	};
+
+	const listJson = async (logSpy: LogSpy): Promise<Record<string, ListJsonEntry>> => {
+		logSpy.mockClear();
+		await runConfigCommand({ action: "list", flags: { json: true } });
+		const payload = logSpy.mock.calls.at(-1)?.[0];
+		expect(typeof payload).toBe("string");
+		return JSON.parse(String(payload)) as Record<string, ListJsonEntry>;
+	};
+
+	it("classifies exactly the four secret-bearing paths as credentials", () => {
+		// Per-setting, not per-prefix: `searxng.token` is a secret while its
+		// sibling `searxng.basicUsername` and `searxng.endpoint` are not.
+		const expected: Record<string, boolean> = {
+			"auth.broker.token": true,
+			"searxng.token": true,
+			"searxng.basicPassword": true,
+			"dev.autoqaPush.token": true,
+			"auth.broker.url": false,
+			"searxng.endpoint": false,
+			"searxng.basicUsername": false,
+			"dev.autoqaPush.endpoint": false,
+			defaultThinkingLevel: false,
+		};
+
+		const actual: Record<string, boolean> = {};
+		for (const settingPath of Object.keys(expected)) {
+			actual[settingPath] = isCredential(settingPath as SettingPath);
+		}
+
+		expect(actual).toEqual(expected);
+	});
+
+	it("masks every configured credential in human list output and leaks no secret", async () => {
+		const secrets: Record<string, string> = {
+			"auth.broker.token": "brk-secret-aaaa",
+			"searxng.token": "sxg-secret-bbbb",
+			"searxng.basicPassword": "sxg-secret-cccc",
+			"dev.autoqaPush.token": "qa-secret-dddd",
+		};
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		for (const [key, value] of Object.entries(secrets)) {
+			await runConfigCommand({ action: "set", key, value, flags: { json: true } });
+		}
+		// A non-credential neighbour proves redaction is targeted, not blanket.
+		await runConfigCommand({
+			action: "set",
+			key: "searxng.basicUsername",
+			value: "search-user",
+			flags: { json: true },
+		});
+
+		logSpy.mockClear();
+		await runConfigCommand({ action: "list", flags: {} });
+
+		const dump = logSpy.mock.calls.map(call => Bun.stripANSI(String(call[0] ?? ""))).join("\n");
+		for (const [key, value] of Object.entries(secrets)) {
+			expect(dump).not.toContain(value);
+			expect(lineFor(logSpy, key)).toContain(REDACTED);
+		}
+		expect(lineFor(logSpy, "searxng.basicUsername")).toContain("search-user");
+	});
+
+	it("omits the value and flags redacted for a configured credential in JSON list output", async () => {
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		await runConfigCommand({
+			action: "set",
+			key: "auth.broker.token",
+			value: "brk-secret-eeee",
+			flags: { json: true },
+		});
+		await runConfigCommand({
+			action: "set",
+			key: "auth.broker.url",
+			value: "https://broker.example",
+			flags: { json: true },
+		});
+
+		const result = await listJson(logSpy);
+
+		const token = result["auth.broker.token"];
+		expect(token.redacted).toBe(true);
+		// No stand-in value at all: a placeholder is indistinguishable from a real
+		// secret and a consumer could write it back as the credential.
+		expect("value" in token).toBe(false);
+		expect(JSON.stringify(result)).not.toContain("brk-secret-eeee");
+		expect(JSON.stringify(result)).not.toContain(REDACTED);
+
+		expect(result["auth.broker.url"]).toMatchObject({ value: "https://broker.example" });
+		expect(result["auth.broker.url"].redacted).toBeUndefined();
+	});
+
+	it("does not report an unset credential as redacted", async () => {
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		const result = await listJson(logSpy);
+
+		// A fresh install must not look like it has a token configured.
+		for (const key of ["auth.broker.token", "searxng.token", "searxng.basicPassword", "dev.autoqaPush.token"]) {
+			expect(result[key].redacted).toBeUndefined();
+		}
+
+		logSpy.mockClear();
+		await runConfigCommand({ action: "list", flags: {} });
+		expect(lineFor(logSpy, "auth.broker.token")).toContain("(not set)");
+		expect(lineFor(logSpy, "auth.broker.token")).not.toContain(REDACTED);
+	});
+
+	it("does not report a cleared credential as redacted", async () => {
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		await runConfigCommand({ action: "set", key: "auth.broker.token", value: "", flags: { json: true } });
+
+		const result = await listJson(logSpy);
+
+		// Survives the JSON round-trip as "", so this distinguishes "cleared" from
+		// "redacted" rather than relying on an absent key.
+		expect(result["auth.broker.token"].value).toBe("");
+		expect(result["auth.broker.token"].redacted).toBeUndefined();
+
+		logSpy.mockClear();
+		await runConfigCommand({ action: "list", flags: {} });
+		expect(lineFor(logSpy, "auth.broker.token")).not.toContain(REDACTED);
+	});
+
+	it("still prints the real credential for an explicit config get", async () => {
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		await runConfigCommand({ action: "set", key: "searxng.token", value: "sxg-secret-ffff", flags: { json: true } });
+
+		logSpy.mockClear();
+		await runConfigCommand({ action: "get", key: "searxng.token", flags: {} });
+		expect(Bun.stripANSI(String(logSpy.mock.calls.at(-1)?.[0] ?? ""))).toBe("sxg-secret-ffff");
+
+		logSpy.mockClear();
+		await runConfigCommand({ action: "get", key: "searxng.token", flags: { json: true } });
+		const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0])) as GetJsonPayload;
+		expect(payload).toMatchObject({ key: "searxng.token", value: "sxg-secret-ffff" });
 	});
 });

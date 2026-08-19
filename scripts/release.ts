@@ -21,6 +21,15 @@ const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const packageJsonGlob = new Glob("packages/*/package.json");
 const cargoTomlGlob = new Glob("crates/*/Cargo.toml");
 
+/**
+ * Accept only a bare release semver (`1.2.3` / `v1.2.3`), returning it without
+ * the `v`. Returns null for prereleases, build metadata, and leading zeroes.
+ */
+export function validateExplicitVersion(version: string): string | null {
+	const match = /^v?((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.exec(version);
+	return match ? match[1] : null;
+}
+
 function git(args: readonly string[]) {
 	return $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`;
 }
@@ -274,6 +283,19 @@ async function cmdRelease(versionOrBump: string, options: { allowEmptyChangelog:
 	if (version === "major" || version === "minor" || version === "patch") {
 		version = bumpVersion(latestTag, version);
 		console.log(`Bumping ${versionOrBump} version from ${latestTag} -> ${version}`);
+	} else {
+		// `parseVersion` is prefix-anchored only, so a prerelease like `17.2.8-rc.1`
+		// would parse as 17.2.8 and ship here. `ci-release-publish` runs
+		// `npm publish` with no `--tag`, so that prerelease would take the `latest`
+		// dist-tag. Reject anything that is not a bare release semver.
+		const normalized = validateExplicitVersion(version);
+		if (normalized === null) {
+			console.error(
+				`Error: Invalid version "${versionOrBump}". Expected a semver like 16.5.0 or v16.5.0 (prereleases such as 16.5.0-rc.1 are not supported by this release path), or a bump keyword (major/minor/patch).`,
+			);
+			process.exit(1);
+		}
+		version = normalized;
 	}
 
 	if (compareVersions(version, latestTag) <= 0) {

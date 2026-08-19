@@ -354,6 +354,109 @@ describe("Settings", () => {
 		});
 	});
 
+	// The save path is read-modify-write. If a present-but-unusable config.yml were
+	// read as empty settings, the merge would produce a file holding only the one
+	// key that changed and the user's entire configuration would be gone.
+	describe("write safety", () => {
+		/** YAML that fails to parse but still carries recognisable prior settings. */
+		const MALFORMED_YAML = 'theme:\n  dark: anthracite\nenabledModels: ["a", "b"\nshellPath: /bin/zsh\n';
+
+		const brokenSiblings = (): string[] =>
+			fs.readdirSync(agentDir).filter(name => name.startsWith("config.yml.broken-"));
+
+		/** Load a valid config, then corrupt the file behind the running instance. */
+		const seedThenCorrupt = async (): Promise<Settings> => {
+			await writeSettings({ theme: { dark: "anthracite" }, shellPath: "/bin/zsh" });
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			await Bun.write(getConfigPath(), MALFORMED_YAML);
+			return settings;
+		};
+
+		it("treats a missing config file as a safe empty base", async () => {
+			expect(fs.existsSync(getConfigPath())).toBe(false);
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			settings.set("shellPath", "/bin/zsh");
+			await settings.flush();
+
+			expect(await readSettings()).toEqual({ shellPath: "/bin/zsh" });
+			// ENOENT is the ONE case that may be read as empty, so it must not be
+			// mistaken for corruption and moved aside.
+			expect(brokenSiblings()).toEqual([]);
+		});
+
+		it("drains the pending write once a save succeeds", async () => {
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("shellPath", "/bin/zsh");
+			await settings.flush();
+
+			// A later external edit must survive a flush that has nothing pending.
+			// If the successful save had left `shellPath` queued, it would be
+			// re-applied on top of this and reappear.
+			await writeSettings({ theme: { dark: "anthracite" } });
+			await settings.flush();
+
+			expect(await readSettings()).toEqual({ theme: { dark: "anthracite" } });
+		});
+
+		it("preserves the contents of a malformed config instead of overwriting it", async () => {
+			const settings = await seedThenCorrupt();
+
+			settings.set("defaultThinkingLevel", Effort.High);
+			await settings.flush();
+
+			const rescued = brokenSiblings();
+			expect(rescued).toHaveLength(1);
+
+			// The actual regression: the settings the file held must still exist
+			// somewhere, not be replaced by the single key that changed.
+			const rescuedText = fs.readFileSync(path.join(agentDir, rescued[0]), "utf-8");
+			expect(rescuedText).toBe(MALFORMED_YAML);
+			expect(rescuedText).toContain("dark: anthracite");
+			expect(rescuedText).toContain("shellPath: /bin/zsh");
+
+			// And nothing on disk is a config reduced to just the modified key, nor
+			// is the in-memory state replaced by it.
+			expect(await readSettings()).not.toMatchObject({ defaultThinkingLevel: Effort.High });
+			expect(settings.get("shellPath")).toBe("/bin/zsh");
+		});
+
+		it("re-queues the refused write so the change is not silently dropped", async () => {
+			const settings = await seedThenCorrupt();
+
+			settings.set("defaultThinkingLevel", Effort.High);
+			await settings.flush();
+			expect(await readSettings()).toEqual({});
+
+			// The malformed file has been moved aside, so the retry now starts from
+			// a missing file and must land the change that was refused earlier.
+			await settings.flush();
+
+			expect(await readSettings()).toEqual({ defaultThinkingLevel: Effort.High });
+		});
+
+		it("refuses an unreadable config without moving it aside or dropping loaded settings", async () => {
+			await writeSettings({ shellPath: "/bin/zsh", extensions: ["/path/to/extension.ts"] });
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			// A non-ENOENT read failure (EISDIR): unusable, but not proven corrupt,
+			// so destroying the path would be the wrong response.
+			fs.rmSync(getConfigPath());
+			fs.mkdirSync(getConfigPath(), { recursive: true });
+
+			settings.set("defaultThinkingLevel", Effort.High);
+			await settings.flush();
+
+			expect(brokenSiblings()).toEqual([]);
+			expect(fs.statSync(getConfigPath()).isDirectory()).toBe(true);
+			// `#saveNow` adopts the re-read result as its in-memory state before
+			// writing, so reading an unreadable file as empty would drop the loaded
+			// settings here even though the write itself never lands.
+			expect(settings.get("shellPath")).toBe("/bin/zsh");
+			expect(settings.get("extensions")).toEqual(["/path/to/extension.ts"]);
+		});
+	});
+
 	describe("model role overrides", () => {
 		it("does not persist temporary default model overrides when another role is saved", async () => {
 			await writeSettings({

@@ -334,6 +334,7 @@
   },
   "patchedDependencies": {
     "@ark/schema@0.56.2": "patches/@ark%2Fschema@0.56.2.patch",
+    "puppeteer-core@25.4.0": "patches/puppeteer-core@25.4.0.patch",
   },
   "catalog": {
     "@agentclientprotocol/sdk": "0.25.0",
@@ -364,7 +365,7 @@
     "@types/turndown": "5.0.6",
     "@typescript/native-preview": "7.0.0-dev.20260609.1",
     "@xterm/headless": "^6.0.0",
-    "arktype": "^2.2.0",
+    "arktype": "2.2.3",
     "chalk": "^5.6.2",
     "chart.js": "^4.5.1",
     "date-fns": "^4.4.0",
@@ -396,7 +397,7 @@
     "onnxruntime-node": "1.26.0",
     "postcss": "^8.5.15",
     "prettier": "^3.8.4",
-    "puppeteer-core": "^25.1.0",
+    "puppeteer-core": "25.4.0",
     "react": "19.2.7",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.7",

@@ -949,3 +949,177 @@ via `git log --reverse --oneline v16.5.0..v16.5.1` for resume.
 69. **N/A** `3239b4e7d` Merge PR #5190 — merge commit for already-applied `9831386de`; no unique diff beyond the direct fix.
 
 **Not yet reviewed:** ~108 remaining. Next concrete candidate: treat the org-scoped Anthropic credential identity series (`044d722a3` through `c001d660e`) as one migration-safe feature bucket rather than cherry-picking its middle fixes.
+
+---
+
+## Session 2026-08-19 — release 16.5.0 (out-of-order: security/data-loss first)
+
+This session deliberately broke checkpoint order. Five parallel delta
+agents re-surveyed the whole gap and found **live bugs in the fork** that
+outrank sequential checkpoint progress. Those were ported first.
+
+### Structural corrections to this tracker
+
+1. **The floor is wrong.** This document (line 24) records the last real
+   sync point as upstream `v16.4.2`, but the fork's actual snapshot floor
+   is `v16.2.13` (verified: `git merge-base HEAD upstream/main` is empty —
+   unrelated histories — and the fork's oldest commit is a squashed
+   `jeopi 16.2.13` import). That leaves a **third window** nobody has
+   analyzed: `v16.2.13..v16.4.2`, 519 changelog entries and 10 Breaking
+   Changes, entirely below this tracker's floor. Three spot-checks
+   confirmed unported (hashline 16.3.3 `byHashExact`, coding-agent 16.4.0
+   explore→scout, catalog 16.4.0 `ANTHROPIC_ADAPTIVE_EFFORT_MAP_4_TIER`).
+   Note catalog 16.3.0's `requiresJuiceZeroHack` rename was checked and is
+   **already ported** — the fork carries only the new
+   `requiresReasoningSuppressionPrompt` name.
+   **W1 is a partial, undocumented gap, not a clean 519-entry hole.** The
+   effort-map leg is the sharpest example: the fork exports *both*
+   `ANTHROPIC_ADAPTIVE_EFFORT_MAP_4_TIER` (`model-thinking.ts:122`, live at
+   `:381`, `:454`) and a `_5_TIER` sibling (`:109`, live at `:380`, `:454`),
+   while upstream has **zero** occurrences of either. (`SHIFTED_FIVE_TIER_EFFORT_MAP`
+   is absent from *both* trees, so its absence here is not evidence of a
+   port — an earlier draft of this note drew that inference and it was
+   wrong.) A reasoning-effort ladder that has diverged this way is
+   invisible until a provider rejects a tier on the wire.
+   **Consequence: the re-baseline must be per-symbol, not per-release** —
+   a per-file or per-release "ported" claim papers over exactly this.
+2. **"Triaged" ≠ "covered".** Checkpoint 4 is marked `triaged 21/21`, yet
+   upstream providers `novita` and `baseten` land in that window, are
+   named nowhere in this file, and do not exist in the fork. Treat every
+   checkpoint's "triaged" claim as *commits inspected*, not *surface
+   covered*.
+3. **Scope as of today**: cp8 has ~62 substantive commits unreviewed (not
+   ~108 — the residue is merge/chore noise); cp9–16 = 1038 commits;
+   `v17.0.6..upstream/main` = 4080 commits and is not represented here at
+   all. Upstream is now `v17.3.7`.
+
+### Ported this session
+
+- [x] **Interrupted-session recovery** (cp8) — `e3e5bf8`, `de23690`,
+  `a420dd1`, `bdad9ca`, `72b1ddf`, taken at their combined final state
+  rather than commit-by-commit (each builds on the previous). Adds
+  `AssistantModelMetadata` + `createInterruptedTurnAbortMessage` to
+  `session/exit-diagnostics.ts`, wires two call sites into `sdk.ts`
+  (pre-context-build, and post-model-selection for a first-turn user
+  tail) and one into `agent-session.ts` `switchSession`. Adaptations:
+  upstream's `readPendingToolCalls` one-expression wrapper inlined into
+  `readSessionExit` (jeopi's no-tiny-functions rule); recovery record's
+  `errorMessage` says jeopi, not OMP.
+- [x] **Blob path traversal** (uncovered window, upstream coding-agent
+  17.1.0) — `parseBlobRef` returned its suffix unvalidated straight into
+  `path.join(dir, hash)` in `get`/`getSync`/`has`. Now gated on a
+  64-char lowercase hex digest.
+- [x] **Credential disclosure** (uncovered window, upstream coding-agent
+  17.1.4) — fork had **zero** `credential: true` markers against
+  upstream's 7, and no redaction in `config-cli.ts`, so `jeopi config
+  list` printed `auth.broker.token` and friends. Added the
+  `CredentialMarker` mixin, `isCredential`, and redaction in both human
+  and `--json` output. Adaptation: jeopi has no legacy `ui.secret`
+  spelling, so `isCredential` reads only the explicit marker (upstream's
+  `getUi(path)?.secret` fallback does not typecheck here — `AnyUiMetadata`
+  has no `secret` field).
+- [x] **Config data loss** (uncovered window, upstream coding-agent
+  17.1.5) — `#loadYaml` returned `{}` for malformed/EACCES, and `#saveNow`
+  merged one key into that and wrote it back, replacing the entire
+  `config.yml`. Added `#loadYamlForWrite`: missing is the only safe empty
+  base, invalid is quarantined to `.broken-<ts>-<pid>` and the write is
+  refused. Deliberately did **not** port upstream's full YAML write-lock /
+  multi-filename machinery — only the data-loss hole.
+- [x] **Puppeteer stealth patch rebase** — closes deferred item
+  `980d24e24` / `5105b2cd`. This tracker's note (line ~219) said the caret
+  lock-resolved to 25.3.0; it had since drifted again to **25.4.0**. All
+  16 stealth markers were absent from the installed tree, i.e. the patch
+  had been inert for two minors. Rebased onto 25.4.0 as
+  `patches/puppeteer-core@25.4.0.patch` and pinned the catalog to an exact
+  version (upstream pins too — the caret was the root cause). The two
+  hunks that failed were upstream's `debugError`→`debugCatchError` rename,
+  exactly as this tracker predicted. Verified: 16/16 markers present,
+  no `Runtime.enable` call in `WebWorker`/`FrameManager`, `mainRealm()`
+  binding init intact, and a real headless Chrome launch/evaluate smoke.
+- [x] **arktype pinned** — same bug class, caught before it bit:
+  `^2.2.0` resolved to `2.2.3` → the patched `@ark/schema@0.56.2` **by
+  luck**. Pinned to `2.2.3`; patch verified still applied.
+- [x] **Release version validation** — ported upstream's
+  `validateExplicitVersion` only. The fork's `parseVersion` is
+  prefix-anchored, so `16.5.0-rc.1` parsed as `16.5.0`, and
+  `ci-release-publish` runs `npm publish` with no `--tag` — a prerelease
+  would have taken the npm `latest` dist-tag. Did **not** port upstream's
+  `release.ts` wholesale: the fork's is ahead in three ways (empty-
+  changelog gate + `--allow-empty`, README digest sync, atomic tag push).
+
+### Highest-value items found but NOT ported (next session)
+
+- **Auth schema v4→v7** (`packages/ai`). Fork is at `SCHEMA_VERSION = 4`,
+  upstream at 7. The v5→v6 step creates `auth_credential_refresh_leases`
+  — the exact base feature this tracker records as blocking four separate
+  deferred items (`3b6c3409e` appears three times above, plus
+  `c893e7ab7`). **One port unblocks four.** Recommended next unit of work.
+- **Session-persistence signature loss**: `session-persistence.ts:88`
+  returns `""` for an oversized `thinkingSignature`/`thoughtSignature`/
+  `textSignature`, so the provider rejects the replay after resume.
+  Upstream preserves signed blocks verbatim (~57 lines, one file) and
+  keeps the fork's own `stripReplayedReasoningSignatures`.
+- **Provider API keys cached in plaintext** (upstream catalog 17.0.5).
+  `model-cache.ts:164` spreads the whole model into the row, and discovery
+  sets `headers.Authorization = "Bearer <apiKey>"`
+  (`provider-models/openai-compat.ts:148,150`), so keys land unencrypted in
+  `<agent-dir>/models.db`. **Verified real in code but NOT currently
+  realized on the dev machine** — a live `models.db` scan found 14 rows,
+  zero with headers, so exposure depends on which discovery paths a user
+  hits. Deliberately deferred out of the 16.5.0 release: upstream's fix is
+  not a one-line strip but omit-on-write plus `header_omitted_model_ids` /
+  `unrestorable_header_model_ids` / `header_restore_version` columns with
+  an `ALTER TABLE` migration and header-restoration logic. Stripping
+  headers without the restoration path risks breaking provider auth for
+  cached models — worse than the latent leak. Port it as one verified pass,
+  and invalidate pre-existing rows that may already hold secrets.
+- **Nine upstream providers absent from the fork** and absent from this
+  tracker: `siliconflow`, `siliconflow-cn`, `novita`, `baseten`,
+  `gmi-cloud`, `meta`, `aiand`, `alibaba-token-plan`, `bedrock-mantle`,
+  plus registry-only `exa` and `zai-coding-plan`. Five are trivial
+  (`createApiKeyLogin` + one catalog row). **No new wire APIs** in the
+  entire 6767-commit gap — `KnownApi` is byte-identical, so `streamDispatch`
+  needs no new branch.
+- **`normalizeToolName` lowercases every tool name**, mangling
+  case-sensitive MCP/plugin tool names.
+- **Windows AVX2 probe** (`scripts/host-detect.ts:32-40`) silently
+  downgrades every stock Windows host to baseline ISA.
+
+### Observed, deliberately not changed
+
+- **`jeopi config set <credential> <value>` echoes the value back**
+  (`config-cli.ts:385` JSON branch, `:387` human branch). Surfaced while
+  testing the `config list` redaction. **Upstream behaves identically** —
+  it redacts `list` but not `set`/`get` — so this is not a regression and
+  not part of the ported fix. It also follows upstream's own stated
+  rationale for leaving `get` alone: `list` dumps every value without
+  anyone asking for a specific credential, whereas `set` is an explicit
+  single-value request where the user just typed the secret on their own
+  command line. Changing it would be a deliberate divergence from
+  upstream, not a port; if someone wants it (shoulder-surfing and shell
+  scrollback are the real arguments), do it as its own decision.
+- **`handleSet`'s human branch touches `theme.status`**, which is
+  uninitialized under test — existing and new tests drive it with
+  `{ json: true }`. Worth knowing before writing a human-output test.
+
+### Landmines recorded for whoever ports next
+
+- **`tencent` is fork-only.** `registry.ts` asserts
+  `Exclude<KnownProvider, RegistryDef["id"]> extends never`. Taking
+  upstream's `registry.ts` wholesale = compile error; taking upstream's
+  `descriptors.ts` wholesale = silent provider deletion. Never take either
+  file whole.
+- **`omp://` scheme, `__omp_worker_*` argv selectors, and
+  `DEFAULT_RELAY_URL = "wss://my.omp.sh"` are byte-identical to upstream
+  on purpose.** Do not "finish" the rebrand on these.
+- **Upstream's 17.0.0 folds `irc` + `job` + `launch` into one `hub` tool**
+  and deletes `resolve`/`report_finding`/`ssh`/`search_tool_bm25`. The
+  fork ships all of it. The literal string `"job"` is hardcoded at ~10
+  sites across 5 files where the guard compares a plain `string`, so
+  adopting the fold would raise **no type error** and silently regress the
+  transcript. Agent-contract redesign — needs its own decision.
+- **BSD grep on darwin silently returns 0 matches for GNU BRE `\|`,
+  `\+`, `\?`** with exit 1 — indistinguishable from a real no-match. Three
+  false negatives were produced this session before it was caught. Use
+  `grep -E` or the harness grep tool, and never accept a bare zero-result
+  grep as proof of absence.
