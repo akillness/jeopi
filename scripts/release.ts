@@ -38,12 +38,32 @@ function git(args: readonly string[]) {
 // Shared functions
 // =============================================================================
 
+/**
+ * `gh` resolves its default repo from the checkout's remotes. With both
+ * `origin` (the fork) and `upstream` (oh-my-pi) configured and no
+ * `gh repo set-default`, it silently picks upstream, so `gh run list --commit`
+ * never sees the release run and the watcher spins on "Waiting for CI to
+ * start..." forever (v16.5.1). The script pushes to `origin`, so CI lives
+ * there — address it explicitly on every `gh run` call.
+ */
+async function resolveOriginRepo(): Promise<string> {
+	const url = (await git(["remote", "get-url", "origin"]).text()).trim();
+	const match = /github\.com[/:]([^/:]+\/[^/]+?)(?:\.git)?\/?$/.exec(url);
+	if (!match?.[1]) {
+		throw new Error(`Cannot derive a GitHub owner/repo from the origin remote URL: ${url}`);
+	}
+	return match[1];
+}
+
 async function watchCI(): Promise<boolean> {
+	const repo = await resolveOriginRepo();
 	const commitSha = (await git(["rev-parse", "HEAD"]).text()).trim();
+	console.log(`  Repo: ${repo}`);
 	console.log(`  Commit: ${commitSha.slice(0, 8)}`);
 
 	while (true) {
-		const runsOutput = await $`gh run list --commit ${commitSha} --json databaseId,status,conclusion,name`.text();
+		const runsOutput =
+			await $`gh run list -R ${repo} --commit ${commitSha} --json databaseId,status,conclusion,name`.text();
 		const runs: Array<{ databaseId: number; status: string; conclusion: string | null; name: string }> =
 			JSON.parse(runsOutput);
 
@@ -58,7 +78,7 @@ async function watchCI(): Promise<boolean> {
 		const inProgressRuns = runs.filter(r => r.status === "in_progress" || r.status === "queued");
 
 		for (const run of inProgressRuns) {
-			const jobsOutput = await $`gh run view ${run.databaseId} --json jobs`.quiet().nothrow().text();
+			const jobsOutput = await $`gh run view -R ${repo} ${run.databaseId} --json jobs`.quiet().nothrow().text();
 			try {
 				const { jobs } = JSON.parse(jobsOutput) as {
 					jobs: Array<{ name: string; databaseId: number; status: string; conclusion: string | null }>;
@@ -83,7 +103,7 @@ async function watchCI(): Promise<boolean> {
 			for (const f of failedJobs) {
 				console.error(`  - ${f.workflow} / ${f.job} (job ${f.jobId}): ${f.conclusion}`);
 				// Tail the failed job's log
-				const log = await $`gh run view --job ${f.jobId} --log-failed`.quiet().nothrow().text();
+				const log = await $`gh run view -R ${repo} --job ${f.jobId} --log-failed`.quiet().nothrow().text();
 				if (log.trim()) {
 					const lines = log.trimEnd().split("\n");
 					const tail = lines.slice(-20).join("\n");
@@ -105,14 +125,17 @@ async function watchCI(): Promise<boolean> {
 			for (const r of failed) {
 				console.error(`  - ${r.name}: ${r.conclusion}`);
 				// Fetch failed jobs and tail their logs
-				const jobsOutput = await $`gh run view ${r.databaseId} --json jobs`.quiet().nothrow().text();
+				const jobsOutput = await $`gh run view -R ${repo} ${r.databaseId} --json jobs`.quiet().nothrow().text();
 				try {
 					const { jobs } = JSON.parse(jobsOutput) as {
 						jobs: Array<{ name: string; databaseId: number; status: string; conclusion: string | null }>;
 					};
 					for (const job of jobs) {
 						if (job.conclusion !== "success" && job.conclusion !== "skipped") {
-							const log = await $`gh run view --job ${job.databaseId} --log-failed`.quiet().nothrow().text();
+							const log = await $`gh run view -R ${repo} --job ${job.databaseId} --log-failed`
+								.quiet()
+								.nothrow()
+								.text();
 							if (log.trim()) {
 								const lines = log.trimEnd().split("\n");
 								const tail = lines.slice(-20).join("\n");
