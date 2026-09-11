@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.5.1] - 2026-09-11
+
 ### Fixed
 
 - Fixed Anthropic OAuth requests for newer models (e.g. `claude-fable-5-1`) failing with `400 invalid_request_error: "Claude Code 2.1.165 does not support this model; version 2.1.251 or newer is required"`. The stealth fingerprint now tracks Claude Code 2.1.268: `claudeCodeVersion` `2.1.165` → `2.1.268` (flows into the `cc_version` billing header and the `claude-cli/<version>` user-agents), `claudeAgentSdkVersion` `0.3.165` → `0.3.268`, `X-Stainless-Package-Version` `0.94.0` → `0.112.1` (the `@anthropic-ai/sdk` bundled by that release, now exported as `claudeCodeSdkVersion` and shared with the token-refresh user-agent), `X-Stainless-Runtime-Version` `v24.3.0` → `v26.3.0`, `X-Stainless-Timeout` `900` → `600`, and `anthropic-client-version` `1.11187.4` → `1.49585.0`. `bun run check-spoofed-versions` now also reports Claude Code and Claude Agent SDK drift so the next minimum-version bump is caught before users hit it.
