@@ -1146,3 +1146,50 @@ outrank sequential checkpoint progress. Those were ported first.
   generates that per target; the committed state must stay the null
   placeholder. Now gitignored — but diff the release commit against the prior
   tag before pushing, never just `git status`.
+
+## Session 2026-09-11 — Claude Code fingerprint version gate (Fable 5.1)
+
+Live failure, not checkpoint work: `anthropic/claude-fable-5-1` over OAuth
+returned `400 invalid_request_error: "Claude Code 2.1.165 does not support
+this model; version 2.1.251 or newer is required"` (dumps under
+`~/.jeopi/logs/http-400-requests/`). Anthropic gates new models on the
+`cc_version` billing header, so every future minimum-version bump will
+reproduce this class of failure until the fingerprint moves.
+
+### Ported this session
+
+- [x] **Fingerprint re-alignment** — upstream `30b974f84e` (2.1.251 bump)
+  and the constant half of `6d2bfc2abb` (2.1.257 alignment), taken as
+  values re-derived from the real Claude Code **2.1.268** binary
+  (`~/.local/share/claude/versions/2.1.268`, `strings`-verified) rather
+  than upstream's numbers: `claudeCodeVersion` 2.1.268, `claudeAgentSdkVersion`
+  0.3.268 (npm latest), new `claudeCodeSdkVersion` 0.112.1
+  (`X-Stainless-Package-Version` and the token-refresh
+  `anthropic-sdk-typescript/<v> userOAuthProvider` UA), runtime `v26.3.0`
+  (Bun 1.4.1), `X-Stainless-Timeout` 600 (CC default `API_TIMEOUT_MS`
+  600000), `anthropic-client-version` 1.49585.0 (installed Claude.app).
+  Wire-verified: `PI_REQ_DEBUG=1` capture shows `HTTP 200 OK` from
+  `claude-fable-5-1` with `cc_version=2.1.268.<fp>; cc_entrypoint=local-agent`.
+- [x] **`scripts/check-spoofed-versions.ts`** now checks Claude Code
+  (GitHub `anthropics/claude-code` latest release) and Claude Agent SDK
+  (npm `latest`) alongside Gemini CLI, per-file. Fork-only; upstream's
+  checker is still Gemini-only.
+
+### Observed, deliberately not changed
+
+- **Upstream switched the fingerprint identity to the CLI** (`cc_entrypoint=cli`,
+  `claude-cli/<v> (external, cli)`, "You are Claude Code, Anthropic's official
+  CLI for Claude.", dropped `x-client-request-id`, dropped
+  `advanced-tool-use-2025-11-20`, `cache_control` on the identity block,
+  constants moved to `providers/claude-code-fingerprint.ts` to break an init
+  cycle). The fork keeps the Cowork `local-agent` + Agent SDK identity: both
+  `local-agent` and the SDK instruction string still exist in CC 2.1.268, the
+  version gate is the only thing the server enforced, and the alignment tests
+  pin the `local-agent` bytes. Switching identity is its own decision.
+- **Upstream's `models.json` carries `claude-fable-5-1` (+ effort/thinking
+  variants); the fork's bundled catalog does not.** OAuth model discovery
+  already serves it (`~/.jeopi/agent/models.db` `anthropic` row, full
+  cost/thinking metadata), so nothing breaks; regenerating via
+  `bun run gen:models` is a separate catalog task.
+- **Gemini CLI spoofed version drifts 0.46.0 → 0.59.0** (checker output).
+  Untouched — different provider, no reported failure.

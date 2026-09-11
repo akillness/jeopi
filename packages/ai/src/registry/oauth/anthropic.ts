@@ -3,7 +3,7 @@
  */
 
 import * as AIError from "../../error";
-import { claudeCodeVersion } from "../../providers/anthropic";
+import { claudeCodeSdkVersion, claudeCodeVersion } from "../../providers/anthropic";
 import type { FetchImpl } from "../../types";
 import { OAuthCallbackFlow } from "./callback-server";
 import { generatePKCE } from "./pkce";
@@ -284,7 +284,7 @@ export async function refreshAnthropicToken(
 			{
 				// CC sends these on refresh but not on the initial code exchange
 				"anthropic-beta": "oauth-2025-04-20",
-				"User-Agent": "anthropic-sdk-typescript/0.94.0 userOAuthProvider",
+				"User-Agent": `anthropic-sdk-typescript/${claudeCodeSdkVersion} userOAuthProvider`,
 			},
 		);
 	} catch (error) {

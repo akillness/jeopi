@@ -421,10 +421,18 @@ function getCacheControl(
 	};
 }
 
-// Stealth mode: mimic Claude Code's request fingerprint.
-export const claudeCodeVersion = "2.1.165";
-export const claudeAgentSdkVersion = "0.3.165";
-export const claudeClientVersion = "1.11187.4";
+// Stealth mode: mimic Claude Code's request fingerprint (Cowork `local-agent`
+// entrypoint hosting the Claude Agent SDK). Anthropic gates newer models on
+// `cc_version` (e.g. Claude Fable 5.1 rejects anything below 2.1.251 with
+// "Claude Code <v> does not support this model"), so this must track the
+// current Claude Code release. `bun run check-spoofed-versions` reports drift.
+export const claudeCodeVersion = "2.1.268";
+/** `@anthropic-ai/claude-agent-sdk` release paired with `claudeCodeVersion` (same patch number). */
+export const claudeAgentSdkVersion = "0.3.268";
+/** `@anthropic-ai/sdk` version bundled by the Claude Code release above (`X-Stainless-Package-Version`). */
+export const claudeCodeSdkVersion = "0.112.1";
+/** Claude desktop app version reported by the `local-agent` entrypoint (`anthropic-client-version`). */
+export const claudeClientVersion = "1.49585.0";
 export const claudeToolPrefix: string = "_";
 export const claudeCodeSystemInstruction = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 // Claude Code caps requested output at 64k tokens even when the model ceiling is
@@ -467,13 +475,15 @@ export function mapStainlessArch(arch: string): "x64" | "arm64" | "x86" | `other
 
 export const claudeCodeHeaders = {
 	"X-Stainless-Retry-Count": "0",
-	"X-Stainless-Runtime-Version": "v24.3.0",
-	"X-Stainless-Package-Version": "0.94.0",
+	// Bun 1.4.1 (bundled with Claude Code 2.1.268) reports Node v26.3.0.
+	"X-Stainless-Runtime-Version": "v26.3.0",
+	"X-Stainless-Package-Version": claudeCodeSdkVersion,
 	"X-Stainless-Runtime": "node",
 	"X-Stainless-Lang": "js",
 	"X-Stainless-Arch": mapStainlessArch(process.arch),
 	"X-Stainless-OS": mapStainlessOs(process.platform),
-	"X-Stainless-Timeout": "900",
+	// Claude Code's default API_TIMEOUT_MS is 600000; the SDK emits it in seconds.
+	"X-Stainless-Timeout": "600",
 	"anthropic-client-platform": "desktop_app",
 	"anthropic-client-version": claudeClientVersion,
 };
