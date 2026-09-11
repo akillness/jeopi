@@ -137,7 +137,10 @@ describe("zodToWireSchema — nullable scalar normalization", () => {
 	});
 
 	it("leaves mixed nullable unions as anyOf", () => {
-		const schema = z.object({ value: z.union([z.string(), z.number()]).nullable() });
+		// zod ≥ 4.5 already folds an all-scalar union into a `type` array, so a
+		// scalar/object union is the shape that still reaches the normalizer as
+		// `anyOf: [{ anyOf: [...] }, { type: "null" }]`.
+		const schema = z.object({ value: z.union([z.string(), z.object({ id: z.number() })]).nullable() });
 		const wire = zodToWireSchema(schema);
 		const value = (wire.properties as Record<string, unknown>).value as Record<string, unknown>;
 		expect(value.type).toBeUndefined();
