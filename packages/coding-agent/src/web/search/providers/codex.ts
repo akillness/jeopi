@@ -44,17 +44,12 @@ function getDefaultModelCandidates(): string[] {
 	const bundledModels = getBundledModels("openai-codex");
 	const bundledIds = new Set(bundledModels.map(model => model.id));
 	const candidates = DEFAULT_MODEL_PREFERENCES.filter(modelId => bundledIds.has(modelId));
-
-	if (candidates.length > 0) {
-		return candidates;
+	for (const model of bundledModels) {
+		if (/^gpt-\d/.test(model.id) && !candidates.includes(model.id)) {
+			candidates.push(model.id);
+		}
 	}
-
-	const nonMini = bundledModels.find(model => !model.id.includes("mini") && !model.id.includes("spark"));
-	if (nonMini) {
-		return [nonMini.id];
-	}
-
-	return bundledModels[0]?.id ? [bundledModels[0].id] : [FALLBACK_MODEL];
+	return candidates.length > 0 ? candidates : [FALLBACK_MODEL];
 }
 
 function shouldRetryWithNextDefaultModel(error: unknown): boolean {
@@ -489,8 +484,8 @@ async function callCodexSearch(
  * Default-model behavior:
  * - If `PI_CODEX_WEB_SEARCH_MODEL` is set, use it exactly once and surface any
  *   upstream error verbatim.
- * - Otherwise prefer ChatGPT-account-safe bundled defaults (GPT-5.4, GPT-5
- *   Codex, GPT-5, …) and retry the next candidate only when Codex returns the
+ * - Otherwise prefer known bundled defaults, then include newly cataloged GPT
+ *   models, and retry the next candidate only when Codex returns the
  *   known 400 "model is not supported" family. This avoids selecting
  *   `gpt-5-codex-mini` first on ChatGPT accounts, which OpenAI rejects.
  */

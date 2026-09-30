@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage, FetchImpl } from "jeopi-ai";
+import * as catalogModels from "jeopi-catalog/models";
 import type { SearchParams } from "jeopi-cli/web/search/providers/base";
 import { searchCodex } from "jeopi-cli/web/search/providers/codex";
 
@@ -244,6 +245,12 @@ describe("searchCodex model selection", () => {
 	});
 
 	it("retries the next bundled default when Codex rejects a model for ChatGPT accounts", async () => {
+		const model = catalogModels.getBundledModel("openai-codex", "gpt-5.5")!;
+		vi.spyOn(catalogModels, "getBundledModels").mockReturnValue([
+			model,
+			{ ...model, id: "gpt-7-future" },
+			{ ...model, id: "codex-auto-review" },
+		]);
 		delete process.env.PI_CODEX_WEB_SEARCH_MODEL;
 		let calls = 0;
 		capturedRequest = null;
@@ -268,9 +275,9 @@ describe("searchCodex model selection", () => {
 				);
 			}
 
-			expect(requestedModel).toBe("gpt-5.4");
+			expect(requestedModel).toBe("gpt-7-future");
 			return Promise.resolve(
-				new Response(makeSseResponse("gpt-5.4"), {
+				new Response(makeSseResponse("gpt-7-future"), {
 					status: 200,
 					headers: { "Content-Type": "text/event-stream" },
 				}),
@@ -280,7 +287,7 @@ describe("searchCodex model selection", () => {
 		const result = await searchCodex(makeSearchParams("retry unsupported default", fetchMock));
 
 		expect(calls).toBe(2);
-		expect(result.model).toBe("gpt-5.4");
+		expect(result.model).toBe("gpt-7-future");
 		expect(result.sources).toEqual([{ title: "Example Article", url: "https://example.com/article" }]);
 	});
 

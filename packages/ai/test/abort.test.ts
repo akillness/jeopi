@@ -195,7 +195,7 @@ describe("AI Providers Abort Tests", () => {
 		it.skipIf(!openaiCodexToken)(
 			"should abort mid-stream",
 			async () => {
-				const llm = getBundledModel("openai-codex", "gpt-5.2-codex");
+				const llm = getBundledModel("openai-codex", "gpt-5.5");
 				await testAbortSignal(llm, { apiKey: openaiCodexToken });
 			},
 			{ retry: 3 },
@@ -204,7 +204,7 @@ describe("AI Providers Abort Tests", () => {
 		it.skipIf(!openaiCodexToken)(
 			"should handle immediate abort",
 			async () => {
-				const llm = getBundledModel("openai-codex", "gpt-5.2-codex");
+				const llm = getBundledModel("openai-codex", "gpt-5.5");
 				await testImmediateAbort(llm, { apiKey: openaiCodexToken });
 			},
 			{ retry: 3 },

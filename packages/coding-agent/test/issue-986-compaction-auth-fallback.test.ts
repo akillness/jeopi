@@ -31,7 +31,7 @@ describe("issue #986 compaction auth fallback", () => {
 	});
 
 	async function createSession(options?: { fallbackModelRole?: string; configureFallbackAuth?: boolean }) {
-		const currentModel = getBundledModel("openai-codex", "gpt-5.4-mini");
+		const currentModel = getBundledModel("openai-codex", "gpt-5.5");
 		const fallbackModel = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!currentModel || !fallbackModel) {
 			throw new Error("Expected bundled test models to exist");
@@ -86,7 +86,7 @@ describe("issue #986 compaction auth fallback", () => {
 		const compactSpy = vi.spyOn(compactionModule, "compact").mockImplementation(async (preparation, model) => {
 			if (model.provider === currentModel.provider && model.id === currentModel.id) {
 				throw new Error(
-					"Turn prefix summarization failed: 503 auth_unavailable: no auth available (providers=codex, model=gpt-5.4-mini)",
+					"Turn prefix summarization failed: 503 auth_unavailable: no auth available (providers=codex, model=gpt-5.5)",
 				);
 			}
 			if (model.provider !== fallbackModel.provider || model.id !== fallbackModel.id) {
@@ -121,7 +121,7 @@ describe("issue #986 compaction auth fallback", () => {
 		vi.spyOn(compactionModule, "compact").mockImplementation(async (_preparation, model) => {
 			if (model.provider === currentModel.provider && model.id === currentModel.id) {
 				throw new Error(
-					"Summarization failed: 503 auth_unavailable: no auth available (providers=codex, model=gpt-5.4-mini)",
+					"Summarization failed: 503 auth_unavailable: no auth available (providers=codex, model=gpt-5.5)",
 				);
 			}
 			throw new Error(`Unexpected compaction model ${model.provider}/${model.id}`);

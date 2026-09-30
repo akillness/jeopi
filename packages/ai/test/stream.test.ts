@@ -1692,8 +1692,8 @@ describe("Generate E2E Tests", () => {
 		);
 	});
 
-	describe("OpenAI Codex Provider (gpt-5.2-codex)", () => {
-		const llm = getBundledModel("openai-codex", "gpt-5.2-codex");
+	describe("OpenAI Codex Provider (gpt-5.5)", () => {
+		const llm = getBundledModel("openai-codex", "gpt-5.5");
 
 		it.skipIf(!openaiCodexToken)(
 			"should complete basic text generation",

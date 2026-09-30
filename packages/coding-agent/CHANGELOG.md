@@ -2,11 +2,12 @@
 
 ## [Unreleased]
 
-## [16.5.4] - 2026-09-30
+## [16.5.5] - 2026-09-30
 
 ### Fixed
 
 - Preserve newly discovered OpenAI and Codex models across restarts with credential-scoped caches, including OAuth expiry and multi-account rotation, and honor configured Codex discovery endpoints.
+- Include newly cataloged Codex models in web-search fallback candidates instead of limiting retries to obsolete hard-coded model IDs.
 
 ## [16.5.0] - 2026-08-19
 
