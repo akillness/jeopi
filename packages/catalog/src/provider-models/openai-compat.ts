@@ -81,10 +81,11 @@ function toInputCapabilities(value: unknown): ("text" | "image")[] {
 	return supportsImage ? ["text", "image"] : ["text"];
 }
 
-async function fetchModelsDevPayload(fetchImpl: FetchImpl = discoveryFetch()): Promise<unknown> {
+async function fetchModelsDevPayload(fetchImpl: FetchImpl = discoveryFetch(), signal?: AbortSignal): Promise<unknown> {
 	const response = await fetchImpl(MODELS_DEV_URL, {
 		method: "GET",
 		headers: { Accept: "application/json" },
+		signal,
 	});
 	if (!response.ok) {
 		throw new Error(`models.dev fetch failed: ${response.status}`);
@@ -449,22 +450,26 @@ const OPENAI_NON_RESPONSES_PREFIXES = [
 	"omni-speech",
 	"gpt-image-",
 	"gpt-realtime",
+	"gpt-live",
+	"gpt-audio",
+	"gpt-transcribe",
+	"chatgpt-image",
 ] as const;
 
-function isLikelyOpenAIResponsesModelId(id: string, references: Map<string, ModelSpec<"openai-responses">>): boolean {
+function isLikelyOpenAIResponsesModelId(id: string, references?: Map<string, ModelSpec<"openai-responses">>): boolean {
 	const trimmed = id.trim();
 	if (!trimmed) {
 		return false;
 	}
-	if (references.has(trimmed)) {
-		return true;
-	}
-	const normalized = trimmed.toLowerCase();
+	const normalized = trimmed.replace(/^ft:/, "").split(":")[0].toLowerCase();
 	if (OPENAI_NON_RESPONSES_PREFIXES.some(prefix => normalized.startsWith(prefix))) {
 		return false;
 	}
-	if (normalized.includes("embedding")) {
+	if (/(?:embedding|audio|realtime|transcribe|tts|search-preview|deep-research)/.test(normalized)) {
 		return false;
+	}
+	if (references?.has(trimmed)) {
+		return true;
 	}
 	return (
 		normalized.startsWith("gpt-") ||
@@ -798,20 +803,50 @@ export function openaiModelManagerOptions(config?: OpenAIModelManagerConfig): Mo
 	const references = createBundledReferenceMap<"openai-responses">("openai");
 	return {
 		providerId: "openai",
+		cacheProviderId: `openai:models-v2:${Bun.hash(`${baseUrl}\u0000${apiKey ?? ""}`).toString(36)}`,
+		dynamicModelsAuthoritative: true,
 		...(apiKey && {
-			fetchDynamicModels: () =>
-				fetchOpenAICompatibleModels({
+			fetchDynamicModels: async () => {
+				// /models only reports identity/availability. Refresh public metadata
+				// separately, without forwarding the account's bearer token.
+				const liveReferences = new Map<string, ModelSpec<"openai-responses">>();
+				try {
+					const payload = await withCatalogDiscoveryTimeout(5_000, signal =>
+						fetchModelsDevPayload(discoveryFetch(config?.fetch), signal),
+					);
+					if (isRecord(payload)) {
+						for (const model of mapModelsDevToModels(
+							payload,
+							MODELS_DEV_PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.providerId === "openai"),
+						)) {
+							liveReferences.set(model.id, model as ModelSpec<"openai-responses">);
+						}
+					}
+				} catch {
+					// Public metadata outages must not prevent account discovery.
+				}
+				return fetchOpenAICompatibleModels({
 					api: "openai-responses",
 					provider: "openai",
 					baseUrl,
 					apiKey,
 					filterModel: (_entry, model) => isLikelyOpenAIResponsesModelId(model.id, references),
 					mapModel: (entry, defaults) => {
-						const reference = references.get(defaults.id);
+						const canonicalId = defaults.id
+							.replace(/^ft:/, "")
+							.split(":")[0]
+							.replace(/-\d{4}-\d{2}-\d{2}$/, "");
+						const reference =
+							liveReferences.get(defaults.id) ??
+							liveReferences.get(canonicalId) ??
+							references.get(defaults.id) ??
+							references.get(canonicalId);
 						return mapWithBundledReference(entry, defaults, reference);
 					},
+					timeoutMs: 10_000,
 					fetch: config?.fetch,
-				}),
+				});
+			},
 		}),
 	};
 }
@@ -4023,7 +4058,9 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CORE: readonly ModelsDevProviderDescriptor
 		"https://generativelanguage.googleapis.com/v1beta",
 	),
 	// --- OpenAI ---
-	simpleModelsDevDescriptor("openai", "openai", "openai-responses", "https://api.openai.com/v1"),
+	simpleModelsDevDescriptor("openai", "openai", "openai-responses", "https://api.openai.com/v1", {
+		filterModel: (id, model) => model.tool_call === true && isLikelyOpenAIResponsesModelId(id),
+	}),
 	// --- Groq ---
 	openAiCompletionsDescriptor("groq", "groq", "https://api.groq.com/openai/v1"),
 	// --- Cerebras ---

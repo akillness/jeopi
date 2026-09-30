@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [16.5.2] - 2026-09-30
+
+### Fixed
+
+- Refresh OpenAI account model lists with current OpenAI metadata from models.dev, including GPT-6 and GPT-6.1, dated snapshots, and fine-tunes; exclude audio, image, and specialized models unsupported by the coding agent.
+- Replace stale OpenAI and Codex model lists after successful discovery and isolate cached lists by endpoint and credentials.
+
+### Added
+
+- Support scoped catalog regeneration with repeatable `gen:models --provider <provider-id>` options.
+
 ## [16.4.3] - 2026-07-22
 
 ### Fixed

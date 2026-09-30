@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [16.5.2] - 2026-09-30
+
+### Added
+
+- Add a non-mutating credential-configuration identity for model caches that survives OAuth expiry and account token rotation.
+
 ## [16.5.1] - 2026-09-11
 
 ### Fixed

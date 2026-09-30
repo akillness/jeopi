@@ -4,6 +4,7 @@ import type { DevinModelDiscoveryOptions } from "../discovery/devin";
 import { buildGitLabDuoWorkflowFallbackModel, fetchGitLabDuoWorkflowModels } from "../discovery/gitlab-duo-workflow";
 import type { ModelManagerOptions } from "../model-manager";
 import type { FetchImpl } from "../types";
+import { CODEX_BASE_URL } from "../wire/codex";
 
 // ---------------------------------------------------------------------------
 // OpenAI Codex
@@ -13,18 +14,29 @@ export interface OpenAICodexModelManagerConfig {
 	accessToken?: string;
 	accountId?: string;
 	clientVersion?: string;
+	baseUrl?: string;
+	fetch?: FetchImpl;
 }
 
 export function openaiCodexModelManagerOptions(
 	config: OpenAICodexModelManagerConfig = {},
 ): ModelManagerOptions<"openai-codex-responses"> {
 	const { accessToken, accountId, clientVersion } = config;
+	const baseUrl = (config.baseUrl ?? CODEX_BASE_URL).replace(/\/+$/, "").replace(/\/codex(?:\/responses)?$/, "");
 	return {
 		providerId: "openai-codex",
+		cacheProviderId: `openai-codex:models-v2:${Bun.hash(`${baseUrl ?? ""}\u0000${accountId ?? ""}\u0000${accessToken ?? ""}`).toString(36)}`,
+		dynamicModelsAuthoritative: true,
 		...(accessToken
 			? {
 					fetchDynamicModels: async () => {
-						const result = await fetchCodexModels({ accessToken, accountId, clientVersion });
+						const result = await fetchCodexModels({
+							accessToken,
+							accountId,
+							clientVersion,
+							baseUrl,
+							fetchFn: config.fetch,
+						});
 						return result?.models ?? null;
 					},
 				}

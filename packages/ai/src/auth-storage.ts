@@ -3803,6 +3803,29 @@ export class AuthStorage {
 		return this.#fallbackResolver?.(provider) ?? undefined;
 	}
 
+	/** Stable configuration scope for model caches; never selects or refreshes credentials. */
+	getModelCacheIdentity(provider: string): string {
+		const override = this.#runtimeOverrides.get(provider) ?? this.#configOverrides.get(provider);
+		const credentials = this.#getCredentialsForProvider(provider);
+		const oauthIdentities = credentials
+			.filter((credential): credential is OAuthCredential => credential.type === "oauth")
+			.map(credential => credential.accountId ?? credential.refresh ?? credential.access)
+			.sort();
+		const envKey = getEnvApiKey(provider);
+		const keys = credentials
+			.filter((credential): credential is ApiKeyCredential => credential.type === "api_key")
+			.map(credential => process.env[credential.key] ?? credential.key)
+			.sort();
+		const identity = override
+			? ["override", override]
+			: oauthIdentities.length > 0
+				? ["oauth", oauthIdentities]
+				: envKey
+					? ["env", envKey]
+					: ["keys", keys];
+		return Bun.hash(JSON.stringify(identity)).toString(36);
+	}
+
 	/**
 	 * Get API key for a provider.
 	 * Priority (first match wins):

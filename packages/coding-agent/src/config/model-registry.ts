@@ -1028,6 +1028,24 @@ export class ModelRegistry {
 	}
 
 	#resolveStartupModelCacheProviderId(providerId: string): string {
+		if (providerId === "openai" || providerId === "openai-codex") {
+			const commandKey = this.#resolveCommandBackedApiKey(providerId);
+			const apiKey = commandKey.configured ? commandKey.value : this.authStorage.getModelCacheIdentity(providerId);
+			const baseUrl =
+				this.#runtimeProviderOverrides.get(providerId)?.baseUrl ??
+				this.#providerOverrides.get(providerId)?.baseUrl ??
+				this.getProviderBaseUrl(providerId);
+			if (providerId === "openai-codex") {
+				return (
+					openaiCodexModelManagerOptions({
+						accessToken: apiKey,
+						baseUrl,
+					}).cacheProviderId ?? providerId
+				);
+			}
+			const descriptor = PROVIDER_DESCRIPTORS.find(candidate => candidate.providerId === providerId);
+			return descriptor?.createModelManagerOptions({ apiKey, baseUrl }).cacheProviderId ?? providerId;
+		}
 		const descriptor = PROVIDER_DESCRIPTORS.find(candidate => candidate.providerId === providerId);
 		if (!descriptor) {
 			return providerId;
@@ -1594,6 +1612,8 @@ export class ModelRegistry {
 					return openaiCodexModelManagerOptions({
 						accessToken,
 						accountId,
+						baseUrl: this.getProviderBaseUrl("openai-codex"),
+						fetch: this.#fetch,
 					});
 				},
 			},
@@ -1644,6 +1664,11 @@ export class ModelRegistry {
 				continue;
 			}
 			options.push(descriptor.createOptions(key));
+		}
+		for (const option of options) {
+			if (option.providerId === "openai" || option.providerId === "openai-codex") {
+				option.cacheProviderId = this.#resolveStartupModelCacheProviderId(option.providerId);
+			}
 		}
 		// Append runtime model managers registered by extensions via fetchDynamicModels.
 		for (const { options: managerOpts } of this.#runtimeModelManagers.values()) {

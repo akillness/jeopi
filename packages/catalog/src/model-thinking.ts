@@ -513,6 +513,9 @@ function impliesMandatoryReasoning(parsed: ParsedModel, modelId: string): boolea
 	}
 	if (isMinimaxM2FamilyModelId(modelId)) return true;
 	if (OPENAI_O_SERIES_RE.test(bareModelId(modelId))) return true;
+	// These GPT-6 models reject "none"; Sol/Luna 6.0 still accept it.
+	const canonicalOpenAIId = bareModelId(modelId).replace(/^ft:/, "").split(":")[0];
+	if (/^gpt-(?:6-astra|6\.1-sol)(?:$|-)/i.test(canonicalOpenAIId)) return true;
 	return findThinkingVariantToken(modelId) !== undefined;
 }
 

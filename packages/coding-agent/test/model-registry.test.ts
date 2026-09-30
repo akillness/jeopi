@@ -1985,10 +1985,10 @@ describe("ModelRegistry", () => {
 			expect(cacheOnlyModel?.omitMaxOutputTokens).toBe(true);
 		});
 
-		test("loads cached special provider discovery models on startup", () => {
+		test("loads cached Google discovery models and ignores the retired Codex cache namespace on startup", () => {
 			expect(specialCache.find("google-antigravity", "gemini-cache-only-flash")?.maxTokens).toBe(8_192);
 			expect(specialCache.find("google-gemini-cli", "gemini-3.5-flash")?.maxTokens).toBe(16_384);
-			expect(specialCache.find("openai-codex", "gpt-5.4-codex-pro")?.maxTokens).toBe(128_000);
+			expect(specialCache.find("openai-codex", "gpt-5.4-codex-pro")).toBeUndefined();
 		});
 
 		test("applies provider remoteCompaction to cached configured discovery models", () => {

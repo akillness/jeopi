@@ -27,7 +27,7 @@ import {
 	type CatalogProviderDescriptor,
 	isCatalogDescriptor,
 } from "../src/provider-models/descriptor-types";
-import { PROVIDER_DESCRIPTORS } from "../src/provider-models/descriptors";
+import { CATALOG_PROVIDERS, PROVIDER_DESCRIPTORS } from "../src/provider-models/descriptors";
 import {
 	ANTHROPIC_CURATED_FALLBACK_MODELS,
 	buildFireworksFastSeed,
@@ -54,6 +54,19 @@ import {
 } from "./generated-policies";
 
 const packageRoot = path.join(import.meta.dir, "..");
+const selectedProviders = new Set<string>();
+for (let index = 2; index < process.argv.length; index++) {
+	if (process.argv[index] !== "--provider" || !process.argv[index + 1]) {
+		throw new Error("Usage: generate-models.ts [--provider <provider-id>]...");
+	}
+	const providerId = process.argv[++index];
+	if (!CATALOG_PROVIDERS.some(descriptor => descriptor.id === providerId)) {
+		throw new Error(`Unknown provider: ${providerId}`);
+	}
+	selectedProviders.add(providerId);
+}
+const includesProvider = (providerId: string): boolean =>
+	selectedProviders.size === 0 || selectedProviders.has(providerId);
 
 /**
  * Local/self-hosted providers (Ollama, vLLM, LM Studio, LiteLLM). Their model
@@ -451,7 +464,9 @@ async function generateModels() {
 	const modelsDevModels = await loadModelsDevData();
 	const catalogProviderDescriptors = PROVIDER_DESCRIPTORS.filter(
 		(descriptor): descriptor is CatalogProviderDescriptor =>
-			isCatalogDescriptor(descriptor) && !DISCOVERY_ONLY_PROVIDERS.has(descriptor.providerId),
+			isCatalogDescriptor(descriptor) &&
+			!DISCOVERY_ONLY_PROVIDERS.has(descriptor.providerId) &&
+			includesProvider(descriptor.providerId),
 	);
 	const catalogProviderModelBatches = await Promise.all(
 		catalogProviderDescriptors.map(async descriptor => ({
@@ -525,17 +540,21 @@ async function generateModels() {
 	allModels.push(...buildFireworksFastSeed());
 
 	const specialDiscoverySources = [
-		{ label: "Antigravity", fetch: fetchAntigravityModels },
-		{ label: "Codex", fetch: fetchCodexDiscoveryModels },
+		{ label: "Antigravity", providerId: "google-antigravity", fetch: fetchAntigravityModels },
+		{ label: "Codex", providerId: "openai-codex", fetch: fetchCodexDiscoveryModels },
 	] as const;
 	const specialDiscoveries = await Promise.all(
-		specialDiscoverySources.map(async source => ({
-			label: source.label,
-			models: await source.fetch(),
-		})),
+		specialDiscoverySources
+			.filter(source => includesProvider(source.providerId))
+			.map(async source => ({
+				label: source.label,
+				providerId: source.providerId,
+				models: await source.fetch(),
+			})),
 	);
 	for (const discovery of specialDiscoveries) {
 		if (discovery.models.length > 0) {
+			authoritativeCatalogProviders.add(discovery.providerId);
 			console.log(`Added ${discovery.models.length} models from ${discovery.label} discovery`);
 			allModels.push(...discovery.models);
 		}
@@ -543,7 +562,7 @@ async function generateModels() {
 
 	const modelsDevSnapshotExcludedProviders = new Set<string>();
 	for (const model of modelsDevModels) {
-		if (model.provider === "google-vertex") {
+		if (model.provider === "google-vertex" || model.provider === "openai") {
 			modelsDevSnapshotExcludedProviders.add(model.provider);
 		}
 	}
@@ -566,7 +585,7 @@ async function generateModels() {
 				!authoritativeCatalogProviders.has(model.provider) &&
 				!modelsDevSnapshotExcludedProviders.has(model.provider)
 			) {
-				allModels.push(model);
+				allModels.push(structuredClone(model));
 			}
 		}
 	}
@@ -604,6 +623,7 @@ async function generateModels() {
 	// Group by provider and sort each provider's models
 	const providers: Record<string, Record<string, ModelSpec>> = {};
 	for (const model of allModels) {
+		if (!includesProvider(model.provider)) continue;
 		if (DISCOVERY_ONLY_PROVIDERS.has(model.provider) || RETIRED_PROVIDERS.has(model.provider)) continue;
 		if (!providers[model.provider]) {
 			providers[model.provider] = {};
@@ -624,7 +644,10 @@ async function generateModels() {
 		);
 	};
 
-	const MODELS: Record<string, Record<string, ModelSpec>> = sortObj(providers);
+	const MODELS: Record<string, Record<string, ModelSpec>> = sortObj({
+		...(selectedProviders.size > 0 ? (prevModelsJson as unknown as Record<string, Record<string, ModelSpec>>) : {}),
+		...providers,
+	});
 	for (const key in MODELS) {
 		MODELS[key] = sortObj(MODELS[key]);
 	}

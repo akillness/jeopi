@@ -62,9 +62,9 @@ export interface CodexModelDiscoveryOptions {
 	/** Abort signal for network request cancellation. */
 	signal?: AbortSignal;
 	/** Optional fetch implementation override for tests. */
-	fetchFn?: typeof fetch;
+	fetchFn?: FetchImpl;
 	/** Optional registry fetch implementation override for client version lookup. */
-	registryFetchFn?: typeof fetch;
+	registryFetchFn?: FetchImpl;
 }
 
 /**
