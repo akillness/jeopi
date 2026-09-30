@@ -9,6 +9,7 @@ import {
 	recoverHarmonyToolCall,
 	signalListLabel,
 } from "jeopi-ai/utils/harmony-leak";
+import { buildModel } from "jeopi-catalog/build";
 import { getBundledModel } from "jeopi-catalog/models";
 import corpus from "./fixtures/harmony-leak-corpus.json" with { type: "json" };
 
@@ -26,7 +27,18 @@ interface CorpusNegative {
 const positives = corpus.positives as CorpusPositive[];
 const negatives = corpus.negatives as CorpusNegative[];
 
-const codexModel: Model = getBundledModel("openai-codex", "gpt-5.4");
+const codexModel: Model = buildModel({
+	id: "codex-fixture",
+	name: "Codex fixture",
+	api: "openai-codex-responses",
+	provider: "openai-codex",
+	baseUrl: "https://chatgpt.com/backend-api",
+	reasoning: true,
+	input: ["text"],
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	contextWindow: 400_000,
+	maxTokens: 128_000,
+});
 const anthropicModel: Model = getBundledModel("anthropic", "claude-sonnet-4-5");
 
 function createAssistantMessage(

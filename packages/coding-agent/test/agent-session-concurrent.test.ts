@@ -25,6 +25,7 @@ import { convertToLlm } from "jeopi-cli/session/messages";
 import { SessionManager } from "jeopi-cli/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
+import { codexContextFixture } from "./helpers/codex-context-fixture";
 
 // Mock stream that mimics AssistantMessageEventStream
 
@@ -1815,6 +1816,7 @@ describe("AgentSession TTSR resume gate", () => {
 		authStorages.push(authStorage);
 		authStorage.setRuntimeApiKey("openai-codex", "test-key");
 		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir, "models.yml"));
+		modelRegistry.registerProvider("openai-codex", codexContextFixture);
 
 		const sparkModel = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");
 		const codexModel = modelRegistry.find("openai-codex", "gpt-5.5");

@@ -21,6 +21,21 @@ function createCodexToken(accountId: string): string {
 	return `${header}.${payload}.signature`;
 }
 
+function createCodexHistoryModel(): Model<"openai-codex-responses"> {
+	return buildModel({
+		id: "gpt-5.2-codex",
+		name: "Codex history fixture",
+		api: "openai-codex-responses",
+		provider: "openai-codex",
+		baseUrl: "https://chatgpt.com/backend-api",
+		reasoning: true,
+		input: ["text", "image"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 400_000,
+		maxTokens: 128_000,
+	});
+}
+
 /**
  * Returns the bundled `gpt-5-mini` model with `compat.requiresReasoningSuppressionPrompt`
  * cleared so it doesn't trigger the GPT-5 no-reasoning developer-message
@@ -367,7 +382,7 @@ describe("OpenAI responses history payload", () => {
 		});
 		assertWireOrder(openaiItems);
 
-		const codexModel = getBundledModel("openai-codex", "gpt-5.2-codex") as Model<"openai-codex-responses">;
+		const codexModel = createCodexHistoryModel();
 		const codexItems = convertCodexResponsesMessages(codexModel, makeContext("openai-codex"));
 		assertWireOrder(codexItems);
 	});
@@ -572,7 +587,7 @@ describe("OpenAI responses history payload", () => {
 	});
 
 	it("prefers assistant native history snapshots for openai-codex-responses", async () => {
-		const model = getBundledModel("openai-codex", "gpt-5.2-codex") as Model<"openai-codex-responses">;
+		const model = createCodexHistoryModel();
 		const payload = (await captureCodexPayload(model, codexAssistantSnapshotContext)) as { input?: unknown[] };
 		expect(payload.input).toEqual([
 			...snapshotHistoryItems,
@@ -952,7 +967,7 @@ describe("OpenAI responses history payload", () => {
 				{ role: "user", content: "Resume", timestamp: Date.now() },
 			],
 		};
-		const model = getBundledModel("openai-codex", "gpt-5.2-codex") as Model<"openai-codex-responses">;
+		const model = createCodexHistoryModel();
 		const payload = (await captureCodexPayload(model, context)) as { input?: unknown[] };
 		const functionCallItem = findResponsesInputItem(payload.input, "function_call");
 		const functionCallOutputItem = findResponsesInputItem(payload.input, "function_call_output");

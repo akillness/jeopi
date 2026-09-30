@@ -5,13 +5,13 @@ import * as path from "node:path";
 import type {
 	AssistantMessage,
 	Message,
+	Provider,
 	ProviderPayload,
 	ProviderSessionState,
 	ToolResultMessage,
 	Usage,
 } from "jeopi-ai/types";
 import { createOpenAIResponsesHistoryPayload } from "jeopi-ai/utils";
-import { getBundledModel } from "jeopi-catalog/models";
 import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { Settings } from "jeopi-cli/config/settings";
 import { createAgentSession } from "jeopi-cli/sdk";
@@ -20,6 +20,7 @@ import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import type { SessionEntry, SessionMessageEntry } from "jeopi-cli/session/session-entries";
 import { SessionManager } from "jeopi-cli/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
+import { codexContextFixture } from "./helpers/codex-context-fixture";
 
 function createUsage(): Usage {
 	return {
@@ -243,12 +244,12 @@ let sharedRegistryDir: string;
 async function createSessionHarness(
 	tempDir: string,
 	sessionManager: SessionManager,
-	options: { provider?: Parameters<typeof getBundledModel>[0]; modelId?: string } = {},
+	options: { provider?: Provider; modelId?: string } = {},
 ): Promise<{ session: AgentSession }> {
 	const { provider = "openai", modelId = "gpt-5-mini" } = options;
-	const model = getBundledModel(provider, modelId);
+	const model = sharedModelRegistry.find(provider, modelId);
 	if (!model) {
-		throw new Error(`Expected bundled test model ${provider}/${modelId}`);
+		throw new Error(`Expected test model ${provider}/${modelId}`);
 	}
 
 	const { session } = await createAgentSession({
@@ -289,6 +290,13 @@ describe("AgentSession OpenAI Responses replay boundaries", () => {
 		authStorage.setRuntimeApiKey("openai", "test-key");
 		authStorage.setRuntimeApiKey("openai-codex", "test-key");
 		sharedModelRegistry = new ModelRegistry(authStorage);
+		sharedModelRegistry.registerProvider("openai-codex", {
+			...codexContextFixture,
+			models: codexContextFixture.models?.map(model => ({
+				...model,
+				id: model.id === "gpt-5.3-codex" ? "gpt-5.2-codex" : model.id,
+			})),
+		});
 	});
 
 	afterAll(() => {

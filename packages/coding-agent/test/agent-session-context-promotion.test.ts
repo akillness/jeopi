@@ -8,6 +8,7 @@ import { AgentSession } from "jeopi-cli/session/agent-session";
 import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import { SessionManager } from "jeopi-cli/session/session-manager";
 import { TempDir } from "jeopi-utils";
+import { codexContextFixture } from "./helpers/codex-context-fixture";
 
 describe("AgentSession context promotion", () => {
 	let tempDir: TempDir;
@@ -24,6 +25,7 @@ describe("AgentSession context promotion", () => {
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		authStorage.setRuntimeApiKey("openai-codex", "test-key");
 		modelRegistry = new ModelRegistry(authStorage);
+		modelRegistry.registerProvider("openai-codex", codexContextFixture);
 	});
 
 	afterAll(() => {

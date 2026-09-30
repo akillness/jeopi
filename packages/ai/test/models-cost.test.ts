@@ -72,8 +72,8 @@ describe("calculateCost", () => {
 	});
 
 	it("prices OpenAI Codex GPT models from the matching OpenAI catalog entry", () => {
-		const openAIModel = getBundledModel("openai", "gpt-5.4");
-		const codexModel = getBundledModel("openai-codex", "gpt-5.4");
+		const openAIModel = getBundledModel("openai", "gpt-5.5");
+		const codexModel = getBundledModel("openai-codex", "gpt-5.5");
 		const usage: Usage = {
 			input: 1000,
 			output: 500,
@@ -87,6 +87,6 @@ describe("calculateCost", () => {
 
 		calculateCost(codexModel, usage);
 
-		expect(usage.cost.total).toBeCloseTo(0.01005, 8);
+		expect(usage.cost.total).toBeCloseTo(0.0201, 8);
 	});
 });
