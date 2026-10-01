@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.1] - 2026-10-01
+
 ### Fixed
 
 - Updated transcript Markdown regression coverage for numeric character reference decoding in marked 18.0.14, including decimal and hexadecimal HTML-injection payloads that must remain escaped text.
