@@ -382,14 +382,14 @@ async function getOAuthAccessFromStorage(provider: OAuthProvider): Promise<OAuth
 
 /**
  * Fetch available Antigravity models from the API using the discovery module.
- * Returns empty array if no auth is available (previous models used as fallback).
+ * Returns null on unavailable credentials or discovery failure; [] is authoritative.
  */
-async function fetchAntigravityModels(): Promise<ModelSpec<"google-gemini-cli">[]> {
+async function fetchAntigravityModels(): Promise<ModelSpec<"google-gemini-cli">[] | null> {
 	const access = await getOAuthAccessFromStorage("google-antigravity");
 	if (!access) {
 		console.log("No Antigravity or Gemini CLI credentials found, will use previous models.");
 		console.log("Tip: If you are logged in under a specific profile, run with OMP_PROFILE=<name>.");
-		return [];
+		return null;
 	}
 	try {
 		console.log("Fetching models from Antigravity API...");
@@ -399,17 +399,13 @@ async function fetchAntigravityModels(): Promise<ModelSpec<"google-gemini-cli">[
 		});
 		if (discovered === null) {
 			console.warn("Antigravity API fetch failed, will use previous models");
-			return [];
+			return null;
 		}
-		if (discovered.length > 0) {
-			console.log(`Fetched ${discovered.length} models from Antigravity API`);
-			return discovered;
-		}
-		console.warn("Antigravity API returned no models, will use previous models");
-		return [];
+		console.log(`Fetched ${discovered.length} models from Antigravity API`);
+		return discovered;
 	} catch (error) {
 		console.error("Failed to fetch Antigravity models:", error);
-		return [];
+		return null;
 	}
 }
 
@@ -553,8 +549,11 @@ async function generateModels() {
 			})),
 	);
 	for (const discovery of specialDiscoveries) {
-		if (discovery.models.length > 0) {
+		if (discovery.models !== null && (discovery.providerId === "google-antigravity" || discovery.models.length > 0)) {
 			authoritativeCatalogProviders.add(discovery.providerId);
+			if (discovery.providerId === "google-antigravity") {
+				allModels = allModels.filter(model => model.provider !== discovery.providerId);
+			}
 			console.log(`Added ${discovery.models.length} models from ${discovery.label} discovery`);
 			allModels.push(...discovery.models);
 		}
@@ -633,6 +632,10 @@ async function generateModels() {
 		if (!providers[model.provider][model.id]) {
 			providers[model.provider][model.id] = model;
 		}
+	}
+	// Scoped regeneration must overwrite the old provider slice even when the live catalog is empty.
+	if (authoritativeCatalogProviders.has("google-antigravity")) {
+		providers["google-antigravity"] ??= {};
 	}
 
 	// Sort providers alphabetically and models within each provider by ID

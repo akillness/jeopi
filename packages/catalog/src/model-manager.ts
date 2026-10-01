@@ -39,6 +39,8 @@ export interface ModelManagerOptions<TApi extends Api = Api, TModelsDevPayload =
 	cacheTtlMs?: number;
 	/** When true, a successful dynamic fetch is the complete provider catalog and prunes static-only models. */
 	dynamicModelsAuthoritative?: boolean;
+	/** Keep a prior complete catalog (including empty) on failed/offline refresh, without extending its TTL. */
+	preserveAuthoritativeCacheOnFailure?: boolean;
 	/** Cached model ids to ignore when the cache was written against a different static catalog fingerprint. */
 	dropCachedModelIdsOnStaticMismatch?: readonly string[];
 	/** Trusted provider-wide headers restored locally, never persisted. */
@@ -71,6 +73,8 @@ export interface ModelManagerOptions<TApi extends Api = Api, TModelsDevPayload =
 export interface ModelResolutionResult<TApi extends Api = Api> {
 	models: Model<TApi>[];
 	stale: boolean;
+	/** A stale result retained a complete provider snapshot; callers must not resurrect bundled-only ids. */
+	preservedAuthoritativeCache?: boolean;
 }
 
 /**
@@ -209,6 +213,20 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 	const shouldUseFreshCacheAsAuthoritative =
 		strategy === "online-if-uncached" && hasUsableFreshCache && hasAuthoritativeCache;
 	const dynamicFetchSucceeded = fetchedDynamicModels !== null;
+	if (
+		!dynamicFetchSucceeded &&
+		dynamicModelsAuthoritative &&
+		options.preserveAuthoritativeCacheOnFailure &&
+		cache?.authoritative &&
+		cacheFingerprintMatches &&
+		!cacheHasUnresolvedHeaders
+	) {
+		return {
+			models: collapseBuiltModelVariants(restoredCache.models),
+			stale: true,
+			preservedAuthoritativeCache: true,
+		};
+	}
 	const cacheModels = dynamicFetchSucceeded
 		? []
 		: prepareCacheModelsForStaticMismatch(

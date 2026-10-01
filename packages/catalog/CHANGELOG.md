@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Refresh Antigravity's live model catalog with lazily resolved OAuth access, account-and-endpoint-scoped caching, and bounded cancellation. Successful discovery replaces stale bundled entries, including an empty catalog; failed refreshes retain the last authoritative snapshot without extending its lifetime.
+- Preserve authoritative empty Antigravity results during provider-only catalog regeneration while retaining previous entries on discovery failure.
+
 ## [16.5.6] - 2026-10-01
 
 ### Fixed

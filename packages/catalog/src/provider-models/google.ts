@@ -1,4 +1,4 @@
-import { fetchAntigravityDiscoveryModels } from "../discovery/antigravity";
+import { ANTIGRAVITY_PRIMARY_ENDPOINT, fetchAntigravityDiscoveryModels } from "../discovery/antigravity";
 import { fetchGeminiModels } from "../discovery/gemini";
 import type { ModelManagerOptions } from "../model-manager";
 import type { FetchImpl } from "../types";
@@ -21,6 +21,10 @@ export interface GoogleAntigravityModelManagerConfig {
 	oauthToken?: string;
 	endpoint?: string;
 	fetch?: FetchImpl;
+	/** Stable credential identity; falls back to the token when unavailable. */
+	cacheScope?: string;
+	/** Resolve a fresh token only when discovery actually needs the network. */
+	resolveOAuthToken?: (signal: AbortSignal) => Promise<string | undefined>;
 }
 
 export interface GoogleGeminiCliModelManagerConfig {
@@ -60,17 +64,26 @@ export function googleVertexModelManagerOptions(_config?: GoogleVertexModelManag
 export function googleAntigravityModelManagerOptions(
 	config?: GoogleAntigravityModelManagerConfig,
 ): ModelManagerOptions<"google-gemini-cli"> {
-	const token = config?.oauthToken;
+	const token = config?.oauthToken?.trim();
+	const endpoint = (config?.endpoint ?? ANTIGRAVITY_PRIMARY_ENDPOINT).replace(/\/+$/, "");
 	return {
 		providerId: "google-antigravity",
 		...(token
 			? {
-					fetchDynamicModels: () =>
-						fetchAntigravityDiscoveryModels({
-							token,
+					cacheProviderId: `google-antigravity:discovery-v2:${Bun.hash(JSON.stringify([endpoint, config?.cacheScope ?? token])).toString(36)}`,
+					dynamicModelsAuthoritative: true,
+					preserveAuthoritativeCacheOnFailure: true,
+					fetchDynamicModels: async () => {
+						const signal = AbortSignal.timeout(10_000);
+						const resolvedToken = config?.resolveOAuthToken ? await config.resolveOAuthToken(signal) : token;
+						if (!resolvedToken?.trim() || signal.aborted) return null;
+						return fetchAntigravityDiscoveryModels({
+							token: resolvedToken,
 							endpoint: config?.endpoint,
 							fetcher: toDiscoveryFetch(config?.fetch),
-						}),
+							signal,
+						});
+					},
 				}
 			: undefined),
 	};

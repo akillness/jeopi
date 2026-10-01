@@ -161,12 +161,16 @@ export interface FetchAntigravityDiscoveryModelsOptions {
 export async function fetchAntigravityDiscoveryModels(
 	options: FetchAntigravityDiscoveryModelsOptions,
 ): Promise<ModelSpec<"google-gemini-cli">[] | null> {
+	if (!options.token.trim() || options.signal?.aborted) return null;
+	const timeout = AbortSignal.timeout(10_000);
+	const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
 	const fetcher = discoveryFetch(options.fetcher);
 	const endpoints = options.endpoint
 		? [trimTrailingSlashes(options.endpoint)]
 		: DEFAULT_ANTIGRAVITY_DISCOVERY_ENDPOINTS.map(trimTrailingSlashes);
 
 	for (const endpoint of endpoints) {
+		if (signal.aborted) return null;
 		let response: Response;
 		try {
 			response = await fetcher(`${endpoint}${FETCH_AVAILABLE_MODELS_PATH}`, {
@@ -177,7 +181,7 @@ export async function fetchAntigravityDiscoveryModels(
 					"User-Agent": options.userAgent ?? getAntigravityUserAgent(),
 				},
 				body: JSON.stringify({}),
-				signal: options.signal,
+				signal,
 			});
 		} catch {
 			continue;
@@ -194,6 +198,7 @@ export async function fetchAntigravityDiscoveryModels(
 			continue;
 		}
 
+		if (signal.aborted) return null;
 		const parsed = parseAntigravityDiscoveryResponse(payload);
 		if (!parsed) {
 			continue;
@@ -241,6 +246,13 @@ export async function fetchAntigravityDiscoveryModels(
 }
 
 function parseAntigravityDiscoveryResponse(value: unknown): AntigravityDiscoveryApiResponse | null {
+	// An absent or corrupt map is a failed discovery, never an authoritative empty catalog.
+	if (typeof value !== "object" || value === null || !("models" in value)) return null;
+	const models = value.models;
+	if (typeof models !== "object" || models === null || Array.isArray(models)) return null;
+	for (const [id, model] of Object.entries(models)) {
+		if (!id.trim() || typeof model !== "object" || model === null || Array.isArray(model)) return null;
+	}
 	const parsed = AntigravityDiscoveryApiResponseSchema(value);
 	if (parsed instanceof type.errors) {
 		return null;

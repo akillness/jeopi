@@ -1643,13 +1643,40 @@ export class ModelRegistry {
 		}> = [
 			{
 				providerId: "google-antigravity",
-				resolveKey: extractGoogleOAuthToken,
-				createOptions: oauthToken =>
-					googleAntigravityModelManagerOptions({
+				resolveKey: value =>
+					extractGoogleOAuthToken(value) ?? this.authStorage.getOAuthCredential("google-antigravity")?.access,
+				createOptions: oauthToken => {
+					// Pin discovery to one stable account, including when its access token has expired.
+					// Independent peek/getApiKey calls otherwise advance round-robin and poison the cache scope.
+					const account = this.authStorage.listOAuthAccounts("google-antigravity")[0];
+					const cacheScope = account
+						? JSON.stringify([account.credentialId, account.accountId ?? account.email, account.projectId])
+						: undefined;
+					return googleAntigravityModelManagerOptions({
 						oauthToken,
-						endpoint: this.getProviderBaseUrl("google-antigravity"),
+						cacheScope,
+						endpoint:
+							this.#runtimeProviderOverrides.get("google-antigravity")?.baseUrl ??
+							this.#providerOverrides.get("google-antigravity")?.baseUrl ??
+							this.getProviderBaseUrl("google-antigravity"),
 						fetch: this.#fetch,
-					}),
+						resolveOAuthToken: async signal => {
+							if (!account) {
+								return extractGoogleOAuthToken(
+									await this.getApiKeyForProvider("google-antigravity", undefined, { signal }),
+								);
+							}
+							const current = this.authStorage
+								.listOAuthAccounts("google-antigravity")
+								.find(entry => entry.credentialId === account.credentialId);
+							if (!current) return undefined;
+							const access = await this.authStorage.getOAuthAccessAt("google-antigravity", current.position, {
+								signal,
+							});
+							return access?.ok ? access.accessToken : undefined;
+						},
+					});
+				},
 			},
 			{
 				providerId: "google-gemini-cli",
@@ -1747,7 +1774,7 @@ export class ModelRegistry {
 				model.provider === options.providerId ? model : { ...model, provider: options.providerId },
 			);
 			const authoritativeProviders = new Set<string>();
-			if (options.dynamicModelsAuthoritative && !result.stale) {
+			if (options.dynamicModelsAuthoritative && (!result.stale || result.preservedAuthoritativeCache)) {
 				authoritativeProviders.add(options.providerId);
 			}
 			return { models, authoritativeProviders };
