@@ -1193,3 +1193,118 @@ reproduce this class of failure until the fingerprint moves.
   `bun run gen:models` is a separate catalog task.
 - **Gemini CLI spoofed version drifts 0.46.0 → 0.59.0** (checker output).
   Untouched — different provider, no reported failure.
+
+## Session 2026-10-01 — compatible fixes for 16.5.6
+
+User explicitly selected compatible correctness/security/performance backports,
+not full upstream parity. Release base is published fork `16.5.5`, commit
+`a5de4bed3f1bb71c479ceebca3d94f0402c33462`, on
+`release/v16.5.5-openai`; `origin/jeopi` remains behind that published branch.
+Work is isolated on `release/v16.5.6-upstream`; original uncommitted catalog
+changes and `GPT6-VERIFICATION.md` are excluded and preserved.
+
+### Upstream inventory and boundaries
+
+- Inspected upstream tip `cccb74456fb6a0f0e161de8f4b7cba23ac148822`
+  (18.4.8 plus subsequent RPC changes). The corrected import floor remains
+  `5356713eae60e67ee64d9b02e3b5e377d248ee7f` (16.2.13), as recorded in the
+  August correction above, not the obsolete 16.4.2 assertion at this file's top.
+- Floor-to-tip history contains 14,552 commits: 10,935 non-merges and 3,617
+  merges. There are 8,340 changed paths. These counts are inventory, not a
+  claim that every change has been semantically reviewed or ported.
+- Still unported: KDL catalog/omptype migrations, auth-store extraction and
+  credential-refresh leasing, hub/xd tool consolidation, browser-relay and
+  metaharness changes, new provider/features, and the older checkpoint backlog.
+  Existing jeopi tool IDs, package names, Tencent support, collaboration
+  packages, and 16.5.5 OpenAI/Codex discovery remain intentional boundaries.
+
+### Backported contracts
+
+- Streaming: existing 30 Hz reveal timer coalesces ordinary provider updates;
+  newest target wins, while immediate mode, tool boundaries, visibility
+  changes and finalization keep their immediate/cancellation behavior.
+  Source: `e3ebce51c38f56850f9288f2b0f67395a29cf0dc`.
+- Assistant fast path forwards transient rendering options, matching the
+  current upstream renderer without relocating jeopi's component architecture.
+- Session persistence preserves signed carriers and encrypted replay content
+  atomically, including oversized paired text/tool arguments, while retaining
+  unsigned limits and replay signature deduplication. Sources:
+  `af748c3e90be3aed857d343f99566dd9fd92c2ce` and persistence portions of
+  `c4c033134519c57c241f4777edbae755e7911036` only.
+- Custom MCP/plugin name casing survives normalization; public and hidden
+  builtins and legacy aliases retain canonicalization. Source:
+  `ba5885880e59983b5a02d6f1f4c8fe9893dc5ad2`.
+- Model cache omits all request headers, invalidates legacy rows with SQLite
+  secure deletion enabled, and restores only trusted current header sources.
+  Manager and registry cache readers share restoration; dynamic authentication
+  that cannot be reconstructed requires discovery rather than a broken offline
+  model. Adapted from upstream omission/restoration and Copilot provenance
+  fixes, preserving the fork's credential-scoped discovery caches.
+
+### Verification before version increment
+
+- Runtime RED evidence: streaming 6 failures; persistence/name baseline 9
+  failures and expanded signed-content 7 failures; cache raw-storage 2
+  failures, header-manager 10 failures, registry restart 2 failures.
+- Integrated command: `bun test packages/coding-agent/test/streaming-reveal.test.ts packages/coding-agent/test/modes/components/assistant-message-streaming-fastpath.test.ts packages/coding-agent/test/session-manager/signature-persistence.test.ts packages/coding-agent/test/tool-builtin-names.test.ts packages/ai/test/model-cache.test.ts packages/catalog/test/build.test.ts packages/coding-agent/test/model-registry.test.ts`
+  returned **187 pass, 0 fail, 3,677 assertions**.
+- `bun packages/coding-agent/src/cli.ts --smoke-test` returned
+  `smoke-test: ok` after the integrated changes.
+- Distinct-message real-render replay, five alternating fresh-process runs on
+  Bun 1.3.14 / Apple M2 Pro: median-of-medians 66.494 ms before, 9.730 ms
+  after; 167 to 67 component updates; identical normalized final-output hash.
+  This is a synthetic rendering workload, not whole-CLI or end-to-end latency.
+- Counterexample retained: repeatedly replaying an identical warmed message
+  measured 4.585 ms before and 7.610 ms after. The old incorrect stable cache
+  reused transient snapshots; fixing rendering correctness removes that reuse.
+  Do not describe the change as a universal speedup.
+- Release metadata, final build/checks, remote publication and installed npm
+  smoke are separate gates; the evidence above does not establish them.
+
+### Additional review findings and verification hazards
+
+- Extended cache lifecycle tests first reproduced six repeated-failure defects
+  and one bundled-model resurrection defect. Preserve unresolved-header
+  provenance on failed discovery and exclude the corresponding bundled IDs
+  from the registry merge. The focused cache contracts then passed 27 tests.
+- The first full type gate caught callback variance introduced by the header
+  hook. Its input now uses `Model<Api>` rather than binding a contravariant
+  callback argument to `TApi`; no descriptor factories or runtime behavior
+  needed changing.
+- A reviewer violated its read-only assignment by temporarily stashing tracked
+  changes in the shared worktree during baseline typechecking. The pop completed
+  without conflicts; the expected changed-file inventory and changelog/README
+  content were restored. Native build and final gates must use the restored
+  tree, not results obtained during that interval. Never stash a shared
+  worktree to review a baseline; inspect baseline blobs or use isolation.
+- **Do not overlap source checks with publisher declaration emission.**
+  `bun scripts/ci-release-publish.ts --dry-run` emits `dist/types` even though
+  it neither packs nor publishes. Package `exports.types` then resolves bare
+  imports to those declarations, mixing source and ambient const-enum types
+  in `bun check`. Move/remove only the newly generated declaration outputs,
+  check sources first, then run publication preparation. This is build-output
+  contamination, not grounds for weakening source types.
+- SQLite secure deletion and invalidation do not promise erasure of old backups,
+  concurrent legacy readers, or pre-existing WAL snapshots. Physical scrub
+  evidence applies after synthetic connections close/checkpoint. Restart old
+  processes; do not describe this migration as universal forensic erasure.
+
+### Final local gates on the restored 16.5.6 tree
+
+- Rebuilt native after worktree restoration with `CI=1 CARGO_TARGET_DIR=/Users/jangyoung/.superset/projects/jeopi/target bun run build:native`:
+  successful `pi-natives v16.5.6` build, regenerated JS/declaration exports.
+  Loading the actual `.node` and invoking `__piNativesV16_5_6` succeeded;
+  that was its only version-sentinel export.
+- `bun check`: **passed** across the workspace after isolating generated
+  declaration outputs. TypeScript callback variance is resolved.
+- The seven-file regression command above: **190 pass, 0 fail, 3,708
+  assertions**. An earlier overlapping run hit a registry setup timeout and
+  skipped tests; it is superseded by this isolated, complete run.
+- Source and bundled CLI `--smoke-test`: both **smoke-test: ok**.
+- `bun run gen:bundle`: 2,799 modules, 11.88 MB CLI bundle, successful.
+- `bun scripts/ci-release-publish.ts --dry-run`: all 13 core packages prepared;
+  native optional-dependency versions all 16.5.6. This emitted declarations
+  and built stats assets; dry run deliberately does not pack or publish.
+- Independent streaming code review, integrity TypeScript review, credential
+  security review, release-metadata review and Rust sentinel review reported
+  no remaining blockers. The legacy WAL/backups caveat above remains.

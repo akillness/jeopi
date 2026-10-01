@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -514,6 +514,216 @@ describe("model cache spec round trip", () => {
 			await fs.rm(tempDir, { recursive: true, force: true });
 		}
 	});
+});
+
+describe("model cache header safety", () => {
+	let tempDir = "";
+	let dbPath = "";
+	const now = () => 10_000;
+	const staticHeaders = { Authorization: "Bearer synthetic-static-token", "X-Tenant": "synthetic-tenant" };
+
+	beforeEach(async () => {
+		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-catalog-header-cache-"));
+		dbPath = path.join(tempDir, "models.db");
+	});
+
+	afterEach(async () => {
+		await fs.rm(tempDir, { recursive: true, force: true });
+	});
+
+	it.each(["offline", "online-if-uncached"] as const)(
+		"restores exact static headers on a %s hit without rediscovery, preserving discovered compat and limits",
+		async strategy => {
+			const staticModel = completionsSpec({ headers: staticHeaders });
+			let discoveries = 0;
+			const options = {
+				providerId: "custom",
+				staticModels: [staticModel],
+				cacheDbPath: dbPath,
+				now,
+				fetchDynamicModels: async () => {
+					discoveries++;
+					return [
+						completionsSpec({
+							name: "Discovered Name",
+							contextWindow: 96_000,
+							maxTokens: 12_000,
+							compat: { supportsDeveloperRole: true, maxTokensField: "max_tokens" },
+						}),
+					];
+				},
+			};
+			await resolveProviderModels(options, "online");
+			const hit = await resolveProviderModels(options, strategy);
+			expect(discoveries).toBe(1);
+			expect(
+				hit.models.map(model => ({
+					id: model.id,
+					name: model.name,
+					headers: model.headers,
+					contextWindow: model.contextWindow,
+					maxTokens: model.maxTokens,
+					developerRole: model.compat.supportsDeveloperRole,
+					tokenField: model.compat.maxTokensField,
+				})),
+			).toEqual([
+				{
+					id: staticModel.id,
+					name: "Discovered Name",
+					headers: staticHeaders,
+					contextWindow: 96_000,
+					maxTokens: 12_000,
+					developerRole: true,
+					tokenField: "max_tokens",
+				},
+			]);
+		},
+	);
+
+	it("replaces cached credentials with the complete current static header set after rotation", async () => {
+		const original = completionsSpec({ headers: staticHeaders });
+		await resolveProviderModels(
+			{
+				providerId: "custom",
+				staticModels: [original],
+				cacheDbPath: dbPath,
+				now,
+				fetchDynamicModels: async () => [completionsSpec()],
+			},
+			"online",
+		);
+		const currentHeaders = { Authorization: "Bearer synthetic-rotated-token", "X-New-Tenant": "new-tenant" };
+		const current = completionsSpec({ headers: currentHeaders, contextWindow: 256_000, maxTokens: 32_000 });
+		const hit = await resolveProviderModels(
+			{
+				providerId: "custom",
+				staticModels: [current],
+				cacheDbPath: dbPath,
+				now,
+			},
+			"offline",
+		);
+		expect(
+			hit.models.map(model => ({
+				headers: model.headers,
+				contextWindow: model.contextWindow,
+				maxTokens: model.maxTokens,
+			})),
+		).toEqual([{ headers: currentHeaders, contextWindow: 256_000, maxTokens: 32_000 }]);
+	});
+
+	it.each([true, false])(
+		"restores requestModelId alias headers only when original headers matched static (%s)",
+		async matches => {
+			const source = completionsSpec({ headers: staticHeaders });
+			const alias = completionsSpec({
+				id: "routed-model",
+				requestModelId: source.id,
+				headers: matches ? staticHeaders : { ...staticHeaders, Authorization: "Bearer synthetic-alias-session" },
+			});
+			writeModelCache("custom", now(), [buildModel(alias)], true, "alias-static", dbPath, [buildModel(source)]);
+			const result = await resolveProviderModels(
+				{
+					providerId: "custom",
+					staticModels: [source],
+					cacheDbPath: dbPath,
+					now,
+				},
+				"offline",
+			);
+			const restored = result.models.find(model => model.id === alias.id);
+			if (matches) {
+				expect(restored?.requestModelId).toBe(source.id);
+				expect(restored?.headers).toEqual(staticHeaders);
+			} else {
+				expect(restored).toBeUndefined();
+			}
+		},
+	);
+
+	for (const kind of ["dynamic-only", "augmented", "overridden"] as const) {
+		it(`refreshes fresh ${kind} credential-bearing models before returning them online`, async () => {
+			const staticModels = kind !== "dynamic-only" ? [completionsSpec({ headers: staticHeaders })] : [];
+			let discoveries = 0;
+			const options = {
+				providerId: "custom",
+				staticModels,
+				cacheDbPath: dbPath,
+				now,
+				fetchDynamicModels: async () => {
+					discoveries++;
+					return [
+						completionsSpec({
+							headers:
+								kind === "overridden"
+									? { Authorization: `Bearer synthetic-override-${discoveries}` }
+									: { "X-Session-Credential": `synthetic-session-${discoveries}` },
+						}),
+					];
+				},
+			};
+			await resolveProviderModels(options, "online");
+			const refreshed = await resolveProviderModels(options, "online-if-uncached");
+			expect(discoveries).toBe(2);
+			expect(refreshed.models.map(model => model.headers)).toEqual([
+				{
+					...(kind !== "dynamic-only" ? staticHeaders : {}),
+					...(kind === "overridden"
+						? { Authorization: "Bearer synthetic-override-2" }
+						: { "X-Session-Credential": "synthetic-session-2" }),
+				},
+			]);
+		});
+
+		it.each(["offline", "null", "throw"] as const)(
+			`omits ${kind} authenticated models when discovery is %s`,
+			async failure => {
+				const safe = completionsSpec({ id: "safe-model", name: "Safe Model" });
+				const staticModels = kind !== "dynamic-only" ? [safe, completionsSpec({ headers: staticHeaders })] : [safe];
+				await resolveProviderModels(
+					{
+						providerId: "custom",
+						staticModels,
+						cacheDbPath: dbPath,
+						now,
+						fetchDynamicModels: async () => [
+							completionsSpec({
+								headers:
+									kind === "overridden"
+										? { Authorization: "Bearer synthetic-override" }
+										: { "X-Session-Credential": "synthetic-session-secret" },
+							}),
+						],
+					},
+					"online",
+				);
+				let discoveries = 0;
+				const options = {
+					providerId: "custom",
+					staticModels,
+					cacheDbPath: dbPath,
+					now,
+					fetchDynamicModels: async () => {
+						discoveries++;
+						if (failure === "throw") throw new Error("Synthetic discovery failure");
+						return null;
+					},
+				};
+				const result = await resolveProviderModels(
+					options,
+					failure === "offline" ? "offline" : "online-if-uncached",
+				);
+				expect(result.models.map(model => model.id)).toEqual([safe.id]);
+				expect(discoveries).toBe(failure === "offline" ? 0 : 1);
+				const again = await resolveProviderModels(options, "offline");
+				expect(again.models.map(model => model.id)).toEqual([safe.id]);
+				expect(discoveries).toBe(failure === "offline" ? 0 : 1);
+				const retried = await resolveProviderModels(options, "online-if-uncached");
+				expect(retried.models.map(model => model.id)).toEqual([safe.id]);
+				expect(discoveries).toBe(failure === "offline" ? 1 : 2);
+			},
+		);
+	}
 });
 
 describe("isOfficialAnthropicApiUrl", () => {

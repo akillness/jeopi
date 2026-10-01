@@ -41,6 +41,17 @@ export interface ModelManagerOptions<TApi extends Api = Api, TModelsDevPayload =
 	dynamicModelsAuthoritative?: boolean;
 	/** Cached model ids to ignore when the cache was written against a different static catalog fingerprint. */
 	dropCachedModelIdsOnStaticMismatch?: readonly string[];
+	/** Trusted provider-wide headers restored locally, never persisted. */
+	restorableHeaderFallback?: Record<string, string>;
+	/**
+	 * Reconstruct the complete header set from authoritative local configuration.
+	 * Takes `Model<Api>` (not `Model<TApi>`): the parameter position is
+	 * contravariant, so binding it to `TApi` would make `ModelManagerOptions<TApi>`
+	 * invariant in `TApi` and break narrow-to-`ModelManagerOptions<Api>` assignment
+	 * at every per-provider descriptor factory. Implementations needing identity
+	 * use `model.id` / `model.requestModelId`, both present regardless of `api`.
+	 */
+	restoreCachedHeaders?: (model: Model<Api>) => Record<string, string> | undefined;
 	/** Optional dynamic endpoint fetcher. */
 	fetchDynamicModels?: () => Promise<readonly ModelSpec<TApi>[] | null>;
 	/** Optional models.dev fallback hook. */
@@ -101,6 +112,37 @@ function passModelList<TApi extends Api>(value: unknown): Model<TApi>[] {
 	return out;
 }
 
+/** Restore omitted headers only from trusted local sources; unresolved models must not be used. */
+export function restoreCachedModelHeaders<TApi extends Api>(
+	cachedModels: readonly ModelSpec<TApi>[],
+	staticModels: readonly Model<TApi>[],
+	headerOmittedModelIds: readonly string[],
+	unrestorableHeaderModelIds: readonly string[],
+	restorableHeaderFallback?: Record<string, string>,
+	restoreCachedHeaders?: (model: Model<Api>) => Record<string, string> | undefined,
+): { models: Model<TApi>[]; unresolvedModelIds: ReadonlySet<string> } {
+	const models = passModelList<TApi>(cachedModels);
+	const unresolvedModelIds = new Set<string>();
+	if (headerOmittedModelIds.length === 0) return { models, unresolvedModelIds };
+	const omittedIds = new Set(headerOmittedModelIds);
+	const unrestorableIds = new Set(unrestorableHeaderModelIds);
+	const staticById = new Map(staticModels.map(model => [model.id, model]));
+	const restored = models.map(model => {
+		if (!omittedIds.has(model.id)) return model;
+		const source =
+			staticById.get(model.id) ?? (model.requestModelId ? staticById.get(model.requestModelId) : undefined);
+		const headers = unrestorableIds.has(model.id)
+			? undefined
+			: (source?.headers ?? restorableHeaderFallback ?? restoreCachedHeaders?.(model));
+		if (!headers) {
+			unresolvedModelIds.add(model.id);
+			return model;
+		}
+		return { ...model, headers };
+	});
+	return { models: restored, unresolvedModelIds };
+}
+
 /**
  * Resolves provider models with source precedence:
  * static -> models.dev -> cache -> dynamic.
@@ -119,10 +161,21 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 		? passModelList<TApi>(options.staticModels)
 		: (getBundledModels(options.providerId as GeneratedProvider) as Model<TApi>[]);
 	const cache = readModelCache<TApi>(cacheProviderId, ttlMs, now, dbPath);
+	const restoredCache = restoreCachedModelHeaders(
+		cache?.models ?? [],
+		staticModels,
+		cache?.headerOmittedModelIds ?? [],
+		cache?.unrestorableHeaderModelIds ?? [],
+		options.restorableHeaderFallback,
+		options.restoreCachedHeaders,
+	);
+	const usableCachedModels = restoredCache.models.filter(model => !restoredCache.unresolvedModelIds.has(model.id));
+	const cacheHasUnresolvedHeaders = restoredCache.unresolvedModelIds.size > 0;
 	const dynamicModelsAuthoritative = options.dynamicModelsAuthoritative ?? false;
 	const staticFingerprint = fingerprintStatic(staticModels, dynamicModelsAuthoritative);
 	const cacheFingerprintMatches = cache?.staticFingerprint === staticFingerprint && staticFingerprint.length > 0;
-	const hasUsableFreshCache = (cache?.fresh ?? false) && (!dynamicModelsAuthoritative || cacheFingerprintMatches);
+	const hasUsableFreshCache =
+		(cache?.fresh ?? false) && !cacheHasUnresolvedHeaders && (!dynamicModelsAuthoritative || cacheFingerprintMatches);
 	const dynamicFetcher = options.fetchDynamicModels;
 	const hasDynamicFetcher = typeof dynamicFetcher === "function";
 	const hasAuthoritativeCache = ((cache?.authoritative ?? false) && hasUsableFreshCache) || !hasDynamicFetcher;
@@ -139,8 +192,14 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 	// was merged in last time, the cache row IS the authoritative merge result.
 	// Re-running `mergeDynamicModels(static, cache)` would just rebuild the same
 	// objects (~800ms in the steady-state cold-start profile for `omp -p hi`).
-	if (!shouldFetchFromNetwork && cache?.fresh && hasAuthoritativeCache && cacheFingerprintMatches) {
-		return { models: collapseBuiltModelVariants(passModelList<TApi>(cache.models)), stale: false };
+	if (
+		!shouldFetchFromNetwork &&
+		cache?.fresh &&
+		hasAuthoritativeCache &&
+		cacheFingerprintMatches &&
+		!cacheHasUnresolvedHeaders
+	) {
+		return { models: collapseBuiltModelVariants(restoredCache.models), stale: false };
 	}
 
 	const [fetchedModelsDevModels, fetchedDynamicModels] = shouldFetchFromNetwork
@@ -153,7 +212,7 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 	const cacheModels = dynamicFetchSucceeded
 		? []
 		: prepareCacheModelsForStaticMismatch(
-				normalizeModelList<TApi>(cache?.models ?? []),
+				usableCachedModels,
 				staticModels,
 				cacheFingerprintMatches,
 				options.dropCachedModelIdsOnStaticMismatch,
@@ -162,7 +221,10 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 	const mergedWithCache = mergeDynamicModels(mergeModelSources(staticModels, modelsDevModels), cacheModels);
 	const mergedModels = mergeDynamicModels(mergedWithCache, dynamicModels);
 	const models = collapseBuiltModelVariants(
-		dynamicModelsAuthoritative && dynamicFetchSucceeded ? retainModelIds(mergedModels, dynamicModels) : mergedModels,
+		(dynamicModelsAuthoritative && dynamicFetchSucceeded
+			? retainModelIds(mergedModels, dynamicModels)
+			: mergedModels
+		).filter(model => dynamicFetchSucceeded || !restoredCache.unresolvedModelIds.has(model.id)),
 	);
 	const dynamicAuthoritative = !hasDynamicFetcher || dynamicFetchSucceeded || shouldUseFreshCacheAsAuthoritative;
 	if (shouldFetchFromNetwork) {
@@ -178,11 +240,25 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 				true,
 				staticFingerprint,
 				dbPath,
+				staticModels,
+				options.restorableHeaderFallback,
+				options.restoreCachedHeaders,
 			);
 		} else {
 			// Dynamic fetch failed — update cache with a non-authoritative snapshot so
 			// stale state remains visible while retry backoff still applies.
 			const latestCache = readModelCache<TApi>(cacheProviderId, ttlMs, now, dbPath);
+			const latestRestoredCache = restoreCachedModelHeaders(
+				latestCache?.models ?? cache?.models ?? [],
+				staticModels,
+				latestCache?.headerOmittedModelIds ?? cache?.headerOmittedModelIds ?? [],
+				latestCache?.unrestorableHeaderModelIds ?? cache?.unrestorableHeaderModelIds ?? [],
+				options.restorableHeaderFallback,
+				options.restoreCachedHeaders,
+			);
+			// Dropping unresolved rows would also erase the evidence that a same-id
+			// static model lacks required headers. Keep that provenance until discovery succeeds.
+			if (latestRestoredCache.unresolvedModelIds.size > 0) return { models, stale: true };
 			writeModelCache(
 				cacheProviderId,
 				now(),
@@ -190,16 +266,19 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 					mergeDynamicModels(
 						mergeModelSources(staticModels, modelsDevModels),
 						prepareCacheModelsForStaticMismatch(
-							normalizeModelList<TApi>(latestCache?.models ?? cache?.models ?? []),
+							latestRestoredCache.models.filter(model => !latestRestoredCache.unresolvedModelIds.has(model.id)),
 							staticModels,
 							cacheFingerprintMatches,
 							options.dropCachedModelIdsOnStaticMismatch,
 						),
-					),
+					).filter(model => !latestRestoredCache.unresolvedModelIds.has(model.id)),
 				),
 				false,
 				staticFingerprint,
 				dbPath,
+				staticModels,
+				options.restorableHeaderFallback,
+				options.restoreCachedHeaders,
 			);
 		}
 	}

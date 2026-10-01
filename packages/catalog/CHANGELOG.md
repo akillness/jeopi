@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [16.5.6] - 2026-10-01
+
+### Fixed
+
+- Exclude all model request headers from the SQLite model cache and invalidate pre-fix cache rows with SQLite secure deletion enabled. Restore headers only from matching current static models or trusted provider/configuration sources; models with unreconstructible dynamic headers require fresh discovery and are not returned as authenticated offline fallbacks. Adapted from oh-my-pi's header omission, restoration, and Copilot variant fixes.
+
 ## [16.5.5] - 2026-09-30
 
 ### Fixed

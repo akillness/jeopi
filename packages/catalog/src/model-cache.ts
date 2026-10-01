@@ -6,16 +6,10 @@ import { Database } from "bun:sqlite";
 import { getModelDbPath } from "jeopi-utils";
 import type { Api, Model, ModelSpec } from "./types";
 
-// Rows persist ModelSpec JSON (sparse `compat`, never the resolved record);
-// the model manager rebuilds via `buildModel` on load. v8 invalidates Codex
-// discovery rows predating provider-native V2 compaction metadata; v7
-// invalidated rows predating the Antigravity Gemini budget-mode migration
-// (cached specs still carrying `thinking.mode: "google-level"` and the old
-// 3.5-flash effort routing); v6 invalidated rows that may contain the retired
-// unknown-limit sentinels (222222/8888); v5 invalidated rows predating
-// effort-tier variant collapsing (raw `-low`/`-high`/`-thinking` member ids);
-// v4 dropped the pre-efforts ThinkingConfig shape.
-const CACHE_SCHEMA_VERSION = 8;
+// Rows persist sparse ModelSpec metadata, never request headers: arbitrary
+// provider-defined header names may carry credentials. v9 records restoration
+// provenance and invalidates older rows, including v8 credential-bearing rows.
+const CACHE_SCHEMA_VERSION = 9;
 
 interface CacheRow {
 	provider_id: string;
@@ -24,6 +18,8 @@ interface CacheRow {
 	authoritative: number;
 	static_fingerprint: string;
 	models: string;
+	header_omitted_model_ids: string;
+	unrestorable_header_model_ids: string;
 }
 
 interface TableInfoRow {
@@ -35,6 +31,10 @@ interface CacheEntry<TApi extends Api = Api> {
 	fresh: boolean;
 	authoritative: boolean;
 	updatedAt: number;
+	/** Model ids whose request headers were omitted from disk. */
+	headerOmittedModelIds: readonly string[];
+	/** Model ids whose headers did not match a trusted local source. */
+	unrestorableHeaderModelIds: readonly string[];
 	/**
 	 * Hash of the static catalog slice that was merged into `models` when this
 	 * row was written. `resolveProviderModels` compares against the current
@@ -52,6 +52,8 @@ function openDb(resolvedPath: string): Database {
 	// Install the busy handler BEFORE any lock-taking statement. See
 	// https://github.com/can1357/oh-my-pi/issues/2421.
 	db.run("PRAGMA busy_timeout = 3000");
+	// Scrub deleted legacy credential-bearing cells rather than retaining them in free pages.
+	db.run("PRAGMA secure_delete = ON");
 	db.run("PRAGMA journal_mode = WAL");
 	db.run(`
 		CREATE TABLE IF NOT EXISTS model_cache (
@@ -60,6 +62,8 @@ function openDb(resolvedPath: string): Database {
 			updated_at INTEGER NOT NULL,
 			authoritative INTEGER NOT NULL DEFAULT 0,
 			static_fingerprint TEXT NOT NULL DEFAULT '',
+			header_omitted_model_ids TEXT NOT NULL DEFAULT '[]',
+			unrestorable_header_model_ids TEXT NOT NULL DEFAULT '[]',
 			models TEXT NOT NULL
 		)
 	`);
@@ -98,6 +102,12 @@ function migrateCacheSchema(db: Database): void {
 		if (!columns.some(column => column.name === "static_fingerprint")) {
 			db.run("ALTER TABLE model_cache ADD COLUMN static_fingerprint TEXT NOT NULL DEFAULT ''");
 		}
+		if (!columns.some(column => column.name === "header_omitted_model_ids")) {
+			db.run("ALTER TABLE model_cache ADD COLUMN header_omitted_model_ids TEXT NOT NULL DEFAULT '[]'");
+		}
+		if (!columns.some(column => column.name === "unrestorable_header_model_ids")) {
+			db.run("ALTER TABLE model_cache ADD COLUMN unrestorable_header_model_ids TEXT NOT NULL DEFAULT '[]'");
+		}
 	} finally {
 		stmt.finalize();
 	}
@@ -124,6 +134,15 @@ export function readModelCache<TApi extends Api>(
 					return null;
 				}
 				const models = JSON.parse(row.models) as ModelSpec<TApi>[];
+				const headerOmittedModelIds: unknown = JSON.parse(row.header_omitted_model_ids);
+				const unrestorableHeaderModelIds: unknown = JSON.parse(row.unrestorable_header_model_ids);
+				if (
+					!Array.isArray(headerOmittedModelIds) ||
+					!headerOmittedModelIds.every(id => typeof id === "string") ||
+					!Array.isArray(unrestorableHeaderModelIds) ||
+					!unrestorableHeaderModelIds.every(id => typeof id === "string")
+				)
+					return null;
 				const ageMs = now() - row.updated_at;
 				const fresh = Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= ttlMs;
 				return {
@@ -131,6 +150,8 @@ export function readModelCache<TApi extends Api>(
 					fresh,
 					authoritative: row.authoritative === 1,
 					updatedAt: row.updated_at,
+					headerOmittedModelIds,
+					unrestorableHeaderModelIds,
 					staticFingerprint: row.static_fingerprint ?? "",
 				};
 			} finally {
@@ -142,6 +163,14 @@ export function readModelCache<TApi extends Api>(
 	}
 }
 
+function headersEqual(left: Record<string, string>, right: Record<string, string> | undefined): boolean {
+	if (!right) return false;
+	return (
+		Object.keys(left).length === Object.keys(right).length &&
+		Object.keys(left).every(key => Object.hasOwn(right, key) && left[key] === right[key])
+	);
+}
+
 export function writeModelCache<TApi extends Api>(
 	providerId: string,
 	updatedAt: number,
@@ -149,19 +178,44 @@ export function writeModelCache<TApi extends Api>(
 	authoritative: boolean,
 	staticFingerprint: string,
 	dbPath?: string,
+	staticHeaderSources: readonly Model<TApi>[] = [],
+	restorableHeaderFallback?: Record<string, string>,
+	restoreCachedHeaders?: (model: Model<Api>) => Record<string, string> | undefined,
 ): void {
 	try {
 		withModelCacheDb(dbPath, db => {
+			const headerOmittedModelIds: string[] = [];
+			const unrestorableHeaderModelIds: string[] = [];
+			const staticById = new Map(staticHeaderSources.map(model => [model.id, model]));
+			const cachedModels = models.map(model => {
+				const { headers, compatConfig, ...metadata } = model;
+				if (headers && Object.keys(headers).length > 0) {
+					headerOmittedModelIds.push(model.id);
+					const source =
+						staticById.get(model.id) ?? (model.requestModelId ? staticById.get(model.requestModelId) : undefined);
+					if (
+						!headersEqual(headers, source?.headers ?? restorableHeaderFallback) &&
+						!headersEqual(headers, restoreCachedHeaders?.({ ...model, headers: undefined }))
+					) {
+						unrestorableHeaderModelIds.push(model.id);
+					}
+				}
+				return { ...metadata, compat: compatConfig };
+			});
 			db.run(
-				`INSERT OR REPLACE INTO model_cache (provider_id, version, updated_at, authoritative, static_fingerprint, models)
-				 VALUES (?, ?, ?, ?, ?, ?)`,
+				`INSERT OR REPLACE INTO model_cache (
+					provider_id, version, updated_at, authoritative, static_fingerprint,
+					header_omitted_model_ids, unrestorable_header_model_ids, models
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					providerId,
 					CACHE_SCHEMA_VERSION,
 					updatedAt,
 					authoritative ? 1 : 0,
 					staticFingerprint,
-					JSON.stringify(models.map(model => ({ ...model, compat: model.compatConfig, compatConfig: undefined }))),
+					JSON.stringify(headerOmittedModelIds),
+					JSON.stringify(unrestorableHeaderModelIds),
+					JSON.stringify(cachedModels),
 				],
 			);
 		});

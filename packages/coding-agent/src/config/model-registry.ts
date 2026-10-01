@@ -14,8 +14,13 @@ import type { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
 import { buildModel } from "jeopi-catalog/build";
 import { isVertexExpressOpenAIUrl } from "jeopi-catalog/hosts";
 import { readModelCache } from "jeopi-catalog/model-cache";
-import { createModelManager, type ModelManagerOptions, type ModelRefreshStrategy } from "jeopi-catalog/model-manager";
-import { getBundledModels, getBundledProviders } from "jeopi-catalog/models";
+import {
+	createModelManager,
+	type ModelManagerOptions,
+	type ModelRefreshStrategy,
+	restoreCachedModelHeaders,
+} from "jeopi-catalog/model-manager";
+import { type GeneratedProvider, getBundledModels, getBundledProviders } from "jeopi-catalog/models";
 import {
 	googleAntigravityModelManagerOptions,
 	googleGeminiCliModelManagerOptions,
@@ -940,6 +945,9 @@ export class ModelRegistry {
 		this.#addImplicitDiscoverableProviders(configuredProviders);
 		let builtInModels = this.#applyHardcodedModelPolicies(this.#loadBuiltInModels(overrides));
 		const cachedStandardResult = this.#loadCachedStandardProviderModels();
+		builtInModels = builtInModels.filter(
+			model => !cachedStandardResult.unresolvedModelIdsByProvider.get(model.provider)?.has(model.id),
+		);
 		const cachedStandardModels = this.#applyHardcodedModelPolicies(cachedStandardResult.models);
 		const cachedDiscoveries = this.#applyHardcodedModelPolicies(this.#loadCachedDiscoverableModels());
 		// Only drop bundled fallback models when the cached project-catalog row is
@@ -1057,10 +1065,22 @@ export class ModelRegistry {
 		return descriptor.createModelManagerOptions({ baseUrl, fetch: this.#fetch }).cacheProviderId ?? providerId;
 	}
 
-	#loadCachedStandardProviderModels(): { models: Model<Api>[]; authoritativeFreshProviders: Set<string> } {
+	#restoreConfiguredModelHeaders(model: Model<Api>): Record<string, string> | undefined {
+		const override = this.#providerOverrides.get(model.provider);
+		const withoutHeaders = { ...model, headers: undefined };
+		const configured = override ? this.#applyProviderTransportOverride(withoutHeaders, override) : withoutHeaders;
+		return this.#applyProviderModelOverrides(model.provider, [configured])[0]?.headers;
+	}
+
+	#loadCachedStandardProviderModels(): {
+		models: Model<Api>[];
+		authoritativeFreshProviders: Set<string>;
+		unresolvedModelIdsByProvider: Map<string, ReadonlySet<string>>;
+	} {
 		const configuredDiscoveryProviders = new Set(this.#discoverableProviders.map(provider => provider.provider));
 		const cachedModels: Model<Api>[] = [];
 		const authoritativeFreshProviders = new Set<string>();
+		const unresolvedModelIdsByProvider = new Map<string, ReadonlySet<string>>();
 		for (const providerId of STARTUP_MODEL_CACHE_PROVIDER_IDS) {
 			if (configuredDiscoveryProviders.has(providerId)) {
 				continue;
@@ -1070,12 +1090,24 @@ export class ModelRegistry {
 			if (!cache) {
 				continue;
 			}
-			if (cache.fresh && cache.authoritative) {
+			const descriptor = PROVIDER_DESCRIPTORS.find(candidate => candidate.providerId === providerId);
+			const restored = restoreCachedModelHeaders(
+				cache.models,
+				getBundledModels(providerId as GeneratedProvider),
+				cache.headerOmittedModelIds,
+				cache.unrestorableHeaderModelIds,
+				descriptor?.createModelManagerOptions({}).restorableHeaderFallback,
+				model => this.#restoreConfiguredModelHeaders(model),
+			);
+			if (restored.unresolvedModelIds.size > 0) {
+				unresolvedModelIdsByProvider.set(providerId, restored.unresolvedModelIds);
+			}
+			if (cache.fresh && cache.authoritative && restored.unresolvedModelIds.size === 0) {
 				authoritativeFreshProviders.add(providerId);
 			}
-			const models = cache.models.map(model =>
-				model.provider === providerId ? model : { ...model, provider: providerId },
-			);
+			const models = restored.models
+				.filter(model => !restored.unresolvedModelIds.has(model.id))
+				.map(model => (model.provider === providerId ? model : { ...model, provider: providerId }));
 			const providerOverride = this.#providerOverrides.get(providerId);
 			const withTransport = providerOverride
 				? models.map(model => this.#applyProviderTransportOverride(model, providerOverride))
@@ -1090,7 +1122,7 @@ export class ModelRegistry {
 				: withTransport.map(model => buildModel(model));
 			cachedModels.push(...this.#applyProviderModelOverrides(providerId, withCompat));
 		}
-		return { models: cachedModels, authoritativeFreshProviders };
+		return { models: cachedModels, authoritativeFreshProviders, unresolvedModelIdsByProvider };
 	}
 
 	#loadCachedDiscoverableModels(): Model<Api>[] {
@@ -1112,6 +1144,14 @@ export class ModelRegistry {
 				});
 				continue;
 			}
+			const restored = restoreCachedModelHeaders(
+				cache.models,
+				[],
+				cache.headerOmittedModelIds,
+				cache.unrestorableHeaderModelIds,
+				undefined,
+				model => this.#restoreConfiguredModelHeaders(model),
+			);
 			const configStale = this.#isDiscoveryCacheOlderThanModelsConfig(cache.updatedAt);
 			const models = this.#applyProviderModelOverrides(
 				providerConfig.provider,
@@ -1119,7 +1159,7 @@ export class ModelRegistry {
 					providerConfig,
 					this.#applyProviderCompat(
 						providerConfig.compat,
-						cache.models.map(model => buildModel(model)),
+						restored.models.filter(model => !restored.unresolvedModelIds.has(model.id)),
 					),
 				),
 			);
@@ -1128,7 +1168,12 @@ export class ModelRegistry {
 				provider: providerConfig.provider,
 				status: "cached",
 				optional: providerConfig.optional ?? false,
-				stale: providerConfig.discovery.type === "llama.cpp" || !cache.fresh || !cache.authoritative || configStale,
+				stale:
+					providerConfig.discovery.type === "llama.cpp" ||
+					!cache.fresh ||
+					!cache.authoritative ||
+					configStale ||
+					restored.unresolvedModelIds.size > 0,
 				fetchedAt: cache.updatedAt,
 				models: models.map(model => model.id),
 			});
@@ -1144,14 +1189,18 @@ export class ModelRegistry {
 	}
 
 	#normalizeDiscoverableModels(providerConfig: DiscoveryProviderConfig, models: Model<Api>[]): Model<Api>[] {
+		const override = this.#providerOverrides.get(providerConfig.provider);
+		const withTransport = override
+			? models.map(model => this.#applyProviderTransportOverride(model, override))
+			: models;
 		const withDecoderMetadata =
 			providerConfig.discovery.type === "ollama" ||
 			providerConfig.discovery.type === "llama.cpp" ||
 			providerConfig.discovery.type === "lm-studio"
-				? models.map(model =>
+				? withTransport.map(model =>
 						buildModel({ ...model, imageInputDecoder: "stb", compat: model.compatConfig } as ModelSpec<Api>),
 					)
-				: models;
+				: withTransport;
 
 		const withRemoteCompaction = providerConfig.remoteCompaction
 			? withDecoderMetadata.map(model =>
@@ -1430,6 +1479,15 @@ export class ModelRegistry {
 	): Promise<Model<Api>[]> {
 		const cacheProviderId = this.#configuredDiscoveryCacheProviderId(providerConfig);
 		const cached = readModelCache<Api>(cacheProviderId, 24 * 60 * 60 * 1000, Date.now, this.#cacheDbPath);
+		const restored = restoreCachedModelHeaders(
+			cached?.models ?? [],
+			[],
+			cached?.headerOmittedModelIds ?? [],
+			cached?.unrestorableHeaderModelIds ?? [],
+			undefined,
+			model => this.#restoreConfiguredModelHeaders(model),
+		);
+		const usableCachedModels = restored.models.filter(model => !restored.unresolvedModelIds.has(model.id));
 		const cacheOlderThanConfig = cached !== null && this.#isDiscoveryCacheOlderThanModelsConfig(cached.updatedAt);
 		const shouldForceOnlineDiscovery =
 			strategy === "online-if-uncached" && (cacheOlderThanConfig || isAuthoritativeLocalDiscovery(providerConfig));
@@ -1444,15 +1502,10 @@ export class ModelRegistry {
 					optional: providerConfig.optional ?? false,
 					stale: cached !== null,
 					fetchedAt: cached?.updatedAt,
-					models: cached?.models.map(model => model.id) ?? [],
+					models: usableCachedModels.map(model => model.id),
 				});
 				this.#lastDiscoveryWarnings.delete(providerConfig.provider);
-				return cached
-					? this.#normalizeDiscoverableModels(
-							providerConfig,
-							cached.models.map(model => buildModel(model)),
-						)
-					: [];
+				return cached ? this.#normalizeDiscoverableModels(providerConfig, usableCachedModels) : [];
 			}
 		}
 
@@ -1462,7 +1515,10 @@ export class ModelRegistry {
 			try {
 				const models = this.#applyProviderModelOverrides(
 					providerId,
-					await discoverModelsByProviderType(providerConfig, this.#discoveryContext()),
+					this.#normalizeDiscoverableModels(
+						providerConfig,
+						await discoverModelsByProviderType(providerConfig, this.#discoveryContext()),
+					),
 				);
 				this.#lastDiscoveryWarnings.delete(providerId);
 				return models.map(toModelSpec);
@@ -1479,6 +1535,7 @@ export class ModelRegistry {
 			cacheProviderId,
 			cacheTtlMs: 24 * 60 * 60 * 1000,
 			fetchDynamicModels,
+			restoreCachedHeaders: model => this.#restoreConfiguredModelHeaders(model),
 		});
 		const result = await manager.refresh(effectiveStrategy);
 		const status = discoveryError

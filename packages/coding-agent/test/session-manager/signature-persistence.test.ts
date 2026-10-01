@@ -27,21 +27,104 @@ function getAssistantMessage(session: SessionManager): AssistantMessage {
 }
 
 describe("SessionManager signature persistence", () => {
-	it("clears oversized signatures instead of truncating them", async () => {
-		using tempDir = TempDir.createSync("@pi-session-signature-persistence-");
-		const session = SessionManager.create(tempDir.path(), tempDir.path());
+	it.each([
+		{
+			name: "thinking signature and signed reasoning",
+			block: { type: "thinking", thinking: "reasoning".repeat(80_000), thinkingSignature: "s".repeat(600_000) },
+		},
+		{
+			name: "text signature and signed text",
+			block: { type: "text", text: "answer".repeat(100_000), textSignature: "m".repeat(600_000) },
+		},
+		{
+			name: "tool-call thought signature and signed arguments",
+			block: {
+				type: "toolCall",
+				id: "tool_1",
+				name: "write",
+				arguments: { path: "file.ts", content: "x".repeat(600_000) },
+				thoughtSignature: "t".repeat(600_000),
+			},
+		},
+		{
+			name: "oversized reasoning with a short signature",
+			block: {
+				type: "thinking",
+				thinking: "reasoning".repeat(80_000),
+				thinkingSignature: "short-thinking-signature",
+			},
+		},
+		{
+			name: "oversized text with a short signature",
+			block: { type: "text", text: "answer".repeat(100_000), textSignature: "short-text-signature" },
+		},
+		{
+			name: "encrypted redacted reasoning",
+			block: { type: "redactedThinking", data: "encrypted".repeat(80_000) },
+		},
+	] satisfies { name: string; block: AssistantMessage["content"][number] }[])(
+		"preserves $name exactly across reload",
+		async ({ block }) => {
+			using tempDir = TempDir.createSync("@pi-session-signature-persistence-");
+			const session = SessionManager.create(tempDir.path(), tempDir.path());
+			// Compare all replay bytes without dumping megabytes of signed provider data on failure.
+			const digest = (value: AssistantMessage["content"]): string =>
+				new Bun.SHA256().update(JSON.stringify(value)).digest("hex");
+			const expectedDigest = digest([block]);
 
-		session.appendMessage({ role: "user", content: "continue", timestamp: 1 });
+			session.appendMessage({ role: "user", content: "continue", timestamp: 1 });
+			session.appendMessage({
+				role: "assistant",
+				content: [block],
+				api: "openai-responses",
+				provider: "openai",
+				model: "gpt-5-mini",
+				usage: {
+					input: 1,
+					output: 1,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 2,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: 2,
+			} satisfies AssistantMessage);
+			await session.flush();
+
+			const sessionFile = session.getSessionFile();
+			if (!sessionFile) throw new Error("Expected persisted session file");
+			await session.close();
+			const reloaded = await SessionManager.open(sessionFile);
+			try {
+				const assistant = getAssistantMessage(reloaded);
+				expect(digest(assistant.content)).toBe(expectedDigest);
+			} finally {
+				await reloaded.close();
+			}
+		},
+	);
+
+	it("limits unsigned content and strips transient events even beside signed content", async () => {
+		using tempDir = TempDir.createSync("@pi-session-unsigned-persistence-");
+		const session = SessionManager.create(tempDir.path(), tempDir.path());
+		const unsigned = "ordinary output\n".repeat(40_000);
+		const signedBlock = {
+			type: "thinking" as const,
+			thinking: "signed reasoning",
+			thinkingSignature: "provider-signature",
+		};
+		const unsignedBlock = {
+			type: "thinking" as const,
+			thinking: unsigned,
+			jsonlEvents: ["transient subprocess event"],
+		};
 		session.appendMessage({
 			role: "assistant",
-			content: [
-				{ type: "thinking", thinking: "reasoning", thinkingSignature: "s".repeat(600_000) },
-				{ type: "text", text: "done", textSignature: "m".repeat(600_000) },
-				{ type: "toolCall", id: "tool_1", name: "read", arguments: {}, thoughtSignature: "t".repeat(600_000) },
-			],
-			api: "openai-responses",
-			provider: "openai",
-			model: "gpt-5-mini",
+			content: [signedBlock, { type: "text", text: unsigned }, unsignedBlock],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "claude-sonnet",
 			usage: {
 				input: 1,
 				output: 1,
@@ -52,15 +135,31 @@ describe("SessionManager signature persistence", () => {
 			},
 			stopReason: "stop",
 			timestamp: 2,
-		} satisfies AssistantMessage);
+		});
 		await session.flush();
-
-		const reloaded = await SessionManager.open(session.getSessionFile()!);
-		const assistant = getAssistantMessage(reloaded);
-
-		expect(assistant.content[0]).toMatchObject({ type: "thinking", thinking: "reasoning", thinkingSignature: "" });
-		expect(assistant.content[1]).toMatchObject({ type: "text", text: "done", textSignature: "" });
-		expect(assistant.content[2]).toMatchObject({ type: "toolCall", id: "tool_1", thoughtSignature: "" });
+		const sessionFile = session.getSessionFile();
+		if (!sessionFile) throw new Error("Expected persisted session file");
+		await session.close();
+		const reloaded = await SessionManager.open(sessionFile);
+		try {
+			const assistant = getAssistantMessage(reloaded);
+			expect(assistant.content[0]).toEqual({
+				type: "thinking",
+				thinking: signedBlock.thinking,
+				thinkingSignature: signedBlock.thinkingSignature,
+			});
+			const text = assistant.content[1];
+			const thinking = assistant.content[2];
+			if (text?.type !== "text" || thinking?.type !== "thinking") throw new Error("Expected unsigned content");
+			expect(thinking).not.toHaveProperty("jsonlEvents");
+			for (const value of [text.text, thinking.thinking]) {
+				expect(value.length).toBeLessThan(unsigned.length);
+				expect(value).toStartWith("ordinary output\n");
+				expect(value).toEndWith("[Session persistence truncated large content]");
+			}
+		} finally {
+			await reloaded.close();
+		}
 	});
 
 	it("externalizes provider image data URLs and restores preserved history payloads across reload", async () => {
@@ -265,7 +364,7 @@ describe("SessionManager signature persistence", () => {
 	it("drops a reasoning signature duplicated by the provider payload and keeps the payload on reload", async () => {
 		using tempDir = TempDir.createSync("@pi-session-reasoning-dedup-e2e-");
 		const session = SessionManager.create(tempDir.path(), tempDir.path());
-		const encrypted = "ENCRYPTED_REASONING_BLOB_UNIQUE_TOKEN";
+		const encrypted = "ENCRYPTED_REASONING_BLOB_UNIQUE_TOKEN".repeat(20_000);
 		const reasoning = { type: "reasoning", id: "rs_1", encrypted_content: encrypted };
 
 		session.appendMessage({ role: "user", content: "continue", timestamp: 1 });

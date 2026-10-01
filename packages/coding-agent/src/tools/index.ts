@@ -40,7 +40,7 @@ import { AstEditTool } from "./ast-edit";
 import { AstGrepTool } from "./ast-grep";
 import { BashTool } from "./bash";
 import { BrowserTool } from "./browser";
-import { type BuiltinToolName, normalizeToolNames } from "./builtin-names";
+import { type BuiltinToolName, type HIDDEN_TOOL_NAMES, normalizeToolNames } from "./builtin-names";
 import { type CheckpointState, CheckpointTool, type CompletedRewindState, RewindTool } from "./checkpoint";
 import { DebugTool } from "./debug";
 import { EvalTool } from "./eval";
@@ -494,7 +494,7 @@ export const HIDDEN_TOOLS: Record<string, ToolFactory> = {
 	report_tool_issue: s => createReportToolIssueTool(s),
 	resolve: s => new ResolveTool(s),
 	goal: s => new GoalTool(s),
-};
+} satisfies Record<(typeof HIDDEN_TOOL_NAMES)[number], ToolFactory>;
 
 export type ToolName = BuiltinToolName;
 

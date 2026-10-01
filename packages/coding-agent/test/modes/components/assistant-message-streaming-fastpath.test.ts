@@ -97,6 +97,31 @@ describe("AssistantMessageComponent streaming fast path", () => {
 		}
 	});
 
+	it("keeps repeated transient code renders plain and restores highlighting on finalization", () => {
+		const reused = new AssistantMessageComponent();
+		let lastMessage = msg([]);
+		let lastTransient = "";
+		for (const code of ["const streamed = 1;", "const streamed = 12;"]) {
+			lastMessage = msg([
+				{ type: "thinking", thinking: "Checking the **result**." },
+				{ type: "text", text: `Result:\n\n\`\`\`ts\n${code}\n\`\`\`` },
+			]);
+			reused.updateContent(lastMessage, { transient: true });
+			lastTransient = reused.render(W).join("\n");
+			const fresh = new AssistantMessageComponent();
+			fresh.updateContent(lastMessage, { transient: true });
+			expect(lastTransient).toBe(fresh.render(W).join("\n"));
+			expect(Bun.stripANSI(lastTransient)).toContain(code);
+		}
+
+		// No source change: leaving transient mode must still invalidate plain code output.
+		reused.updateContent(lastMessage);
+		const finalized = reused.render(W).join("\n");
+		expect(finalized).toBe(teardownRender(lastMessage));
+		expect(Bun.stripANSI(finalized)).toBe(Bun.stripANSI(lastTransient));
+		expect(finalized).not.toBe(lastTransient);
+	});
+
 	// Regression: theme/symbol changes reach the component via invalidate()
 	// (InteractiveMode clears the markdown render cache and invalidates the
 	// tree). Reused fast-path children captured getMarkdownTheme() at

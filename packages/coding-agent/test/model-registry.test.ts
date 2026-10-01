@@ -6,6 +6,8 @@ import * as path from "node:path";
 import { Effort, type FetchImpl, type Model, type OpenAICompat, type ThinkingConfig } from "jeopi-ai";
 import { buildModel } from "jeopi-catalog/build";
 import { writeModelCache } from "jeopi-catalog/model-cache";
+import { getBundledModels } from "jeopi-catalog/models";
+import { COPILOT_API_HEADERS } from "jeopi-catalog/wire/github-copilot";
 import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { resetSettingsForTest, Settings } from "jeopi-cli/config/settings";
 import { AuthStorage } from "jeopi-cli/session/auth-storage";
@@ -1655,6 +1657,120 @@ describe("ModelRegistry", () => {
 			expect(model).toBeDefined();
 			expect(model?.isOAuth).toBeUndefined();
 		});
+	});
+
+	describe("cached configured header safety", () => {
+		test("does not resurrect bundled models whose discovered authentication cannot be restored", () => {
+			writeRawModelsJson({});
+			const [source, safe] = getBundledModels("github-copilot");
+			if (!source || !safe) throw new Error("Copilot fixture requires two bundled models");
+			const unsafe = buildModel({
+				...source,
+				compat: source.compatConfig,
+				headers: { ...source.headers, "X-Session-Key": "synthetic-bundled-session" },
+			});
+			writeModelCache(
+				"github-copilot",
+				Date.now(),
+				[unsafe, safe],
+				true,
+				"copilot-test",
+				path.join(tempDir, "models.db"),
+				[source, safe],
+				COPILOT_API_HEADERS,
+			);
+			const registry = new ModelRegistry(authStorage, modelsJsonPath, {
+				fetch: async () => {
+					throw new Error("Startup must not perform discovery");
+				},
+			});
+			expect(registry.find("github-copilot", source.id)).toBeUndefined();
+			expect(registry.find("github-copilot", safe.id)?.id).toBe(safe.id);
+		});
+
+		test.each([false, true])(
+			"restores unknown Copilot IDs only when headers were protocol-only (augmented=%s)",
+			augmented => {
+				writeRawModelsJson({});
+				const model = buildModel({
+					id: "unknown-copilot-cache-model",
+					name: "Future Copilot Model",
+					api: "openai-completions",
+					provider: "github-copilot",
+					baseUrl: "https://api.githubcopilot.com",
+					reasoning: false,
+					input: ["text"],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 64_000,
+					maxTokens: 8_000,
+					headers: augmented
+						? { ...COPILOT_API_HEADERS, "X-Session-Key": "synthetic-copilot-session" }
+						: COPILOT_API_HEADERS,
+				});
+				writeModelCache(
+					"github-copilot",
+					Date.now(),
+					[model],
+					true,
+					"copilot-test",
+					path.join(tempDir, "models.db"),
+					[],
+					COPILOT_API_HEADERS,
+				);
+				const registry = new ModelRegistry(authStorage, modelsJsonPath, {
+					fetch: async () => {
+						throw new Error("Startup must not perform discovery");
+					},
+				});
+				const cached = registry.find("github-copilot", model.id);
+				if (augmented) expect(cached).toBeUndefined();
+				else expect(cached?.headers).toEqual(COPILOT_API_HEADERS);
+			},
+		);
+
+		for (const rotate of [false, true]) {
+			test(`restores ${rotate ? "rotated" : "unchanged"} configured credentials on startup and offline refresh`, async () => {
+				const provider = "credential-cache-proxy";
+				const modelId = "discovered-secret-model";
+				const originalHeaders = {
+					Authorization: "Bearer synthetic-original",
+					"X-Old-Tenant": "synthetic-old-tenant",
+				};
+				const currentHeaders = rotate
+					? { Authorization: "Bearer synthetic-current", "X-New-Tenant": "synthetic-new-tenant" }
+					: originalHeaders;
+				const configure = (headers: Record<string, string>) =>
+					writeRawModelsJson({
+						[provider]: {
+							baseUrl: "https://synthetic-proxy.example/v1",
+							apiKey: "synthetic-api-key",
+							api: "openai-completions",
+							headers,
+							discovery: { type: "openai-models-list" },
+							models: [],
+						},
+					});
+				configure(originalHeaders);
+				let requests = 0;
+				const fetch: FetchImpl = async input => {
+					requests++;
+					expect(String(input)).toBe("https://synthetic-proxy.example/v1/models");
+					return new Response(JSON.stringify({ data: [{ id: modelId }] }), {
+						status: 200,
+						headers: { "Content-Type": "application/json" },
+					});
+				};
+				const online = new ModelRegistry(authStorage, modelsJsonPath, { fetch });
+				await online.refreshProvider(provider, "online");
+				expect(online.find(provider, modelId)?.headers).toEqual(originalHeaders);
+				if (rotate) configure(currentHeaders);
+				const cached = new ModelRegistry(authStorage, modelsJsonPath, { fetch });
+				expect(cached.find(provider, modelId)?.headers).toEqual(currentHeaders);
+				await cached.refreshProvider(provider, "offline");
+				expect(cached.find(provider, modelId)?.headers).toEqual(currentHeaders);
+				expect(requests).toBe(1);
+			});
+		}
 	});
 
 	describe("cached discovery on startup", () => {

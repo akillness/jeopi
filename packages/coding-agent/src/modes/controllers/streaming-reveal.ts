@@ -215,6 +215,7 @@ export class StreamingRevealController {
 	#component: StreamingRevealComponent | undefined;
 	#timer: NodeJS.Timeout | undefined;
 	#revealed = 0;
+	#targetDirty = false;
 	#hideThinkingBlock = false;
 	#proseOnlyThinking = true;
 	#smoothStreaming = true;
@@ -275,6 +276,9 @@ export class StreamingRevealController {
 		if (!this.#component) return;
 		if (!this.#smoothStreaming) {
 			const total = this.#visibleUnits(message);
+			this.#revealed = total;
+			this.#targetDirty = false;
+			this.#stopTimer();
 			this.#component.updateContent(this.#build(message, total), { transient: true });
 			return;
 		}
@@ -283,6 +287,7 @@ export class StreamingRevealController {
 			// A tool call is a transcript-order boundary: finish any leading
 			// assistant text before EventController renders the separate tool card.
 			this.#revealed = total;
+			this.#targetDirty = false;
 			this.#stopTimer();
 			this.#component.updateContent(this.#build(message, this.#revealed), {
 				transient: true,
@@ -292,8 +297,15 @@ export class StreamingRevealController {
 		if (this.#revealed > total) {
 			this.#revealed = total;
 		}
-		this.#renderCurrent();
-		this.#syncTimer(total);
+		if (this.#revealed < total) {
+			// ponytail: reuse the reveal timer; only add another scheduler if streaming needs a separate cadence.
+			this.#targetDirty = false;
+			this.#syncTimer(total);
+			return;
+		}
+		// Caught-up rewrites still need one render of the newest target at the next tick.
+		this.#startTimer();
+		this.#targetDirty = true;
 	}
 
 	stop(): void {
@@ -301,6 +313,7 @@ export class StreamingRevealController {
 		this.#target = undefined;
 		this.#component = undefined;
 		this.#revealed = 0;
+		this.#targetDirty = false;
 		this.#unitCounter.reset();
 	}
 
@@ -377,6 +390,12 @@ export class StreamingRevealController {
 		}
 		const total = this.#visibleUnits(target);
 		if (this.#revealed >= total) {
+			if (this.#targetDirty) {
+				this.#targetDirty = false;
+				this.#revealed = total;
+				this.#renderCurrent();
+				this.#requestRender();
+			}
 			this.#stopTimer();
 			return;
 		}

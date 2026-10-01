@@ -59,9 +59,14 @@ function shouldExternalizeImagePayload(
 	return (key === TEXT_CONTENT_KEY && isImageBlock(value)) || key === "images";
 }
 
+/** Signature and encrypted fields bind their carrier to its exact bytes. */
+function isNonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.length > 0;
+}
+
 /**
  * Recursively truncate large strings in an object for session persistence.
- * - Truncates any oversized string fields (key-agnostic)
+ * - Truncates oversized strings except signed/encrypted blocks and signature keys
  * - Externalizes oversized image payloads to blob refs
  * - Updates lineCount when content is truncated
  * - Returns original object if no changes needed (structural sharing)
@@ -76,16 +81,29 @@ function truncateForPersistence(obj: unknown, blobStore: BlobStore, key?: string
 	if (shouldExternalizeImagePayload(obj, key)) {
 		return { ...obj, data: externalizeImageDataSync(blobStore, obj.data, obj.mimeType) };
 	}
+	// Signed content and encrypted reasoning must replay byte-for-byte. Keep the
+	// whole carrier, including paired text and tool arguments; unsigned content
+	// still follows the normal size and transient-field sanitization rules.
+	if (typeof obj === "object" && "type" in obj) {
+		const signed =
+			(obj.type === "thinking" && "thinkingSignature" in obj && isNonEmptyString(obj.thinkingSignature)) ||
+			(obj.type === "text" && "textSignature" in obj && isNonEmptyString(obj.textSignature)) ||
+			(obj.type === "toolCall" && "thoughtSignature" in obj && isNonEmptyString(obj.thoughtSignature));
+		const redacted = obj.type === "redactedThinking" && "data" in obj && isNonEmptyString(obj.data);
+		const encryptedReasoning =
+			obj.type === "reasoning" && "encrypted_content" in obj && isNonEmptyString(obj.encrypted_content);
+		if (signed || redacted || encryptedReasoning) return obj;
+	}
 
 	if (typeof obj === "string") {
 		if (key === "image_url" && isImageDataUrl(obj)) {
 			return externalizeImageDataUrlSync(blobStore, obj);
 		}
 		if (obj.length > MAX_PERSIST_CHARS) {
-			// Cryptographic signatures must be preserved exactly or cleared entirely — never truncated.
-			// Truncation would produce an invalid signature that the API rejects.
+			// Unknown carrier shapes must retain opaque signatures too: clearing or
+			// truncating one loses provider context or makes replay invalid.
 			if (key === "thinkingSignature" || key === "thoughtSignature" || key === "textSignature") {
-				return "";
+				return obj;
 			}
 			const limit = Math.max(0, MAX_PERSIST_CHARS - TRUNCATION_NOTICE.length);
 			return `${truncateString(obj, limit)}${TRUNCATION_NOTICE}`;

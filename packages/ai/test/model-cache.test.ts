@@ -47,6 +47,64 @@ describe("model cache migrations", () => {
 		}
 	});
 
+	it("omits every header from persisted models without mutating the live model", async () => {
+		const model = createModel("credential-model", "Credential Model");
+		const headers = {
+			Authorization: "Bearer synthetic-cache-secret",
+			"X-Custom-Credential": "synthetic-arbitrary-secret",
+			"X-Public-Header": "synthetic-header-value",
+		};
+		model.headers = headers;
+		writeModelCache("ollama-cloud", 10_000, [model], true, "static-secret-test", dbPath);
+
+		const db = new Database(dbPath, { readonly: true });
+		try {
+			const row = db.query<{ models: string }, []>("SELECT models FROM model_cache").get();
+			expect(row).not.toBeNull();
+			expect(JSON.parse(row!.models)[0]).not.toHaveProperty("headers");
+			const rawRows = JSON.stringify(db.query("SELECT * FROM model_cache").all());
+			for (const [name, value] of Object.entries(headers)) {
+				expect(rawRows).not.toContain(name);
+				expect(rawRows).not.toContain(value);
+			}
+		} finally {
+			db.close();
+		}
+		const bytes = await fs.readFile(dbPath);
+		for (const value of Object.values(headers)) expect(bytes.includes(value)).toBe(false);
+		expect(model.headers).toEqual(headers);
+		expect(readModelCache("ollama-cloud", TTL_MS, () => 10_000, dbPath)?.models.map(cached => cached.id)).toEqual([
+			model.id,
+		]);
+	});
+
+	it("invalidates and scrubs schema-8 rows that predate header sanitization", async () => {
+		const legacyModel = createModel("legacy-secret-model", "Legacy Secret Model");
+		legacyModel.headers = { Authorization: "Bearer synthetic-legacy-secret", "X-Key": "synthetic-legacy-key" };
+		const db = new Database(dbPath, { create: true });
+		try {
+			db.run(`CREATE TABLE model_cache (
+				provider_id TEXT PRIMARY KEY, version INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+				authoritative INTEGER NOT NULL, static_fingerprint TEXT NOT NULL, models TEXT NOT NULL
+			)`);
+			db.run("INSERT INTO model_cache VALUES (?, ?, ?, ?, ?, ?)", [
+				"ollama-cloud",
+				8,
+				10_000,
+				1,
+				"legacy-static",
+				JSON.stringify([legacyModel]),
+			]);
+		} finally {
+			db.close();
+		}
+		expect((await fs.readFile(dbPath)).includes("synthetic-legacy-secret")).toBe(true);
+		expect(readModelCache("ollama-cloud", TTL_MS, () => 10_000, dbPath)).toBeNull();
+		const bytes = await fs.readFile(dbPath);
+		expect(bytes.includes("synthetic-legacy-secret")).toBe(false);
+		expect(bytes.includes("synthetic-legacy-key")).toBe(false);
+	});
+
 	it("invalidates legacy cached models and lets the next discovery write fresh ones", () => {
 		const legacyModel = createModel("legacy-cloud-model", "Legacy Cloud Model");
 		const legacyDb = new Database(dbPath, { create: true });

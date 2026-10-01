@@ -35,15 +35,24 @@ export const BUILTIN_TOOL_NAMES = [
 
 export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];
 
+export const HIDDEN_TOOL_NAMES = ["yield", "report_finding", "report_tool_issue", "resolve", "goal"] as const;
+
 const LEGACY_BUILTIN_TOOL_NAME_ALIASES: ReadonlyMap<string, BuiltinToolName> = new Map([
 	["search", "grep"],
 	["find", "glob"],
 ]);
 
-/** Return the canonical tool name for current and legacy built-in tool IDs. */
+const CANONICAL_TOOL_NAMES: Record<string, true> = Object.fromEntries(
+	[...BUILTIN_TOOL_NAMES, ...HIDDEN_TOOL_NAMES].map(name => [name, true]),
+);
+
+/** Canonicalize built-in IDs and legacy aliases. Leave plugin names unchanged. */
 export function normalizeToolName(name: string): string {
 	const normalized = name.toLowerCase();
-	return LEGACY_BUILTIN_TOOL_NAME_ALIASES.get(normalized) ?? normalized;
+	return (
+		LEGACY_BUILTIN_TOOL_NAME_ALIASES.get(normalized) ??
+		(Object.hasOwn(CANONICAL_TOOL_NAMES, normalized) ? normalized : name)
+	);
 }
 
 /** Normalize and deduplicate tool names while preserving first-seen order. */

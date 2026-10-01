@@ -204,6 +204,115 @@ describe("streaming reveal", () => {
 		}
 	});
 
+	it("coalesces provider bursts into the existing tick using the newest target", () => {
+		vi.useFakeTimers();
+		const { component, controller } = makeController();
+		controller.begin(component, makeMessage([{ type: "text", text: "abcdefghi" }]));
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS / 2);
+		controller.setTarget(makeMessage([{ type: "text", text: "intermediate" }]));
+		controller.setTarget(makeMessage([{ type: "text", text: "XYZ latest" }]));
+		expect(component.messages.map(message => textAt(message, 0))).toEqual([""]);
+
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS / 2);
+		expect(component.messages.map(message => textAt(message, 0))).toEqual(["", "XYZ"]);
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS * 4);
+		expect(textAt(latestMessage(component), 0)).toBe("XYZ latest");
+		controller.stop();
+	});
+
+	it.each([
+		{ name: "same-length rewrite", text: "XYZ" },
+		{ name: "shorter replacement", text: "Z" },
+		{ name: "empty replacement", text: "" },
+	])("delivers a caught-up $name on the next tick without losing the dirty target", ({ text }) => {
+		vi.useFakeTimers();
+		const { component, controller } = makeController();
+		controller.begin(component, makeMessage([{ type: "text", text: "abc" }]));
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		expect(textAt(latestMessage(component), 0)).toBe("abc");
+		const updates = component.messages.length;
+
+		controller.setTarget(makeMessage([{ type: "text", text: "DEF" }]));
+		controller.setTarget(makeMessage([{ type: "text", text }]));
+		expect(component.messages).toHaveLength(updates);
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		expect(component.messages).toHaveLength(updates + 1);
+		expect(textAt(latestMessage(component), 0)).toBe(text);
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS * 4);
+		expect(component.messages).toHaveLength(updates + 1);
+		controller.stop();
+	});
+
+	it("does not overwrite a final message_end render with a queued partial", () => {
+		vi.useFakeTimers();
+		const component = new AssistantMessageComponent();
+		const controller = new StreamingRevealController({
+			getSmoothStreaming: () => true,
+			getHideThinkingBlock: () => false,
+			getProseOnlyThinking: () => true,
+			requestRender: () => {},
+		});
+		controller.begin(component, makeMessage([{ type: "text", text: "pending" }]));
+		controller.setTarget(makeMessage([{ type: "text", text: "pending delta" }]));
+		controller.stop();
+		const final = makeMessage([{ type: "text", text: "Final answer: **complete**." }]);
+		component.updateContent(final);
+		const rendered = component.render(80).join("\n");
+		expect(Bun.stripANSI(rendered)).toContain("Final answer: complete.");
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS * 4);
+		expect(component.render(80).join("\n")).toBe(rendered);
+	});
+
+	it("cancels smooth backlog when switching to immediate rendering", () => {
+		vi.useFakeTimers();
+		const options = { smooth: true };
+		const { component, controller } = makeController(options);
+		controller.begin(component, makeMessage([{ type: "text", text: "a long pending answer" }]));
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		options.smooth = false;
+		controller.setTarget(makeMessage([{ type: "text", text: "the complete immediate answer" }]));
+		expect(textAt(latestMessage(component), 0)).toBe("the complete immediate answer");
+		const updates = component.messages.length;
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS * 4);
+		expect(component.messages).toHaveLength(updates);
+		expect(textAt(latestMessage(component), 0)).toBe("the complete immediate answer");
+		controller.stop();
+	});
+
+	it("resyncs hidden thinking immediately while a newer target is queued", () => {
+		vi.useFakeTimers();
+		let hideThinking = false;
+		const component = new RecordingComponent();
+		const controller = new StreamingRevealController({
+			getSmoothStreaming: () => true,
+			getHideThinkingBlock: () => hideThinking,
+			getProseOnlyThinking: () => true,
+			requestRender: () => {},
+		});
+		controller.begin(
+			component,
+			makeMessage([
+				{ type: "thinking", thinking: "thought" },
+				{ type: "text", text: "abc" },
+			]),
+		);
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		expect(thinkingAt(latestMessage(component), 0)).toBe("tho");
+		controller.setTarget(
+			makeMessage([
+				{ type: "thinking", thinking: "thought" },
+				{ type: "text", text: "answer" },
+			]),
+		);
+
+		hideThinking = true;
+		controller.resyncVisibility();
+		expect(textAt(latestMessage(component), 1)).toBe("ans");
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		expect(textAt(latestMessage(component), 1)).toBe("answer");
+		controller.stop();
+	});
+
 	it("keeps grapheme counts correct when an append extends the final cluster", () => {
 		vi.useFakeTimers();
 		const { component, controller } = makeController();
@@ -284,6 +393,7 @@ describe("streaming reveal", () => {
 		controller.setTarget(makeMessage([{ type: "text", text: "abcdefghi" }]));
 		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
 		expect(textAt(latestMessage(component), 0)).toBe("abc");
+		controller.setTarget(makeMessage([{ type: "text", text: "abcdefghi pending" }]));
 
 		controller.setTarget(
 			makeMessage([
@@ -291,6 +401,7 @@ describe("streaming reveal", () => {
 				{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } },
 			]),
 		);
+		expect(textAt(latestMessage(component), 0)).toBe("abcdefghi");
 		const updates = component.messages.length;
 		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS * 10);
 

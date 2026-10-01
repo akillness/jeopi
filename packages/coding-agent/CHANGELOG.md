@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [16.5.6] - 2026-10-01
+
+### Fixed
+
+- Coalesce smooth-streaming provider updates on the existing render timer and retain transient Markdown rendering until finalization, avoiding redundant renders without delaying tool boundaries or losing the final response. Adapted from oh-my-pi `e3ebce51c3` and the upstream assistant fast path.
+- Preserve oversized signed text, reasoning, tool arguments, and encrypted replay payloads when saving and reopening sessions, while retaining unsigned-content limits and reasoning-signature deduplication. Ported from oh-my-pi `af748c3e90` and `c4c0331345`.
+- Preserve case-sensitive MCP and plugin tool names; normalize only known builtin names and legacy aliases, including jeopi's hidden tools. Ported from oh-my-pi `ba5885880e`.
+- Restore cached model request headers from current trusted provider or local configuration instead of persisting credentials, including configured discovery, credential rotation, and Copilot model variants.
+
 ## [16.5.5] - 2026-09-30
 
 ### Fixed
