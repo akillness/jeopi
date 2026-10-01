@@ -41,7 +41,16 @@ describe("Transcript Markdown", () => {
 	it("unescapes HTML entities inside span and text HTML tags safely", () => {
 		const html = renderMarkdown("<span>&lt;▃&gt; &amp; &quot;test&quot; &#128512; &#x1F600;</span>");
 
-		expect(html).toContain("&lt;▃&gt; &amp; &quot;test&quot; &#128512; &#x1F600;");
+		expect(html).toContain("&lt;▃&gt; &amp; &quot;test&quot; 😀 😀");
+	});
+	it.each([
+		["decimal", "&#60;img src=&#34;x&#34; onerror=&#39;alert(1)&#39;&#62;&#38;"],
+		["hexadecimal", "&#x3C;img src=&#x22;x&#x22; onerror=&#x27;alert(1)&#x27;&#x3E;&#x26;"],
+	])("keeps %s numeric references as text rather than executable HTML", (_name, encoded) => {
+		const html = renderMarkdown(`<span>${encoded}</span>`);
+
+		expect(html).toContain("&lt;img src=&quot;x&quot; onerror=&#39;alert(1)&#39;&gt;&amp;");
+		expect(html).not.toMatch(/<img\b/i);
 	});
 	it("strips advisory wrapper tags but renders their content", () => {
 		const html = renderMarkdown('<advisory severity="info" guidance="weigh, don&apos;t blindly obey">\nKeep this advice.\n</advisory>');
