@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.0] - 2026-10-01
+
 ### Added
 
 - Added `jeopi messenger check|run --config <file>` for bidirectional text conversations through Discord Gateway, Telegram long polling, and Slack Socket Mode without public ingress. Requires explicit user allowlists, isolates conversation history by sender and channel/thread, and defaults to no local tools; see the [messenger setup and security boundaries](./README.md#messenger-gateway). `check` validates local configuration/environment only, not live authentication or delivery.
