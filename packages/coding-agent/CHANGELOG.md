@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added comprehensive messenger documentation (`docs/messenger.md`, `docs/messenger/telegram.md`, `docs/messenger/discord.md`, `docs/messenger/slack.md`) detailing architecture, setup, intents, tokens, and security boundaries for Discord, Telegram, and Slack.
+- Added `jeopi-messenger` agent skill (`skills/jeopi-messenger/SKILL.md`) enabling AI coding agents to configure, validate, run, and troubleshoot Discord, Telegram, and Slack text bots via the `skills` CLI and agent-native skill paths.
+
 ## [16.6.0] - 2026-10-01
 
 ### Added

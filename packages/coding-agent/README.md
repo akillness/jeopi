@@ -93,6 +93,26 @@ jeopi messenger run --config /absolute/private/path/messenger.json
 
 These are native jeopi transports, informed by Aside's bundled `~/.aside/u/0/skills/builtin/channel/SKILL.md` context/reply model and [Hermes Agent gateway architecture at `040b6df2c40b0f4f88f51e4c2062eafc4d7463c5`](https://github.com/NousResearch/hermes-agent/tree/040b6df2c40b0f4f88f51e4c2062eafc4d7463c5), **not full ports**. Aside's moderation/history/reaction tools and Hermes media support are not included. Attachments, image/audio/video processing, and media uploads are not supported by this text gateway.
 
+### Detailed Guides and Agent Skill
+
+- [Messenger Architecture & Configuration Guide](../../docs/messenger.md)
+- [Telegram Bot Setup Guide](../../docs/messenger/telegram.md)
+- [Discord Bot Setup Guide](../../docs/messenger/discord.md)
+- [Slack Socket Mode Setup Guide](../../docs/messenger/slack.md)
+
+#### Install as Agent Skill
+
+Install the `jeopi-messenger` skill so AI agents can manage and operate messenger configurations:
+
+```sh
+# Universal install via skills CLI
+npx skills add akillness/jeopi --skill jeopi-messenger
+
+# Manual install into agent projects
+mkdir -p .agents/skills/jeopi-messenger
+cp -r ../../skills/jeopi-messenger/* .agents/skills/jeopi-messenger/
+```
+
 ## Memory backends
 
 The agent supports three mutually-exclusive memory backends, selected via the `memory.backend` setting (Settings → Memory tab, or `~/.jeopi/config.yml`):

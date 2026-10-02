@@ -469,9 +469,9 @@ The table below is a per-module breakdown that intentionally omits glue and test
 | sixel      | Terminal image rendering · decode PNG · JPEG · WebP · GIF · resize · SIXEL encode    | icy_sixel · image                         |    55 |
 | html       | HTML to Markdown with optional content cleaning                                      | html-to-markdown-rs                       |    50 |
 
-## Four entry points: _interactive_, _one-shot_, RPC, and ACP.
+## Five entry points: _interactive_, _one-shot_, RPC, ACP, and _Messenger_.
 
-Same engine, four wrappers. `jeopi` runs the TUI. `jeopi -p` answers a single prompt and exits. The Node SDK embeds the session in your process. `jeopi --mode rpc` and `jeopi acp` hand the wheel to another program over stdio.
+Same engine, five wrappers. `jeopi` runs the TUI. `jeopi -p` answers a single prompt and exits. The Node SDK embeds the session in your process. `jeopi --mode rpc` and `jeopi acp` hand the wheel to another program over stdio. `jeopi messenger` connects Discord, Telegram, and Slack bots to headless sessions.
 
 ### Interactive — when in doubt, the agent asks
 
@@ -535,6 +535,69 @@ The [Agent Client Protocol](https://github.com/zed-industries/agent-client-proto
 | `edit, bash`                  | `session/request_permission`        |
 
 Full reference: [docs/sdk.md](docs/sdk.md).
+
+### Messenger — chat via Telegram, Discord, and Slack
+
+`jeopi messenger check|run --config <file>`
+
+Connect authorized Discord, Telegram, and Slack bots directly to headless agent sessions for bidirectional **text** conversations. Discord Gateway and Slack Socket Mode connect over outbound WebSockets; Telegram connects via outbound HTTPS long polling. No public IP, webhook endpoints, cloud relays, or tunnel tools (like ngrok) are required.
+
+```json
+{
+  "cwd": "./workspace",
+  "sessionDir": "./sessions",
+  "toolNames": [],
+  "platforms": {
+    "telegram": {
+      "tokenEnv": "JEOPI_TELEGRAM_BOT_TOKEN",
+      "allowedUserIds": ["TELEGRAM_USER_ID"],
+      "allowedChannelIds": ["TELEGRAM_CHAT_ID"]
+    },
+    "discord": {
+      "tokenEnv": "JEOPI_DISCORD_BOT_TOKEN",
+      "allowedUserIds": ["DISCORD_USER_ID"],
+      "allowedChannelIds": ["DISCORD_CHANNEL_OR_THREAD_ID"]
+    },
+    "slack": {
+      "tokenEnv": "JEOPI_SLACK_BOT_TOKEN",
+      "appTokenEnv": "JEOPI_SLACK_APP_TOKEN",
+      "allowedUserIds": ["SLACK_MEMBER_ID"],
+      "allowedChannelIds": ["SLACK_CHANNEL_OR_DM_ID"]
+    }
+  }
+}
+```
+
+```sh
+jeopi messenger check --config /path/to/messenger.json
+jeopi messenger run --config /path/to/messenger.json
+```
+
+- **Telegram**: Outbound HTTPS long polling via BotFather token. Supports forum topics in supergroups (`message_thread_id`).
+- **Discord**: Outbound WebSocket Gateway v10. Requires privileged **Message Content Intent**; supports threads and channel mentions.
+- **Slack**: Outbound WebSocket Socket Mode via App Token (`xapp-...`) and Bot Token (`xoxb-...`). Automatically threads channel replies.
+- **Strict Allowlists**: Every platform enforces exact string user IDs (`allowedUserIds`). Unauthorized users are ignored silently.
+- **Session Isolation**: Session transcripts are isolated by `[platform, accountId, channelId, threadId, senderId]` and `cwd`.
+- **Tool Sandboxing**: Defaults to `toolNames: []` (pure text chat). Tools (`read`, `grep`, `glob`, `bash`, `edit`, `write`) are strict opt-in.
+
+Detailed documentation:
+- [Messenger Gateway Architecture and Configuration Reference](docs/messenger.md)
+- [Telegram Bot Setup Guide](docs/messenger/telegram.md)
+- [Discord Bot Setup Guide](docs/messenger/discord.md)
+- [Slack Socket Mode Setup Guide](docs/messenger/slack.md)
+
+#### Agent Skill Installation
+
+Install the `jeopi-messenger` skill so AI coding agents (jeopi, Claude Code, Codex, Cursor, Aside) can autonomously configure, validate, run, and troubleshoot messenger bots:
+
+```sh
+# Universal install via skills CLI
+npx skills add akillness/jeopi --skill jeopi-messenger
+
+# Or install manually into agent project skills
+mkdir -p .agents/skills/jeopi-messenger
+cp -r skills/jeopi-messenger/* .agents/skills/jeopi-messenger/
+```
 
 ## A harness worth keeping is one you _don't_ outgrow.
 
