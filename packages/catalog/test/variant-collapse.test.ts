@@ -105,6 +105,33 @@ describe("collapseEffortVariants", () => {
 		});
 	});
 
+	it("collapses gemini-3.8-flash-tiered into gemini-3.8-flash routing to tiered wire id", () => {
+		const out = collapseEffortVariants(
+			[memberSpec("gemini-3.8-flash-tiered", { maxTokens: 65_536 })],
+			ANTIGRAVITY_VARIANT_COLLAPSE_TABLE,
+		);
+
+		expect(out).toHaveLength(1);
+		const flash38 = out[0];
+		expect(flash38?.id).toBe("gemini-3.8-flash");
+		expect(flash38?.name).toBe("Gemini 3.8 Flash");
+		expect(flash38?.requestModelId).toBe("gemini-3.8-flash-tiered");
+		expect(flash38?.thinking?.mode).toBe("budget");
+		expect(flash38?.thinking?.effortRouting).toEqual({
+			off: "gemini-3.8-flash-tiered",
+			minimal: "gemini-3.8-flash-tiered",
+			low: "gemini-3.8-flash-tiered",
+			medium: "gemini-3.8-flash-tiered",
+			high: "gemini-3.8-flash-tiered",
+		});
+		expect(flash38?.thinking?.effortBudgets).toEqual({
+			minimal: 1000,
+			low: 1000,
+			medium: 4000,
+			high: 10000,
+		});
+	});
+
 	it("drops routes whose target member is absent", () => {
 		const out = collapseEffortVariants(
 			[memberSpec("gemini-3.5-flash-extra-low")],

@@ -220,6 +220,33 @@ function geminiFlashFamily(mode: "budget" | "google-level"): EffortVariantFamily
 	};
 }
 
+function gemini38FlashFamily(mode: "budget" | "google-level"): EffortVariantFamily {
+	const budget = mode === "budget";
+	return {
+		id: "gemini-3.8-flash",
+		name: "Gemini 3.8 Flash",
+		members: ["gemini-3.8-flash-tiered", "gemini-3.8-flash"],
+		routing: {
+			off: "gemini-3.8-flash-tiered",
+			[Effort.Minimal]: "gemini-3.8-flash-tiered",
+			[Effort.Low]: "gemini-3.8-flash-tiered",
+			[Effort.Medium]: "gemini-3.8-flash-tiered",
+			[Effort.High]: "gemini-3.8-flash-tiered",
+		},
+		thinking: budget
+			? { mode: "budget", efforts: GEMINI_3_FLASH_FAMILY_EFFORTS, effortBudgets: GEMINI_3_FLASH_FAMILY_BUDGETS }
+			: { mode: "google-level", efforts: GEMINI_3_FLASH_FAMILY_EFFORTS },
+		suppressWhenOff: true,
+		preserveAbsentEffortRoutes: true,
+		extraAliases: [
+			"gemini-3.8-flash-tiered",
+			"gemini-3.8-flash-low",
+			"gemini-3.8-flash-medium",
+			"gemini-3.8-flash-high",
+		],
+	};
+}
+
 function geminiProFamily(mode: "budget" | "google-level"): EffortVariantFamily {
 	const budget = mode === "budget";
 	return {
@@ -302,12 +329,22 @@ const SHARED_CCA_FAMILIES: readonly EffortVariantFamily[] = [
 
 /** `google-antigravity` (daily-cloudcode-pa): Gemini 3.x on the budget transport. */
 export const ANTIGRAVITY_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
-	families: [geminiFlashFamily("budget"), geminiProFamily("budget"), ...SHARED_CCA_FAMILIES],
+	families: [
+		gemini38FlashFamily("budget"),
+		geminiFlashFamily("budget"),
+		geminiProFamily("budget"),
+		...SHARED_CCA_FAMILIES,
+	],
 };
 
 /** `google-gemini-cli` (cloudcode-pa): Gemini 3.x on the level transport (official CLI parity). */
 export const GEMINI_CLI_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
-	families: [geminiFlashFamily("google-level"), geminiProFamily("google-level"), ...SHARED_CCA_FAMILIES],
+	families: [
+		gemini38FlashFamily("google-level"),
+		geminiFlashFamily("google-level"),
+		geminiProFamily("google-level"),
+		...SHARED_CCA_FAMILIES,
+	],
 };
 export const DEVIN_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	families: [
