@@ -2,10 +2,11 @@
 
 ## [Unreleased]
 
+## [16.6.2] - 2026-10-03
+
 ### Fixed
 
 - Updated the Anthropic OAuth client version to Claude Code 2.1.288 / Agent SDK 0.3.288 so Opus 5.5 and Sonnet 5.5 no longer fail the server's minimum-client-version check. Verified both models through the jeopi CLI with adaptive thinking enabled.
-
 
 ## [16.5.5] - 2026-09-30
 

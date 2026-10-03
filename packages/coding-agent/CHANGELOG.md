@@ -2,15 +2,16 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Refresh the authenticated provider's models online immediately after successful interactive, setup-wizard, or RPC login, bypassing fresh cache TTLs without refreshing unrelated providers. Device-login aliases refresh the provider that stores their credentials; catalog outages preserve successful authentication and existing models.
-
+## [16.6.2] - 2026-10-03
 
 ### Added
 
 - Added comprehensive messenger documentation (`docs/messenger.md`, `docs/messenger/telegram.md`, `docs/messenger/discord.md`, `docs/messenger/slack.md`) detailing architecture, setup, intents, tokens, and security boundaries for Discord, Telegram, and Slack.
 - Added `jeopi-messenger` agent skill (`skills/jeopi-messenger/SKILL.md`) enabling AI coding agents to configure, validate, run, and troubleshoot Discord, Telegram, and Slack text bots via the `skills` CLI and agent-native skill paths.
+
+### Fixed
+
+- Refresh the authenticated provider's models online immediately after successful interactive, setup-wizard, or RPC login, bypassing fresh cache TTLs without refreshing unrelated providers. Device-login aliases refresh the provider that stores their credentials; catalog outages preserve successful authentication and existing models.
 
 ## [16.6.0] - 2026-10-01
 

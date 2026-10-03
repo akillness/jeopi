@@ -2,14 +2,15 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Normalize Anthropic discovery to `/v1/models`, follow all cursor pages, and prefer live display names, token limits, image support, and reasoning capabilities while retaining reference pricing. Failed pagination keeps the previous complete catalog, and discovery requests have bounded timeouts.
+## [16.6.2] - 2026-10-03
 
 ### Changed
 
 - Regenerated the Anthropic catalog with Claude Opus 5.5 and Sonnet 5.5 and updated the first-party default to `claude-opus-5-5`.
 
+### Fixed
+
+- Normalize Anthropic discovery to `/v1/models`, follow all cursor pages, and prefer live display names, token limits, image support, and reasoning capabilities while retaining reference pricing. Failed pagination keeps the previous complete catalog, and discovery requests have bounded timeouts.
 
 ## [16.6.0] - 2026-10-01
 
