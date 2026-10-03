@@ -50,8 +50,8 @@ const STARTUP_MODEL_CACHE_PROVIDER_IDS: readonly string[] = [
 const LOCAL_PROVIDER_PLACEHOLDERS = new Set<string>(["llama-cpp-local", "lm-studio-local", "vllm-local"]);
 
 import type { ApiKeyResolver, FetchImpl } from "jeopi-ai";
-import { registerOAuthProvider, unregisterOAuthProviders } from "jeopi-ai/oauth";
-import type { OAuthCredentials, OAuthLoginCallbacks } from "jeopi-ai/oauth/types";
+import { getOAuthProviders, registerOAuthProvider, unregisterOAuthProviders } from "jeopi-ai/oauth";
+import type { OAuthCredentials, OAuthLoginCallbacks, OAuthProviderId } from "jeopi-ai/oauth/types";
 import { getBundledModelReferenceIndex, resolveModelReference } from "jeopi-catalog/identity";
 import { isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "jeopi-utils";
 import { parseModelString, resolveProviderModelReference } from "../config/model-resolver";
@@ -786,6 +786,14 @@ export class ModelRegistry {
 		});
 		// Load models synchronously in constructor.
 		this.#loadModels();
+	}
+
+	/** Save login credentials, then bypass the catalog TTL for the authenticated provider. */
+	async login(providerId: OAuthProviderId, callbacks: OAuthLoginCallbacks): Promise<void> {
+		await this.authStorage.login(providerId, callbacks);
+		const modelProviderId =
+			getOAuthProviders().find(provider => provider.id === providerId)?.storeCredentialsAs ?? providerId;
+		await this.refreshProvider(modelProviderId, "online");
 	}
 
 	/**

@@ -426,9 +426,9 @@ function getCacheControl(
 // `cc_version` (e.g. Claude Fable 5.1 rejects anything below 2.1.251 with
 // "Claude Code <v> does not support this model"), so this must track the
 // current Claude Code release. `bun run check-spoofed-versions` reports drift.
-export const claudeCodeVersion = "2.1.268";
+export const claudeCodeVersion = "2.1.288";
 /** `@anthropic-ai/claude-agent-sdk` release paired with `claudeCodeVersion` (same patch number). */
-export const claudeAgentSdkVersion = "0.3.268";
+export const claudeAgentSdkVersion = "0.3.288";
 /** `@anthropic-ai/sdk` version bundled by the Claude Code release above (`X-Stainless-Package-Version`). */
 export const claudeCodeSdkVersion = "0.112.1";
 /** Claude desktop app version reported by the `local-agent` entrypoint (`anthropic-client-version`). */

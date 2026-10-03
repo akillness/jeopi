@@ -160,8 +160,8 @@ function buildAnthropicReferenceMap(
 	for (const model of modelsDevModels) {
 		merged.set(model.id, model);
 	}
-	// Anthropic /v1/models does not carry token limits, so bundled metadata stays canonical
-	// for known models while models.dev only fills gaps for newly discovered ids.
+	// Bundled metadata supplies pricing and missing capabilities; first-party
+	// discovery overrides limits and capabilities when the endpoint reports them.
 	const bundledModels = getBundledModels("anthropic").filter(
 		(model): model is Model<"anthropic-messages"> => model.api === "anthropic-messages",
 	);
@@ -3655,51 +3655,58 @@ export function anthropicModelManagerOptions(
 	config?: AnthropicModelManagerConfig,
 ): ModelManagerOptions<"anthropic-messages"> {
 	const apiKey = config?.apiKey;
-	const baseUrl = config?.baseUrl ?? ANTHROPIC_BASE_URL;
+	const baseUrl = normalizeAnthropicBaseUrl(config?.baseUrl, ANTHROPIC_BASE_URL);
 	return {
 		providerId: "anthropic",
 		modelsDev: {
-			fetch: () => fetchModelsDevPayload(config?.fetch),
+			fetch: () => withCatalogDiscoveryTimeout(10_000, signal => fetchModelsDevPayload(config?.fetch, signal)),
 			map: payload => mapAnthropicModelsDev(payload, baseUrl),
 		},
 		...(apiKey && {
-			fetchDynamicModels: async () => {
-				const modelsDevModels = await fetchModelsDevPayload(config?.fetch)
-					.then(payload => mapAnthropicModelsDev(payload, baseUrl))
-					.catch(() => []);
-				const references = buildAnthropicReferenceMap(modelsDevModels);
-				return (
-					fetchOpenAICompatibleModels({
+			fetchDynamicModels: () =>
+				withCatalogDiscoveryTimeout(15_000, async signal => {
+					const modelsDevModels = await fetchModelsDevPayload(config?.fetch, signal)
+						.then(payload => mapAnthropicModelsDev(payload, baseUrl))
+						.catch(() => []);
+					const references = buildAnthropicReferenceMap(modelsDevModels);
+					return fetchOpenAICompatibleModels({
 						api: "anthropic-messages",
 						provider: "anthropic",
-						baseUrl,
+						baseUrl: toAnthropicDiscoveryBaseUrl(baseUrl),
 						headers: buildAnthropicDiscoveryHeaders(apiKey),
-						mapModel: (
-							entry: OpenAICompatibleModelRecord,
-							defaults: ModelSpec<"anthropic-messages">,
-							_context: OpenAICompatibleModelMapperContext<"anthropic-messages">,
-						): ModelSpec<"anthropic-messages"> => {
-							const discoveredName = typeof entry.display_name === "string" ? entry.display_name : defaults.name;
+						pagination: "anthropic",
+						signal,
+						mapModel: (entry, defaults): ModelSpec<"anthropic-messages"> => {
 							const reference = references.get(defaults.id);
-							if (!reference) {
-								return {
-									...defaults,
-									name: discoveredName,
-								};
-							}
+							const capabilities = isRecord(entry.capabilities) ? entry.capabilities : undefined;
+							const thinking =
+								capabilities && isRecord(capabilities.thinking) ? capabilities.thinking : undefined;
+							const imageInput =
+								capabilities && isRecord(capabilities.image_input) ? capabilities.image_input : undefined;
 							return {
-								...reference,
+								...(reference ?? defaults),
 								id: defaults.id,
-								name: discoveredName,
+								name: toModelName(entry.display_name, reference?.name ?? defaults.name),
 								api: "anthropic-messages",
 								provider: "anthropic",
 								baseUrl,
+								reasoning: toBoolean(thinking?.supported) ?? reference?.reasoning ?? defaults.reasoning,
+								input:
+									toBoolean(imageInput?.supported) === true
+										? ["text", "image"]
+										: toBoolean(imageInput?.supported) === false
+											? ["text"]
+											: (reference?.input ?? defaults.input),
+								contextWindow: toPositiveNumber(
+									entry.max_input_tokens,
+									reference?.contextWindow ?? defaults.contextWindow,
+								),
+								maxTokens: toPositiveNumber(entry.max_tokens, reference?.maxTokens ?? defaults.maxTokens),
 							};
 						},
 						fetch: config?.fetch,
-					}) ?? null
-				);
-			},
+					});
+				}),
 		}),
 	};
 }

@@ -1,6 +1,6 @@
 import { type } from "arktype";
 import type { Api, FetchImpl, ModelSpec, Provider } from "../types";
-import { discoveryFetch } from "../utils";
+import { discoveryFetch, isRecord } from "../utils";
 
 const MODELS_PATH = "/models";
 
@@ -100,6 +100,8 @@ export interface FetchOpenAICompatibleModelsOptions<TApi extends Api> {
 	timeoutMs?: number;
 	/** Optional fetch implementation override for testing/custom runtimes. */
 	fetch?: FetchImpl;
+	/** Follow Anthropic's `has_more` / `last_id` cursor protocol via `after_id`. */
+	pagination?: "anthropic";
 	/**
 	 * Optional post-normalization filter.
 	 * Return false to skip a model.
@@ -139,42 +141,45 @@ export async function fetchOpenAICompatibleModels<TApi extends Api>(
 	}
 
 	const fetchImpl = discoveryFetch(options.fetch);
-	const fetchPayload = async (signal?: AbortSignal): Promise<unknown | null> => {
-		let response: Response;
-		try {
-			response = await fetchImpl(`${baseUrl}${MODELS_PATH}`, {
-				method: "GET",
-				headers: requestHeaders,
-				signal,
-			});
-		} catch {
-			return null;
-		}
-
-		if (!response.ok) {
-			return null;
-		}
-
-		try {
-			return await response.json();
-		} catch {
-			return null;
+	const fetchEntries = async (signal?: AbortSignal): Promise<ParsedOpenAICompatibleModelRecord[] | null> => {
+		const entries: ParsedOpenAICompatibleModelRecord[] = [];
+		const cursors = new Set<string>();
+		let url = `${baseUrl}${MODELS_PATH}`;
+		while (true) {
+			let payload: unknown;
+			try {
+				const response = await fetchImpl(url, {
+					method: "GET",
+					headers: requestHeaders,
+					signal,
+				});
+				if (!response.ok) return null;
+				payload = await response.json();
+			} catch {
+				return null;
+			}
+			const page = extractModelEntries(payload);
+			if (page === null) return null;
+			entries.push(...page);
+			if (options.pagination !== "anthropic" || !isRecord(payload) || payload.has_more !== true) {
+				return entries;
+			}
+			const cursor = payload.last_id;
+			// A broken/repeated cursor must not loop or cache an incomplete catalog.
+			if (typeof cursor !== "string" || cursor.length === 0 || cursors.has(cursor) || page.length === 0) {
+				return null;
+			}
+			cursors.add(cursor);
+			url = `${baseUrl}${MODELS_PATH}?after_id=${encodeURIComponent(cursor)}`;
 		}
 	};
-	const payload =
+	const entries =
 		options.signal !== undefined
-			? await fetchPayload(options.signal)
+			? await fetchEntries(options.signal)
 			: options.timeoutMs !== undefined
-				? await withOpenAICompatibleDiscoveryTimeout(options.timeoutMs, fetchPayload)
-				: await fetchPayload();
-	if (payload === null) {
-		return null;
-	}
-
-	const entries = extractModelEntries(payload);
-	if (entries === null) {
-		return null;
-	}
+				? await withOpenAICompatibleDiscoveryTimeout(options.timeoutMs, fetchEntries)
+				: await fetchEntries();
+	if (entries === null) return null;
 
 	const context: OpenAICompatibleModelMapperContext<TApi> = {
 		api: options.api,

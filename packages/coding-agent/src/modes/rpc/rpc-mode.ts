@@ -1289,7 +1289,7 @@ export async function runRpcMode(
 				// We use this ordering to self-classify at runtime — no static allowlist.
 				let authEmitted = false;
 				try {
-					await session.modelRegistry.authStorage.login(command.providerId, {
+					await session.modelRegistry.login(command.providerId, {
 						onAuth: info => {
 							authEmitted = true;
 							output({
@@ -1321,7 +1321,6 @@ export async function runRpcMode(
 							return new Promise<string>(() => {});
 						},
 					});
-					await session.modelRegistry.refresh();
 					return success(id, "login", { providerId: command.providerId });
 				} catch (err: unknown) {
 					return error(id, "login", err instanceof Error ? err.message : String(err));

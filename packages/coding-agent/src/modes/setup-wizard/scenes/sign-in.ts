@@ -179,7 +179,7 @@ export class SignInTab implements SetupTab {
 		this.host.restoreFocus();
 		this.host.requestRender();
 		try {
-			await this.#authStorage.login(providerId as OAuthProvider, {
+			await this.host.ctx.session.modelRegistry.login(providerId as OAuthProvider, {
 				signal: this.#loginAbort.signal,
 				onAuth: info => {
 					this.#authUrl = info.url;
@@ -202,7 +202,6 @@ export class SignInTab implements SetupTab {
 				onManualCodeInput: () =>
 					this.#showPrompt({ message: "Paste the authorization code (or full redirect URL):" }),
 			});
-			await this.host.ctx.session.modelRegistry.refresh();
 			if (this.#disposed) return;
 			this.#statusLines = [
 				theme.fg("success", `${theme.status.success} Signed in to ${providerId}`),

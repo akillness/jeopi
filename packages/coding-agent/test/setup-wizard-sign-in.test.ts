@@ -44,6 +44,9 @@ describe("SignInTab", () => {
 					modelRegistry: {
 						authStorage,
 						async refresh(): Promise<void> {},
+						async login(providerId: string, callbacks: OAuthLoginCallbacks): Promise<void> {
+							await authStorage.login(providerId, callbacks);
+						},
 					},
 				},
 			},
@@ -112,6 +115,9 @@ describe("SignInTab", () => {
 					modelRegistry: {
 						authStorage,
 						async refresh(): Promise<void> {},
+						async login(providerId: string, callbacks: OAuthLoginCallbacks): Promise<void> {
+							await authStorage.login(providerId, callbacks);
+						},
 					},
 				},
 			},

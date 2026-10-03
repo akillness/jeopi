@@ -1131,7 +1131,7 @@ export class SelectorController {
 		const manualInput = this.ctx.oauthManualInput;
 		const useManualInput = PASTE_CODE_LOGIN_PROVIDERS.has(providerId);
 		try {
-			await this.ctx.session.modelRegistry.authStorage.login(providerId as OAuthProvider, {
+			await this.ctx.session.modelRegistry.login(providerId as OAuthProvider, {
 				onAuth: (info: { url: string; instructions?: string }) => {
 					const block = new TranscriptBlock();
 					block.addChild(new Text(theme.fg("dim", info.url), 1, 0));
@@ -1175,7 +1175,6 @@ export class SelectorController {
 				},
 				onManualCodeInput: useManualInput ? () => manualInput.waitForInput(providerId) : undefined,
 			});
-			await this.ctx.session.modelRegistry.refresh();
 			const block = new TranscriptBlock();
 			block.addChild(
 				new Text(theme.fg("success", `${theme.status.success} Successfully logged in to ${providerId}`), 1, 0),

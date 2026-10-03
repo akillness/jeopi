@@ -12,6 +12,12 @@ Primary implementation files:
 - `src/session/auth-storage.ts` — re-exports `AuthStorage` from `jeopi-ai` (`packages/ai/src/auth-storage.ts`); API key + OAuth resolution order
 - `packages/catalog/src/models.ts` and `packages/catalog/src/types.ts` — built-in providers/models (`getBundledModels` / `getBundledProviders`) and `Model`/`compat` types
 
+## Model refresh after login
+
+Successful login in the interactive `/login` flow, setup wizard, or RPC `login` command refreshes the authenticated provider's catalog online, bypassing its cache TTL. You can select newly discovered models immediately without restarting jeopi. Device-login aliases refresh the provider under which their credentials are stored.
+
+Anthropic discovery uses the authenticated `/v1/models` endpoint, follows all cursor pages, and reads display names, token limits, image support, and thinking support from the live response. Bundled metadata and models.dev supplement missing fields and pricing. A discovery outage does not undo a successful login; cached and bundled models remain available. Claude Opus 5.5 and Sonnet 5.5 use the model IDs `claude-opus-5-5` and `claude-sonnet-5-5`.
+
 ## Config file location and legacy behavior
 
 Default config path:

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Refresh the authenticated provider's models online immediately after successful interactive, setup-wizard, or RPC login, bypassing fresh cache TTLs without refreshing unrelated providers. Device-login aliases refresh the provider that stores their credentials; catalog outages preserve successful authentication and existing models.
+
+
 ### Added
 
 - Added comprehensive messenger documentation (`docs/messenger.md`, `docs/messenger/telegram.md`, `docs/messenger/discord.md`, `docs/messenger/slack.md`) detailing architecture, setup, intents, tokens, and security boundaries for Discord, Telegram, and Slack.
