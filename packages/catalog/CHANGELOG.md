@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.3] - 2026-10-16
+
 ### Fixed
 
 - Refresh Antigravity account catalogs with the current client version so entitled Gemini 4 Argon and Gemini 3.8 Flash tiers are discoverable. Invalidate model caches when the client identity changes and exclude explicitly designated tab and image-generation models without removing other chat models.

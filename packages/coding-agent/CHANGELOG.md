@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.3] - 2026-10-16
+
 ### Fixed
 
 - Show newly entitled Antigravity models, including Gemini 4 Argon, in the model selector after login or model refresh without reusing an older client's cached list.
