@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -9,6 +9,7 @@ import {
 	googleAntigravityModelManagerOptions,
 } from "jeopi-catalog/provider-models/google";
 import type { ModelSpec } from "jeopi-catalog/types";
+import * as geminiHeaders from "jeopi-catalog/wire/gemini-headers";
 
 /** Row shape for `it.each` tables asserting a parsed discovery catalog against an expectation. */
 type DiscoveryCatalogCase = {
@@ -44,6 +45,58 @@ function modelPayload(id: string) {
 				maxOutputTokens: 19_000,
 			},
 		},
+	};
+}
+
+function argonPayload() {
+	return {
+		models: {
+			"gemini-4-argon-low": {
+				displayName: "Argon Low",
+				supportsImages: false,
+				supportsThinking: true,
+				maxTokens: 111_000,
+				maxOutputTokens: 11_000,
+			},
+			"gemini-4-argon-medium": {
+				displayName: "Argon Medium",
+				supportsImages: true,
+				supportsThinking: false,
+				maxTokens: 222_000,
+				maxOutputTokens: 22_000,
+			},
+			"gemini-4-argon-high": {
+				displayName: "Argon High",
+				supportsImages: true,
+				supportsThinking: true,
+				maxTokens: 333_000,
+				maxOutputTokens: 33_000,
+			},
+			"tab-only-model": { displayName: "Tab only", supportsImages: false },
+			"image-only-model": { displayName: "Image only", supportsImages: true },
+			"command-only-model": { displayName: "Command only", supportsThinking: true, model: "command-only-model" },
+			"legacy-chat-model": { displayName: "Legacy chat", supportsThinking: true, model: "legacy-chat-model" },
+			tab_flash_lite_preview: {
+				model: "MODEL_PLACEHOLDER_M19",
+				apiProvider: "google",
+				modelProvider: "google",
+				supportsImages: false,
+				supportsThinking: true,
+				maxTokens: 100_000,
+				maxOutputTokens: 10_000,
+			},
+			chat_20706: { displayName: "Internal chat", supportsThinking: true },
+			"internal-model": { displayName: "Internal", isInternal: true },
+		},
+		agentModelSorts: [{ groups: [{ modelIds: ["gemini-4-argon-low"] }] }],
+		tieredModelIds: {
+			argon: ["gemini-4-argon-medium"],
+			other: ["gemini-3.8-flash-tiered"],
+		},
+		defaultAgentModelId: "gemini-4-argon-high",
+		tabModelIds: ["tab-only-model"],
+		imageGenerationModelIds: ["image-only-model"],
+		commandModelIds: ["command-only-model"],
 	};
 }
 
@@ -102,6 +155,94 @@ describe("Antigravity live discovery", () => {
 				maxTokens: 19_000,
 			}),
 		]);
+	});
+	it("surfaces entitled Argon tiers, preserves chat models, and excludes explicitly non-chat service entries", async () => {
+		const models = await fetchAntigravityDiscoveryModels({
+			token,
+			endpoint,
+			fetcher: fakeFetch(async () => Response.json(argonPayload())),
+		});
+		expect(models?.map(model => model.id).sort()).toEqual([
+			"command-only-model",
+			"gemini-4-argon-high",
+			"gemini-4-argon-low",
+			"gemini-4-argon-medium",
+			"legacy-chat-model",
+		]);
+		expect(
+			models?.some(model =>
+				["tab-only-model", "image-only-model", "tab_flash_lite_preview", "internal-model", "chat_20706"].includes(
+					model.id,
+				),
+			),
+		).toBe(false);
+		expect(models).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "gemini-4-argon-high",
+					name: "Argon High",
+					reasoning: true,
+					input: ["text", "image"],
+					contextWindow: 333_000,
+					maxTokens: 33_000,
+				}),
+				expect.objectContaining({
+					id: "gemini-4-argon-low",
+					name: "Argon Low",
+					reasoning: true,
+					input: ["text"],
+					contextWindow: 111_000,
+					maxTokens: 11_000,
+				}),
+				expect.objectContaining({
+					id: "gemini-4-argon-medium",
+					name: "Argon Medium",
+					reasoning: false,
+					input: ["text", "image"],
+					contextWindow: 222_000,
+					maxTokens: 22_000,
+				}),
+			]),
+		);
+	});
+
+	it("keeps unnamed models referenced by sorts, tiers, and default while dropping an unreferenced peer", async () => {
+		const models = await fetchAntigravityDiscoveryModels({
+			token,
+			endpoint,
+			fetcher: fakeFetch(async () =>
+				Response.json({
+					models: {
+						"sort-referenced-model": { supportsThinking: true, maxTokens: 101_000, maxOutputTokens: 10_100 },
+						"tier-referenced-model": { supportsImages: true, maxTokens: 202_000, maxOutputTokens: 20_200 },
+						"default-referenced-model": { supportsThinking: true, maxTokens: 303_000, maxOutputTokens: 30_300 },
+						"unreferenced-unnamed-model": { supportsThinking: true, maxTokens: 404_000, maxOutputTokens: 40_400 },
+					},
+					agentModelSorts: [{ groups: [{ modelIds: ["sort-referenced-model"] }] }],
+					tieredModelIds: { flash: ["tier-referenced-model"] },
+					defaultAgentModelId: "default-referenced-model",
+				}),
+			),
+		});
+		expect(models?.map(model => model.id).sort()).toEqual([
+			"default-referenced-model",
+			"sort-referenced-model",
+			"tier-referenced-model",
+		]);
+	});
+
+	it("does not synthesize Argon when account metadata has no Argon model", async () => {
+		const models = await fetchAntigravityDiscoveryModels({
+			token,
+			endpoint,
+			fetcher: fakeFetch(async () =>
+				Response.json({
+					models: { "account-entitled-model": { displayName: "Account model", supportsThinking: true } },
+				}),
+			),
+		});
+		expect(models?.map(model => model.id)).toEqual(["account-entitled-model"]);
+		expect(models?.some(model => model.id.includes("argon"))).toBe(false);
 	});
 
 	it.each<DiscoveryCatalogCase>([
@@ -480,6 +621,42 @@ describe("Antigravity discovery cache", () => {
 		const result = await resolveProviderModels(rotated, "online-if-uncached");
 		expect(result.models.map(model => model.id)).toEqual(["account-model"]);
 		expect({ resolutions, requests }).toEqual({ resolutions: 0, requests: 0 });
+	});
+
+	it("invalidates discovery cache when the Antigravity client version changes", async () => {
+		const userAgent = spyOn(geminiHeaders, "getAntigravityUserAgent");
+		userAgent.mockReturnValue("antigravity/hub/2.1.4 darwin/arm64");
+		try {
+			const cacheDbPath = await cachePath();
+			let requests = 0;
+			const first = manager(cacheDbPath, {
+				oauthToken: token,
+				endpoint,
+				fetch: fakeFetch(async () => {
+					requests++;
+					return Response.json(modelPayload("old-client-model"));
+				}),
+			});
+			expect((await resolveProviderModels(first, "online")).models.map(model => model.id)).toEqual([
+				"old-client-model",
+			]);
+
+			userAgent.mockReturnValue("antigravity/hub/2.23.1 darwin/arm64");
+			const second = manager(cacheDbPath, {
+				oauthToken: token,
+				endpoint,
+				fetch: fakeFetch(async () => {
+					requests++;
+					return Response.json(modelPayload("new-client-model"));
+				}),
+			});
+			expect((await resolveProviderModels(second, "online-if-uncached")).models.map(model => model.id)).toEqual([
+				"new-client-model",
+			]);
+			expect(requests).toBe(2);
+		} finally {
+			userAgent.mockRestore();
+		}
 	});
 
 	it("resolves credentials only for a due network fetch and authenticates with the refreshed token", async () => {

@@ -44,6 +44,53 @@ function catalog(id: string) {
 	};
 }
 
+function argonPayload() {
+	return {
+		models: {
+			"gemini-4-argon-low": {
+				displayName: "Argon Low",
+				supportsImages: false,
+				supportsThinking: true,
+				maxTokens: 111_000,
+				maxOutputTokens: 11_000,
+			},
+			"gemini-4-argon-medium": {
+				displayName: "Argon Medium",
+				supportsImages: true,
+				supportsThinking: false,
+				maxTokens: 222_000,
+				maxOutputTokens: 22_000,
+			},
+			"gemini-4-argon-high": {
+				displayName: "Argon High",
+				supportsImages: true,
+				supportsThinking: true,
+				maxTokens: 333_000,
+				maxOutputTokens: 33_000,
+			},
+			"tab-only-model": { displayName: "Tab only", supportsImages: false },
+			"image-only-model": { displayName: "Image only", supportsImages: true },
+			"command-only-model": { displayName: "Command only", supportsThinking: true, model: "command-only-model" },
+			"legacy-chat-model": { displayName: "Legacy chat", supportsThinking: true, model: "legacy-chat-model" },
+			tab_flash_lite_preview: {
+				model: "MODEL_PLACEHOLDER_M19",
+				apiProvider: "google",
+				modelProvider: "google",
+				supportsImages: false,
+				supportsThinking: true,
+				maxTokens: 100_000,
+				maxOutputTokens: 10_000,
+			},
+		},
+		agentModelSorts: [{ groups: [{ modelIds: ["gemini-4-argon-low"] }] }],
+		tieredModelIds: { argon: ["gemini-4-argon-medium"] },
+		defaultAgentModelId: "gemini-4-argon-high",
+		tabModelIds: ["tab-only-model"],
+		imageGenerationModelIds: ["image-only-model"],
+		commandModelIds: ["command-only-model"],
+	};
+}
+
 async function fixture(credentials: OAuthCredential[]) {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "jeopi-antigravity-registry-"));
 	const auth = await AuthStorage.create(path.join(dir, "auth.db"));
@@ -70,7 +117,7 @@ async function fixture(credentials: OAuthCredential[]) {
 	const modelsPath = path.join(dir, "models.json");
 	await Bun.write(modelsPath, JSON.stringify({ providers: { [provider]: { baseUrl: endpoint } } }));
 	const requests: { url: string; authorization: string | null }[] = [];
-	const response: { empty: boolean; failure?: "unauthorized" | "network" } = { empty: false };
+	const response: { empty: boolean; payload?: unknown; failure?: "unauthorized" | "network" } = { empty: false };
 	const fetch: FetchImpl = async (input, init) => {
 		const url = String(input);
 		const authorization = new Headers(init?.headers).get("Authorization");
@@ -82,6 +129,7 @@ async function fixture(credentials: OAuthCredential[]) {
 			.listOAuthAccounts(provider)
 			.find(entry => authorization === `Bearer fresh-access-${entry.accountId}`);
 		if (!account) return new Response("Unauthorized", { status: 401 });
+		if (response.payload !== undefined) return Response.json(response.payload);
 		return Response.json(response.empty ? { models: {} } : catalog(`future-reasoner-${account.accountId}-2099`));
 	};
 	const registry = new ModelRegistry(auth, modelsPath, { fetch });
@@ -128,6 +176,54 @@ describe("ModelRegistry Antigravity OAuth discovery", () => {
 		expect(f.signals[0]).toBeInstanceOf(AbortSignal);
 		expect(f.signals[0]?.aborted).toBe(false);
 		expect(f.rankedResolution).not.toHaveBeenCalled();
+	});
+
+	it("propagates entitled Argon tiers through getAll and getAvailable while keeping the first account cached", async () => {
+		const f = await fixture([credential("a", Number.MAX_SAFE_INTEGER), credential("b", Number.MAX_SAFE_INTEGER)]);
+		f.response.payload = argonPayload();
+		await f.registry.refreshProvider(provider, "online");
+		expect(modelIds(f.registry)).toEqual([
+			"command-only-model",
+			"gemini-4-argon-high",
+			"gemini-4-argon-low",
+			"gemini-4-argon-medium",
+			"legacy-chat-model",
+		]);
+		expect(
+			f.registry
+				.getAvailable()
+				.filter(model => model.provider === provider)
+				.map(model => model.id)
+				.sort(),
+		).toEqual([
+			"command-only-model",
+			"gemini-4-argon-high",
+			"gemini-4-argon-low",
+			"gemini-4-argon-medium",
+			"legacy-chat-model",
+		]);
+		expect(f.registry.find(provider, "gemini-4-argon-medium")).toMatchObject({
+			name: "Argon Medium",
+			input: ["text", "image"],
+			reasoning: false,
+			contextWindow: 222_000,
+			maxTokens: 22_000,
+		});
+
+		const restarted = new ModelRegistry(f.auth, f.modelsPath, { fetch: f.fetch });
+		f.resolve.mockClear();
+		f.requests.length = 0;
+		await restarted.refreshProvider(provider, "online-if-uncached");
+		expect(modelIds(restarted)).toEqual([
+			"command-only-model",
+			"gemini-4-argon-high",
+			"gemini-4-argon-low",
+			"gemini-4-argon-medium",
+			"legacy-chat-model",
+		]);
+		expect(f.resolvedAccounts).toEqual(["a"]);
+		expect(f.resolve).not.toHaveBeenCalled();
+		expect(f.requests).toEqual([]);
 	});
 
 	it("reuses a fresh authoritative cache after token rotation and expiry without resolving OAuth or fetching", async () => {

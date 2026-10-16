@@ -50,12 +50,35 @@ export interface AntigravityDiscoveryAgentModelSort {
 }
 
 /**
+ * Tiered model ids returned by Antigravity's authenticated agent picker.
+ */
+export interface AntigravityDiscoveryTieredModelIds {
+	[tier: string]: string[];
+}
+
+/**
  * Response payload returned by Antigravity's `fetchAvailableModels` endpoint.
  */
 export interface AntigravityDiscoveryApiResponse {
 	models?: Record<string, AntigravityDiscoveryApiModel>;
 	agentModelSorts?: AntigravityDiscoveryAgentModelSort[];
+	tabModelIds?: string[];
+	imageGenerationModelIds?: string[];
+	tieredModelIds?: AntigravityDiscoveryTieredModelIds;
+	defaultAgentModelId?: string;
 }
+
+const parseModelIdList = (value: unknown): string[] | undefined => {
+	if (!Array.isArray(value)) return undefined;
+	const modelIds: string[] = [];
+	for (const modelId of value) {
+		if (typeof modelId === "string" && modelId.trim()) {
+			modelIds.push(modelId.trim());
+		}
+	}
+	return modelIds;
+};
+
 const AntigravityDiscoveryApiModelSchema = type({
 	"displayName?": type("unknown").pipe(value => (typeof value === "string" ? value : undefined)),
 	"supportsImages?": type("unknown").pipe(value => (typeof value === "boolean" ? value : undefined)),
@@ -78,9 +101,7 @@ const AntigravityDiscoveryApiModelSchema = type({
 });
 
 const AntigravityDiscoveryAgentModelGroupSchema = type({
-	"modelIds?": type("unknown").pipe(value =>
-		Array.isArray(value) ? value.filter((modelId): modelId is string => typeof modelId === "string") : undefined,
-	),
+	"modelIds?": type("unknown").pipe(parseModelIdList),
 });
 
 const AntigravityDiscoveryAgentModelSortSchema = type({
@@ -95,6 +116,20 @@ const AntigravityDiscoveryAgentModelSortSchema = type({
 		}
 		return result;
 	}),
+});
+
+const AntigravityDiscoveryTieredModelIdsSchema = type("unknown").pipe(value => {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return undefined;
+	}
+	const normalized: AntigravityDiscoveryTieredModelIds = {};
+	for (const [tier, modelIds] of Object.entries(value)) {
+		const parsedModelIds = parseModelIdList(modelIds);
+		if (parsedModelIds?.length) {
+			normalized[tier] = parsedModelIds;
+		}
+	}
+	return normalized;
 });
 
 const AntigravityDiscoveryApiResponseSchema = type({
@@ -127,6 +162,12 @@ const AntigravityDiscoveryApiResponseSchema = type({
 		}
 		return result;
 	}),
+	"tabModelIds?": type("unknown").pipe(parseModelIdList),
+	"imageGenerationModelIds?": type("unknown").pipe(parseModelIdList),
+	"tieredModelIds?": AntigravityDiscoveryTieredModelIdsSchema,
+	"defaultAgentModelId?": type("unknown").pipe(value =>
+		typeof value === "string" && value.trim() ? value.trim() : undefined,
+	),
 });
 /**
  * Options for fetching Antigravity discovery models.
@@ -205,12 +246,20 @@ export async function fetchAntigravityDiscoveryModels(
 		}
 
 		const models: ModelSpec<"google-gemini-cli">[] = [];
+		const excludedModelIds = new Set([...(parsed.tabModelIds ?? []), ...(parsed.imageGenerationModelIds ?? [])]);
+		const pickerModelIds = collectPickerModelIds(parsed);
 
 		for (const [modelId, model] of Object.entries(parsed.models ?? {})) {
 			if (ANTIGRAVITY_DISCOVERY_DENYLIST.has(modelId)) {
 				continue;
 			}
 			if (model.isInternal === true) {
+				continue;
+			}
+			if (excludedModelIds.has(modelId)) {
+				continue;
+			}
+			if (pickerModelIds && !model.displayName?.trim() && !pickerModelIds.has(modelId)) {
 				continue;
 			}
 
@@ -243,6 +292,26 @@ export async function fetchAntigravityDiscoveryModels(
 	}
 
 	return null;
+}
+
+function collectPickerModelIds(response: AntigravityDiscoveryApiResponse): Set<string> | undefined {
+	const modelIds = new Set<string>();
+	for (const sort of response.agentModelSorts ?? []) {
+		for (const group of sort.groups ?? []) {
+			for (const modelId of group.modelIds ?? []) {
+				modelIds.add(modelId);
+			}
+		}
+	}
+	for (const tierModelIds of Object.values(response.tieredModelIds ?? {})) {
+		for (const modelId of tierModelIds) {
+			modelIds.add(modelId);
+		}
+	}
+	if (response.defaultAgentModelId) {
+		modelIds.add(response.defaultAgentModelId);
+	}
+	return modelIds.size ? modelIds : undefined;
 }
 
 function parseAntigravityDiscoveryResponse(value: unknown): AntigravityDiscoveryApiResponse | null {

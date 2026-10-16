@@ -27,7 +27,7 @@ export const ANTIGRAVITY_SYSTEM_INSTRUCTION =
  * parse graph.
  */
 export let getAntigravityUserAgent = () => {
-	const DEFAULT_ANTIGRAVITY_VERSION = "2.1.4";
+	const DEFAULT_ANTIGRAVITY_VERSION = "2.23.1";
 	const version = process.env.PI_AI_ANTIGRAVITY_VERSION || DEFAULT_ANTIGRAVITY_VERSION;
 	// Map Node.js platform/arch to Antigravity's expected format.
 	// Verified against Antigravity source: _qn() and wqn() in main.js.

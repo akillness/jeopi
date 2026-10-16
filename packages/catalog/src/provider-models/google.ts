@@ -3,6 +3,7 @@ import { fetchGeminiModels } from "../discovery/gemini";
 import type { ModelManagerOptions } from "../model-manager";
 import type { FetchImpl } from "../types";
 import { GEMINI_CLI_VARIANT_COLLAPSE_TABLE } from "../variant-collapse";
+import { getAntigravityUserAgent } from "../wire/gemini-headers";
 
 export interface GoogleModelManagerConfig {
 	apiKey?: string;
@@ -70,7 +71,7 @@ export function googleAntigravityModelManagerOptions(
 		providerId: "google-antigravity",
 		...(token
 			? {
-					cacheProviderId: `google-antigravity:discovery-v2:${Bun.hash(JSON.stringify([endpoint, config?.cacheScope ?? token])).toString(36)}`,
+					cacheProviderId: `google-antigravity:discovery-v3:${Bun.hash(JSON.stringify([endpoint, config?.cacheScope ?? token, getAntigravityUserAgent()])).toString(36)}`,
 					dynamicModelsAuthoritative: true,
 					preserveAuthoritativeCacheOnFailure: true,
 					fetchDynamicModels: async () => {
