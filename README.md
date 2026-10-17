@@ -695,11 +695,11 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.6.7]** (2026-10-17) — Read long session records once to reduce resume latency and peak memory while preserving malformed-record recovery and UTF-8 content.
 - **[16.6.5]** (2026-10-17) — Bound optional startup model discovery and provider refresh work so explicit Antigravity Argon model selection remains responsive while late catalog data can still populate caches.
 - **[16.6.4]** (2026-10-17) — Resolve newly discovered Antigravity Argon models at startup before rejecting an explicit model selection or falling back from a saved default or resumed session. Refresh only the requested provider,…
 - **[16.6.3]** (2026-10-16) — Show newly entitled Antigravity models, including Gemini 4 Argon, in the model selector after login or model refresh without reusing an older client's cached list.
 - **[16.6.2]** (2026-10-03) — Added comprehensive messenger documentation (`docs/messenger.md`, `docs/messenger/telegram.md`, `docs/messenger/discord.md`, `docs/messenger/slack.md`) detailing architecture, setup, intents, tokens,…
-- **[16.6.0]** (2026-10-01) — Added `jeopi messenger check|run --config <file>` for bidirectional text conversations through Discord Gateway, Telegram long polling, and Slack Socket Mode without public ingress. Requires explicit…
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->

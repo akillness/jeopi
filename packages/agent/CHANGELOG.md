@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.7] - 2026-10-17
+
 ### Added
 
 - Exposed the agent absolute deadline so session recovery shares the streaming time limit.

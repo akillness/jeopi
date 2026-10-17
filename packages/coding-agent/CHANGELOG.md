@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.7] - 2026-10-17
+
 ### Fixed
 
 - Read long session records once to reduce resume latency and peak memory while preserving malformed-record recovery and UTF-8 content.

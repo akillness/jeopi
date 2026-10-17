@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.7] - 2026-10-17
+
 ### Fixed
 
 - Bounded the shared Markdown render cache by estimated retained bytes and skipped oversized entries to reduce memory retained after navigating large transcripts or resizing the terminal.
