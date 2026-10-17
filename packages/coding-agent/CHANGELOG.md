@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.4] - 2026-10-17
+
 ### Fixed
 
 - Resolve newly discovered Antigravity Argon models at startup before rejecting an explicit model selection or falling back from a saved default or resumed session. Refresh only the requested provider, preserving unrelated providers and account-specific catalogs.
