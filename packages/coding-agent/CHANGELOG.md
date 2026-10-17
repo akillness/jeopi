@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [16.6.5] - 2026-10-17
+
+### Fixed
+
+- Bound optional startup model discovery and provider refresh work so explicit Antigravity Argon model selection remains responsive while late catalog data can still populate caches.
+
 ## [16.6.4] - 2026-10-17
 
 ### Fixed
