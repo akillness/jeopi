@@ -8,7 +8,7 @@
  * sibling SQLite store and never POSTs the broker sentinel to a Google token
  * endpoint.
  */
-import { type AuthStorage, type FetchImpl, type OAuthAccess, withOAuthAccess } from "jeopi-ai";
+import { type Api, type AuthStorage, type FetchImpl, type Model, type OAuthAccess, withOAuthAccess } from "jeopi-ai";
 import {
 	ANTIGRAVITY_SYSTEM_INSTRUCTION,
 	getAntigravityUserAgent,
@@ -18,8 +18,8 @@ import { fetchWithRetry } from "jeopi-utils";
 
 import type { SearchCitation, SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import type { SearchParams } from "./base";
-import { SearchProvider } from "./base";
+import type { GeminiOAuthProvider, SearchParams } from "./base";
+import { resolveGeminiOAuthProvider, SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const DEFAULT_ENDPOINT = "https://cloudcode-pa.googleapis.com";
@@ -52,6 +52,7 @@ export interface GeminiSearchParams extends GeminiToolParams {
 	temperature?: number;
 	signal?: AbortSignal;
 	authStorage: AuthStorage;
+	model?: Model<Api>;
 	sessionId?: string;
 	fetch?: FetchImpl;
 	antigravityEndpointMode?: "auto" | "production" | "sandbox";
@@ -102,8 +103,10 @@ export async function findGeminiAuth(
 	authStorage: AuthStorage,
 	sessionId: string | undefined,
 	signal: AbortSignal | undefined,
+	preferredProvider?: GeminiOAuthProvider,
 ): Promise<GeminiAuthSeed | null> {
-	for (const provider of GEMINI_PROVIDERS) {
+	const providers = preferredProvider ? [preferredProvider] : GEMINI_PROVIDERS;
+	for (const provider of providers) {
 		const access = await authStorage.getOAuthAccess(provider, sessionId, { signal });
 		if (!access?.accessToken || !access.projectId) continue;
 		return { provider, access, projectId: access.projectId };
@@ -160,13 +163,16 @@ interface CloudCodeResponseChunk {
 	response?: GeminiModelResponse;
 }
 
-async function parseGeminiSearchStream(body: ReadableStream<Uint8Array>): Promise<GeminiSearchResult> {
+async function parseGeminiSearchStream(
+	body: ReadableStream<Uint8Array>,
+	fallbackModel: string = DEFAULT_MODEL,
+): Promise<GeminiSearchResult> {
 	const answerParts: string[] = [];
 	const sources: SearchSource[] = [];
 	const citations: SearchCitation[] = [];
 	const searchQueries: string[] = [];
 	const seenUrls = new Set<string>();
-	let model = DEFAULT_MODEL;
+	let model = fallbackModel;
 	let usage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined;
 
 	const reader = body.getReader();
@@ -287,6 +293,7 @@ async function parseGeminiSearchStream(body: ReadableStream<Uint8Array>): Promis
  */
 async function callGeminiSearch(
 	auth: GeminiAuth,
+	modelId: string,
 	query: string,
 	systemPrompt: string | undefined,
 	maxOutputTokens: number | undefined,
@@ -330,7 +337,7 @@ async function callGeminiSearch(
 
 	const requestBody: Record<string, unknown> = {
 		project: auth.projectId,
-		model: DEFAULT_MODEL,
+		model: modelId,
 		request: {
 			contents: [
 				{
@@ -414,7 +421,7 @@ async function callGeminiSearch(
 		throw new SearchProviderError("gemini", "Gemini API returned no response body", 500);
 	}
 
-	return parseGeminiSearchStream(response.body);
+	return parseGeminiSearchStream(response.body, modelId);
 }
 
 async function callGeminiDeveloperSearch(
@@ -494,7 +501,10 @@ async function callGeminiDeveloperSearch(
  * Executes a web search using Google Gemini with Google Search grounding.
  */
 export async function searchGemini(params: GeminiSearchParams): Promise<SearchResponse> {
-	const seed = await findGeminiAuth(params.authStorage, params.sessionId, params.signal);
+	const selectedProvider = resolveGeminiOAuthProvider(params.model);
+	const selectedModelId =
+		selectedProvider && params.model ? (params.model.requestModelId ?? params.model.id) : DEFAULT_MODEL;
+	const seed = await findGeminiAuth(params.authStorage, params.sessionId, params.signal, selectedProvider);
 	let result: GeminiSearchResult;
 
 	if (seed) {
@@ -513,6 +523,7 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 						projectId: access.projectId ?? seed.projectId,
 						isAntigravity,
 					},
+					selectedModelId,
 					params.query,
 					params.system_prompt,
 					params.max_output_tokens,
@@ -527,6 +538,12 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 					params.antigravityEndpointMode,
 				),
 			{ sessionId: params.sessionId, signal: params.signal, seed: seed.access },
+		);
+	} else if (selectedProvider) {
+		throw new SearchProviderError(
+			"gemini",
+			`No OAuth credentials found for selected Gemini provider "${selectedProvider}".`,
+			401,
 		);
 	} else {
 		const apiKey = await params.authStorage.getApiKey(DEVELOPER_API_PROVIDER, params.sessionId, {
@@ -594,8 +611,10 @@ export class GeminiProvider extends SearchProvider {
 			url_context: params.urlContext,
 			signal: params.signal,
 			authStorage: params.authStorage,
+			model: params.model,
 			sessionId: params.sessionId,
 			fetch: params.fetch,
+			antigravityEndpointMode: params.antigravityEndpointMode,
 		});
 	}
 }

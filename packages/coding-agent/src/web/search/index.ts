@@ -7,7 +7,7 @@
 
 import { type } from "arktype";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "jeopi-agent-core";
-import type { AuthStorage } from "jeopi-ai";
+import type { Api, AuthStorage, Model } from "jeopi-ai";
 import { prompt } from "jeopi-utils";
 import { settings } from "../../config/settings";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
@@ -117,6 +117,7 @@ function hasRenderableSearchContent(response: SearchResponse): boolean {
 
 interface ExecuteSearchOptions {
 	authStorage: AuthStorage;
+	model?: Model<Api>;
 	sessionId?: string;
 	signal?: AbortSignal;
 }
@@ -127,7 +128,7 @@ async function executeSearch(
 	params: SearchQueryParams,
 	options: ExecuteSearchOptions,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails }> {
-	const { authStorage, sessionId, signal } = options;
+	const { authStorage, model, sessionId, signal } = options;
 	const explicitProvider = params.provider;
 	let providers: SearchProvider[];
 	if (explicitProvider && explicitProvider !== "auto") {
@@ -174,6 +175,7 @@ async function executeSearch(
 				numSearchResults: params.num_search_results,
 				temperature: params.temperature,
 				signal,
+				model,
 				authStorage,
 				sessionId,
 				antigravityEndpointMode,
@@ -222,7 +224,7 @@ async function executeSearch(
  */
 export async function runSearchQuery(
 	params: SearchQueryParams,
-	options: { authStorage?: AuthStorage; sessionId?: string; signal?: AbortSignal } = {},
+	options: { authStorage?: AuthStorage; model?: Model<Api>; sessionId?: string; signal?: AbortSignal } = {},
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails }> {
 	const createdAuthStorage = options.authStorage ? undefined : await discoverAuthStorage();
 	const authStorage = options.authStorage ?? createdAuthStorage;
@@ -232,6 +234,7 @@ export async function runSearchQuery(
 	try {
 		return await executeSearch("cli-web-search", params, {
 			authStorage,
+			model: options.model,
 			sessionId: options.sessionId,
 			signal: options.signal,
 		});
@@ -271,7 +274,12 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 	): Promise<AgentToolResult<SearchRenderDetails>> {
 		const authStorage = this.#session.authStorage ?? (await discoverAuthStorage());
 		const sessionId = this.#session.getSessionId?.() ?? undefined;
-		return executeSearch(_toolCallId, params, { authStorage, sessionId, signal });
+		return executeSearch(_toolCallId, params, {
+			authStorage,
+			model: this.#session.getActiveModel?.(),
+			sessionId,
+			signal,
+		});
 	}
 }
 
@@ -292,7 +300,7 @@ export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRende
 	) {
 		const authStorage = ctx.modelRegistry?.authStorage ?? (await discoverAuthStorage());
 		const sessionId = ctx.sessionManager.getSessionId();
-		return executeSearch(toolCallId, params, { authStorage, sessionId, signal });
+		return executeSearch(toolCallId, params, { authStorage, model: ctx.model, sessionId, signal });
 	},
 
 	renderCall(args: SearchToolParams, options: RenderResultOptions, theme: Theme) {

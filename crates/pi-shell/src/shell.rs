@@ -1814,6 +1814,7 @@ async fn read_output_buffered(
 }
 
 #[cfg(unix)]
+#[allow(deprecated, reason = "AsyncFd::new was deprecated in newer tokio versions")]
 fn register_nonblocking_pipe(reader: fs::File) -> io::Result<tokio::io::unix::AsyncFd<fs::File>> {
 	set_nonblocking(&reader)?;
 	tokio::io::unix::AsyncFd::new(reader)

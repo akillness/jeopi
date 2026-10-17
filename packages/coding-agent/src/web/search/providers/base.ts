@@ -1,5 +1,16 @@
-import type { AuthStorage, FetchImpl } from "jeopi-ai";
+import type { Api, AuthStorage, FetchImpl, Model } from "jeopi-ai";
 import type { SearchProviderId, SearchResponse } from "../types";
+
+export type GeminiOAuthProvider = "google-gemini-cli" | "google-antigravity";
+
+/** Return the OAuth provider owned by a matching Gemini model, if any. */
+export function resolveGeminiOAuthProvider(model?: Model<Api>): GeminiOAuthProvider | undefined {
+	if (!model?.id.startsWith("gemini-")) return undefined;
+	if (model.provider === "google-antigravity" || model.provider === "google-gemini-cli") {
+		return model.provider;
+	}
+	return undefined;
+}
 
 /**
  * Shared web search parameters passed to providers.
@@ -51,6 +62,8 @@ export interface SearchParams {
 	 * caller's agent session when available; otherwise omit.
 	 */
 	sessionId?: string;
+	/** Active session model, when the caller has one. Providers may use it only when it matches their protocol. */
+	model?: Model<Api>;
 	antigravityEndpointMode?: "auto" | "production" | "sandbox";
 }
 

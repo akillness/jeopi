@@ -44,6 +44,7 @@ packages/ai/test/.temp-images/
 .gjc/
 .omc/
 .omx/
+.zvec-grep/
 # Local knowledge-pipeline state. `llm-wiki/sync-tracker.md` is the one
 # tracked artifact here (the upstream-sync ledger) and stays committed.
 llm-wiki/*

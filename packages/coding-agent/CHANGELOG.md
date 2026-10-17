@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevent Cloud Code Assist false-positive 429 quota exhaustion errors on Google Antigravity models by replacing XML `<system-conventions>` prompt tags with standard markdown headers.
+- Route Gemini web search requests with the active model and corresponding OAuth provider credentials when available, preserving developer API key fallbacks.
+
 ## [16.6.8] - 2026-10-17
 
 ### Fixed
