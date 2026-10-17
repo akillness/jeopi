@@ -1403,11 +1403,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		},
 	);
 
-	// Resolve contextFiles up-front (it's needed before tool creation). The
-	// workspace tree scan is slow on large repos and we MUST NOT block startup on
-	// it. On timeout we forward `undefined` to ToolSession; buildSystemPromptInternal
-	// will re-race the same promise through its own withDeadline path. Background
-	// work continues so caches still warm.
+	// Resolve contextFiles before tool creation. Bound optional startup discovery;
+	// late work may still populate caches or system-prompt fallback data.
 	const raceWithDeadline = async <T>(name: string, work: Promise<T>): Promise<T | undefined> => {
 		let timedOut = false;
 		const result = await Promise.race([
@@ -1418,7 +1415,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}),
 		]);
 		if (timedOut) {
-			logger.warn("Startup scan exceeded deadline; deferring to system prompt fallback", {
+			logger.warn("Startup work exceeded deadline; continuing with available data", {
 				name,
 				timeoutMs: STARTUP_SCAN_DEADLINE_MS,
 				cwd,
@@ -1940,7 +1937,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			if (existing || refreshedProviders.has(providerKey)) continue;
 			refreshedProviders.add(providerKey);
 			try {
-				await modelRegistry.refreshProvider(parsed.provider, "online");
+				await raceWithDeadline(
+					`refreshProvider:${parsed.provider}`,
+					modelRegistry.refreshProvider(parsed.provider, "online"),
+				);
 			} catch (error) {
 				logger.debug("startup model discovery failed", {
 					provider: parsed.provider,

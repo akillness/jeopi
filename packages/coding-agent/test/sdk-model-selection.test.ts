@@ -16,6 +16,7 @@ import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 
 describe("createAgentSession deferred model pattern resolution", () => {
 	let tempDir: string;
+	const originalCwd = process.cwd();
 	const authStoragesToClose: AuthStorage[] = [];
 	const restoreAuthSpies: Array<() => void> = [];
 
@@ -32,6 +33,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			authStorage.close();
 		}
 		authStoragesToClose.length = 0;
+		process.chdir(originalCwd);
 		if (tempDir && fs.existsSync(tempDir)) {
 			removeSyncWithRetries(tempDir);
 		}
@@ -161,6 +163,56 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		expect(session.model).toBeUndefined();
 		expect(modelFallbackMessage).toBe('Model "missing-provider/missing-model" not found');
 	});
+
+	test.each(["modelPattern", "settings default"] as const)(
+		"bounds startup when an extension catalog never settles for %s",
+		async selection => {
+			const selector = "stalled-provider/account-only-model";
+			const options = await buildSessionOptions(selector);
+			const settings = Settings.isolated({ enabledModels: ["runtime-provider/runtime-model"] });
+			if (selection === "settings default") settings.setModelRole("default", selector);
+			const catalog = Promise.withResolvers<never>();
+			const deadline = Promise.withResolvers<void>();
+			const originalSleep = Bun.sleep;
+			const sleep = spyOn(Bun, "sleep").mockImplementation(ms =>
+				ms === 5000 ? deadline.promise : originalSleep(ms),
+			);
+			restoreAuthSpies.push(() => sleep.mockRestore());
+			const stalledProvider: ExtensionFactory = pi => {
+				pi.registerProvider("stalled-provider", {
+					api: "openai-completions",
+					apiKey: "test-key",
+					baseUrl: "https://stalled.example.com/v1",
+					fetchDynamicModels: () => {
+						// Advance only the startup deadline once real catalog discovery begins.
+						deadline.resolve();
+						return catalog.promise;
+					},
+				});
+			};
+			let session: AgentSession | undefined;
+			try {
+				const result = await createAgentSession({
+					...options,
+					modelPattern: selection === "modelPattern" ? selector : undefined,
+					settings,
+					extensions: [providerExtension, stalledProvider],
+					skipPythonPreflight: true,
+				});
+				session = result.session;
+				if (selection === "modelPattern") {
+					expect(session.model).toBeUndefined();
+					expect(result.modelFallbackMessage).toBe(`Model "${selector}" not found`);
+				} else {
+					expect(session.model?.provider).toBe("runtime-provider");
+					expect(session.model?.id).toBe("runtime-model");
+				}
+			} finally {
+				await session?.dispose();
+			}
+		},
+		1000,
+	);
 
 	test("does not refresh a built-in provider before same-name extension override", async () => {
 		const fixture = await buildColdArgonRegistry();
