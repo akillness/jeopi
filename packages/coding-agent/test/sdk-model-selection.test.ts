@@ -1,12 +1,15 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Effort } from "jeopi-ai";
+import { Effort, type FetchImpl, type Model } from "jeopi-ai";
+import { buildModel } from "jeopi-catalog/build";
 import { getBundledModel } from "jeopi-catalog/models";
 import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { Settings } from "jeopi-cli/config/settings";
+import { runRootCommand } from "jeopi-cli/main";
 import { createAgentSession, type ExtensionFactory } from "jeopi-cli/sdk";
+import type { AgentSession } from "jeopi-cli/session/agent-session";
 import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import { SessionManager } from "jeopi-cli/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
@@ -14,6 +17,7 @@ import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
 describe("createAgentSession deferred model pattern resolution", () => {
 	let tempDir: string;
 	const authStoragesToClose: AuthStorage[] = [];
+	const restoreAuthSpies: Array<() => void> = [];
 
 	beforeEach(() => {
 		tempDir = path.join(os.tmpdir(), `pi-sdk-model-selection-${Snowflake.next()}`);
@@ -21,6 +25,9 @@ describe("createAgentSession deferred model pattern resolution", () => {
 	});
 
 	afterEach(() => {
+		for (const restore of restoreAuthSpies.splice(0)) {
+			restore();
+		}
 		for (const authStorage of authStoragesToClose) {
 			authStorage.close();
 		}
@@ -29,6 +36,56 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			removeSyncWithRetries(tempDir);
 		}
 	});
+
+	async function buildColdArgonRegistry() {
+		const authStorage = await AuthStorage.create(path.join(tempDir, "argon-auth.db"));
+		authStoragesToClose.push(authStorage);
+		await authStorage.set("google-antigravity", {
+			type: "oauth",
+			access: "stored-access-a",
+			refresh: "refresh-a",
+			accountId: "a",
+			email: "a@example.com",
+			projectId: "project-a",
+			expires: 1,
+		});
+		const oauthAccess = spyOn(authStorage, "getOAuthAccessAt").mockImplementation(async (provider, position) => {
+			const account = authStorage.listOAuthAccounts(provider)[position];
+			if (!account?.accountId) return undefined;
+			return { ok: true, ...account, accessToken: `fresh-access-${account.accountId}` };
+		});
+		restoreAuthSpies.push(() => oauthAccess.mockRestore());
+		const endpoint = "https://antigravity.example";
+		let fetchCalls = 0;
+		const fetch: FetchImpl = async (input, init) => {
+			fetchCalls++;
+			if (String(input) !== `${endpoint}/v1internal:fetchAvailableModels`) {
+				return new Response("Unexpected URL", { status: 404 });
+			}
+			const authorization = new Headers(init?.headers).get("Authorization");
+			if (authorization !== "Bearer fresh-access-a") return new Response("Unauthorized", { status: 401 });
+			return Response.json({
+				models: {
+					"gemini-4-argon-medium": {
+						displayName: "Argon Medium",
+						supportsImages: true,
+						supportsThinking: false,
+						maxTokens: 222_000,
+						maxOutputTokens: 22_000,
+					},
+				},
+			});
+		};
+		const modelsPath = path.join(tempDir, "argon-models.json");
+		await Bun.write(modelsPath, JSON.stringify({ providers: { "google-antigravity": { baseUrl: endpoint } } }));
+		return {
+			authStorage,
+			modelRegistry: new ModelRegistry(authStorage, modelsPath, { fetch }),
+			get fetchCalls() {
+				return fetchCalls;
+			},
+		};
+	}
 
 	const providerExtension: ExtensionFactory = pi => {
 		pi.registerProvider("runtime-provider", {
@@ -103,6 +160,52 @@ describe("createAgentSession deferred model pattern resolution", () => {
 
 		expect(session.model).toBeUndefined();
 		expect(modelFallbackMessage).toBe('Model "missing-provider/missing-model" not found');
+	});
+
+	test("does not refresh a built-in provider before same-name extension override", async () => {
+		const fixture = await buildColdArgonRegistry();
+		const overrideExtension: ExtensionFactory = pi => {
+			pi.registerProvider("google-antigravity", {
+				baseUrl: "https://extension.example/v1",
+				api: "openai-completions",
+				apiKey: "extension-key",
+				models: [
+					{
+						id: "gemini-4-argon-medium",
+						name: "Extension Argon Medium",
+						reasoning: false,
+						input: ["text", "image"],
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+						contextWindow: 222_000,
+						maxTokens: 22_000,
+					},
+				],
+			});
+		};
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			authStorage: fixture.authStorage,
+			modelRegistry: fixture.modelRegistry,
+			sessionManager: SessionManager.inMemory(),
+			disableExtensionDiscovery: true,
+			extensions: [overrideExtension],
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			modelPattern: "google-antigravity/gemini-4-argon-medium",
+		});
+
+		try {
+			expect(session.model?.provider).toBe("google-antigravity");
+			expect(session.model?.id).toBe("gemini-4-argon-medium");
+			expect(fixture.fetchCalls).toBe(0);
+		} finally {
+			await session.dispose();
+		}
 	});
 
 	test("does not apply default role thinking override when modelPattern is explicit", async () => {
@@ -472,4 +575,290 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			authStorage.close();
 		}
 	});
+
+	test("selects the settings Argon model when discovery cache is cold", async () => {
+		const { authStorage, modelRegistry } = await buildColdArgonRegistry();
+		const settings = Settings.isolated();
+		settings.setModelRole("default", "google-antigravity/gemini-4-argon-medium");
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			authStorage,
+			modelRegistry,
+			settings,
+			sessionManager: SessionManager.inMemory(),
+			disableExtensionDiscovery: true,
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			skipPythonPreflight: true,
+		});
+
+		try {
+			expect(session.model?.provider).toBe("google-antigravity");
+			expect(session.model?.id).toBe("gemini-4-argon-medium");
+		} finally {
+			await session.dispose();
+		}
+	});
+
+	test("restores a saved Argon model when discovery cache is cold", async () => {
+		const { authStorage, modelRegistry } = await buildColdArgonRegistry();
+		const persisted = SessionManager.create(tempDir, path.join(tempDir, "resume-cold-argon"));
+		await persisted.ensureOnDisk();
+		persisted.appendMessage({ role: "user", content: "resume", timestamp: Date.now() });
+		persisted.appendModelChange("google-antigravity/gemini-4-argon-medium", "default");
+		await persisted.flush();
+		const targetSessionFile = persisted.getSessionFile();
+		if (!targetSessionFile) throw new Error("Expected persisted resume session file");
+		const sessionManager = await SessionManager.open(targetSessionFile, path.join(tempDir, "resume-cold-argon"));
+		expect(
+			sessionManager
+				.getEntries()
+				.some(entry => entry.type === "model_change" && entry.model === "google-antigravity/gemini-4-argon-medium"),
+		).toBe(true);
+		const settings = Settings.isolated();
+		settings.setModelRole("default", "google-antigravity/gemini-3.1-pro");
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			authStorage,
+			modelRegistry,
+			sessionManager,
+			settings,
+			disableExtensionDiscovery: true,
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			skipPythonPreflight: true,
+		});
+
+		try {
+			expect(session.model?.provider).toBe("google-antigravity");
+			expect(session.model?.id).toBe("gemini-4-argon-medium");
+		} finally {
+			await session.dispose();
+		}
+	});
+	test("does not refresh when the settings model already exists with auth", async () => {
+		const fixture = await buildColdArgonRegistry();
+		const { authStorage, modelRegistry } = fixture;
+		const settings = Settings.isolated();
+		settings.setModelRole("default", "google-antigravity/gemini-3.1-pro");
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			authStorage,
+			modelRegistry,
+			settings,
+			sessionManager: SessionManager.inMemory(),
+			disableExtensionDiscovery: true,
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			skipPythonPreflight: true,
+		});
+
+		try {
+			expect(session.model?.provider).toBe("google-antigravity");
+			expect(session.model?.id).toBe("gemini-3.1-pro");
+			expect(fixture.fetchCalls).toBe(0);
+		} finally {
+			await session.dispose();
+		}
+	});
+
+	test("does not probe a missing default when a saved model is already valid", async () => {
+		const fixture = await buildColdArgonRegistry();
+		const { authStorage, modelRegistry } = fixture;
+		const persisted = SessionManager.create(tempDir, path.join(tempDir, "resume-warm-argon"));
+		await persisted.ensureOnDisk();
+		persisted.appendMessage({ role: "user", content: "resume", timestamp: Date.now() });
+		persisted.appendModelChange("google-antigravity/gemini-3.1-pro", "default");
+		await persisted.flush();
+		const targetSessionFile = persisted.getSessionFile();
+		if (!targetSessionFile) throw new Error("Expected persisted resume session file");
+		const sessionManager = await SessionManager.open(targetSessionFile, path.join(tempDir, "resume-warm-argon"));
+		expect(
+			sessionManager
+				.getEntries()
+				.some(entry => entry.type === "model_change" && entry.model === "google-antigravity/gemini-3.1-pro"),
+		).toBe(true);
+		const settings = Settings.isolated();
+		settings.setModelRole("default", "google-antigravity/gemini-4-argon-medium");
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			authStorage,
+			modelRegistry,
+			sessionManager,
+			settings,
+			disableExtensionDiscovery: true,
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			skipPythonPreflight: true,
+		});
+
+		try {
+			expect(session.model?.provider).toBe("google-antigravity");
+			expect(session.model?.id).toBe("gemini-3.1-pro");
+			expect(fixture.fetchCalls).toBe(0);
+		} finally {
+			await session.dispose();
+		}
+	});
+
+	test.each([
+		["qualified selector", undefined, "google-antigravity/gemini-4-argon-medium", "normal", undefined],
+		["explicit provider selector", "google-antigravity", "gemini-4-argon-medium", "normal", undefined],
+		["authoritative empty cache", undefined, "google-antigravity/gemini-4-argon-medium", "empty", undefined],
+		["stale fuzzy match", undefined, "google-antigravity/gemini-4-argon-medium", "stale", undefined],
+		["cold selector thinking suffix", undefined, "google-antigravity/gemini-4-argon-medium:high", "empty", undefined],
+		[
+			"explicit thinking overrides selector suffix",
+			undefined,
+			"google-antigravity/gemini-4-argon-medium:high",
+			"normal",
+			Effort.Low,
+		],
+	] as const)(
+		"startup resolves account-discovered Argon model via %s",
+		async (_name, provider, model, initialState, thinking) => {
+			const authStorage = await AuthStorage.create(path.join(tempDir, "startup-auth.db"));
+			authStoragesToClose.push(authStorage);
+			const staleModel: Model = buildModel({
+				id: "gemini-4-argon-high",
+				name: "Stale Argon High",
+				api: "google-gemini-cli",
+				provider: "google-antigravity",
+				baseUrl: "https://antigravity.example",
+				reasoning: true,
+				input: ["text", "image"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 222_000,
+				maxTokens: 22_000,
+			});
+			let discoveryComplete = initialState === "normal";
+			const originalGetAll = ModelRegistry.prototype.getAll;
+			const getAll = spyOn(ModelRegistry.prototype, "getAll").mockImplementation(function (this: ModelRegistry) {
+				if (discoveryComplete) return originalGetAll.call(this);
+				return initialState === "empty" ? [] : [staleModel];
+			});
+			const originalGetDiscoverableProviders = ModelRegistry.prototype.getDiscoverableProviders;
+			const getDiscoverableProviders = spyOn(ModelRegistry.prototype, "getDiscoverableProviders").mockImplementation(
+				function (this: ModelRegistry) {
+					if (!discoveryComplete && initialState === "empty") return [];
+					return originalGetDiscoverableProviders.call(this);
+				},
+			);
+			const refreshProvider = spyOn(ModelRegistry.prototype, "refreshProvider").mockImplementation(async function (
+				this: ModelRegistry,
+				providerId: string,
+			) {
+				if (providerId !== "google-antigravity") return;
+				discoveryComplete = true;
+				this.registerProvider(
+					providerId,
+					{
+						api: "google-gemini-cli",
+						apiKey: "account-discovered-fixture",
+						baseUrl: "https://antigravity.example",
+						models: [
+							{
+								id: "gemini-4-argon-medium",
+								name: "Argon Medium",
+								reasoning: true,
+								input: ["text", "image"],
+								cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+								contextWindow: 222_000,
+								maxTokens: 22_000,
+							},
+						],
+					},
+					"startup-account-discovery",
+				);
+			});
+			const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+				throw new Error(`unexpected process.exit(${code ?? 0})`);
+			}) as typeof process.exit);
+			let capturedSession: AgentSession | undefined;
+			let refreshedProviders: string[] = [];
+			try {
+				await expect(
+					runRootCommand(
+						{
+							mode: "acp",
+							cwd: tempDir,
+							sessionDir: tempDir,
+							model,
+							...(provider ? { provider } : {}),
+							...(thinking ? { thinking } : {}),
+							messages: [],
+							fileArgs: [],
+							unknownFlags: new Map(),
+							unrecognizedFlags: [],
+							noSkills: true,
+							noRules: true,
+							noTools: true,
+							noLsp: true,
+							noExtensions: true,
+						},
+						[],
+						{
+							settings: Settings.isolated({ "marketplace.autoUpdate": "off", defaultThinkingLevel: "low" }),
+							createAgentSession: async options => {
+								const result = await createAgentSession({
+									...options,
+									enableMCP: false,
+									enableLsp: false,
+									skills: [],
+									contextFiles: [],
+									promptTemplates: [],
+									slashCommands: [],
+									skipPythonPreflight: true,
+								});
+								capturedSession = result.session;
+								return result;
+							},
+							runAcpMode: async createSession => {
+								await createSession(tempDir);
+								throw new Error("stop startup test");
+							},
+						},
+					),
+				).rejects.toThrow("stop startup test");
+				refreshedProviders = refreshProvider.mock.calls.map(([providerId]) => providerId);
+				if (!capturedSession) throw new Error("Startup did not create an agent session");
+				expect(capturedSession.model?.provider).toBe("google-antigravity");
+				expect(capturedSession.model?.id).toBe("gemini-4-argon-medium");
+				if (model.endsWith(":high")) {
+					expect(capturedSession.thinkingLevel).toBe(thinking === Effort.Low ? Effort.Low : Effort.High);
+				}
+				expect(refreshedProviders).toEqual(["google-antigravity"]);
+			} finally {
+				await capturedSession?.dispose();
+				exitSpy.mockRestore();
+				refreshProvider.mockRestore();
+				getAll.mockRestore();
+				getDiscoverableProviders.mockRestore();
+			}
+		},
+	);
 });

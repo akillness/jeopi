@@ -823,14 +823,30 @@ export class ModelRegistry {
 		this.#backgroundRefresh = refreshPromise;
 	}
 
+	#resolveProviderId(providerId: string): string | undefined {
+		const candidates = new Set<string>([
+			...STARTUP_MODEL_CACHE_PROVIDER_IDS,
+			...this.#models.map(model => model.provider),
+			...this.#discoverableProviders.map(provider => provider.provider),
+			...this.#providerOverrides.keys(),
+			...this.#customProviderApiKeys.keys(),
+			...this.#runtimeProviderApiKeys.keys(),
+			...this.#runtimeProviderOverrides.keys(),
+			...this.#runtimeModelManagers.keys(),
+		]);
+		return [...candidates].find(candidate => candidate.toLowerCase() === providerId.toLowerCase());
+	}
+
 	async refreshProvider(providerId: string, strategy: ModelRefreshStrategy = "online"): Promise<void> {
 		this.#reloadStaticModels();
+		const canonicalProviderId = this.#resolveProviderId(providerId);
+		if (!canonicalProviderId) return;
 		for (const selector of this.#suppressedSelectors.keys()) {
-			if (selector.startsWith(`${providerId}/`)) {
+			if (selector.startsWith(`${canonicalProviderId}/`)) {
 				this.#suppressedSelectors.delete(selector);
 			}
 		}
-		await this.#refreshRuntimeDiscoveries(strategy, new Set([providerId]));
+		await this.#refreshRuntimeDiscoveries(strategy, new Set([canonicalProviderId]));
 	}
 
 	/**
@@ -892,11 +908,18 @@ export class ModelRegistry {
 	 * Drives the same SQLite model cache as built-in providers, so the default
 	 * `online-if-uncached` strategy fetches at most once per cache TTL (24 h).
 	 */
-	async refreshRuntimeProviders(strategy: ModelRefreshStrategy = "online-if-uncached"): Promise<void> {
+	async refreshRuntimeProviders(
+		strategy: ModelRefreshStrategy = "online-if-uncached",
+		excludedProviders?: ReadonlySet<string>,
+	): Promise<void> {
 		if (this.#runtimeModelManagers.size === 0) {
 			return;
 		}
-		await this.#refreshRuntimeDiscoveries(strategy, new Set(this.#runtimeModelManagers.keys()));
+		const providers = new Set(
+			[...this.#runtimeModelManagers.keys()].filter(provider => !excludedProviders?.has(provider.toLowerCase())),
+		);
+		if (providers.size === 0) return;
+		await this.#refreshRuntimeDiscoveries(strategy, providers);
 	}
 
 	#reloadStaticModels(): void {
@@ -1620,7 +1643,7 @@ export class ModelRegistry {
 	): Promise<BuiltInDiscoveryResult> {
 		// Skip providers already handled by configured discovery (e.g. user-configured ollama with discovery.type)
 		const configuredDiscoveryProviders = new Set(this.#discoverableProviders.map(p => p.provider));
-		const managerOptions = (await this.#collectBuiltInModelManagerOptions()).filter(opts => {
+		const managerOptions = (await this.#collectBuiltInModelManagerOptions(providerFilter)).filter(opts => {
 			if (configuredDiscoveryProviders.has(opts.providerId)) {
 				return false;
 			}
@@ -1643,7 +1666,7 @@ export class ModelRegistry {
 		return { models, authoritativeProviders };
 	}
 
-	async #collectBuiltInModelManagerOptions(): Promise<ModelManagerOptions<Api>[]> {
+	async #collectBuiltInModelManagerOptions(providerFilter?: ReadonlySet<string>): Promise<ModelManagerOptions<Api>[]> {
 		const specialProviderDescriptors: Array<{
 			providerId: string;
 			resolveKey: (value: string | undefined) => string | undefined;
@@ -1712,10 +1735,14 @@ export class ModelRegistry {
 		];
 		const disabledProviders = getDisabledProviderIdsFromSettings();
 		const standardProviderDescriptors = PROVIDER_DESCRIPTORS.filter(
-			descriptor => !disabledProviders.has(descriptor.providerId),
+			descriptor =>
+				!disabledProviders.has(descriptor.providerId) &&
+				(providerFilter === undefined || providerFilter.has(descriptor.providerId)),
 		);
 		const enabledSpecialProviderDescriptors = specialProviderDescriptors.filter(
-			descriptor => !disabledProviders.has(descriptor.providerId),
+			descriptor =>
+				!disabledProviders.has(descriptor.providerId) &&
+				(providerFilter === undefined || providerFilter.has(descriptor.providerId)),
 		);
 		// Use peekApiKey to avoid OAuth token refresh during discovery.
 		// The token is only needed if the dynamic fetch fires (cache miss),
@@ -1764,6 +1791,7 @@ export class ModelRegistry {
 		}
 		// Append runtime model managers registered by extensions via fetchDynamicModels.
 		for (const { options: managerOpts } of this.#runtimeModelManagers.values()) {
+			if (providerFilter !== undefined && !providerFilter.has(managerOpts.providerId)) continue;
 			options.push(managerOpts);
 		}
 		return options;

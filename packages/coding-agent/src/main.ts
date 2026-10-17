@@ -34,6 +34,7 @@ import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
 import {
 	getModelMatchPreferences,
+	parseModelString,
 	resolveCliModel,
 	resolveModelRoleValue,
 	resolveModelScope,
@@ -861,18 +862,35 @@ async function buildSessionOptions(
 			modelRegistry,
 			preferences: modelMatchPreferences,
 		});
-		if (resolved.warning) {
+		const requestedSelector =
+			parsed.provider && !parsed.model.toLowerCase().startsWith(`${parsed.provider.toLowerCase()}/`)
+				? `${parsed.provider}/${parsed.model}`
+				: parsed.model;
+		const parsedSelector = parseModelString(requestedSelector, {
+			allowMaxAlias: true,
+			allowAutoAlias: true,
+			isLiteralModelId: (provider, id) => modelRegistry.find(provider, id) !== undefined,
+		});
+		const exactSelector = parsedSelector && !/[?*[\]]/.test(parsedSelector.id);
+		const exactModel = exactSelector ? modelRegistry.find(parsedSelector.provider, parsedSelector.id) : undefined;
+		const resolvedExactSelector =
+			parsedSelector &&
+			resolved.selector?.toLowerCase() === `${parsedSelector.provider}/${parsedSelector.id}`.toLowerCase();
+		const deferSelection = resolved.error || (exactSelector && !exactModel && !resolvedExactSelector);
+		if (resolved.warning && !deferSelection) {
 			process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
 		}
-		if (resolved.error) {
-			if (!parsed.provider && !parsed.model.includes(":")) {
-				// Model not found in built-in registry — defer resolution to after extensions load
-				// (extensions may register additional providers/models via registerProvider)
-				options.modelPattern = parsed.model;
-			} else {
+		if (deferSelection) {
+			if (
+				resolved.error &&
+				parsedSelector?.provider.toLowerCase() !== "google-antigravity" &&
+				(parsed.provider || parsed.model.includes(":"))
+			) {
 				process.stderr.write(`${chalk.red(resolved.error)}\n`);
 				process.exit(1);
 			}
+			// Register extension overrides before discovering missing account models.
+			options.modelPattern = requestedSelector;
 		} else if (resolved.model) {
 			options.model = resolved.model;
 			activeSettings.overrideModelRoles({
@@ -1416,7 +1434,7 @@ export async function runRootCommand(
 			notifs.push({ kind: "error", message: modelRegistryError.message });
 		}
 
-		if (!isInteractive && !session.model) {
+		if (!session.model && (!isInteractive || sessionOptions.modelPattern !== undefined)) {
 			if (modelFallbackMessage) {
 				process.stderr.write(`${chalk.red(modelFallbackMessage)}\n`);
 			} else {

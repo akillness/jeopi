@@ -1255,6 +1255,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	const hasExplicitModel = options.model !== undefined || options.modelPattern !== undefined;
 	const modelMatchPreferences = getModelMatchPreferences(settings);
+	const sessionModelStrings =
+		!hasExplicitModel && hasExistingSession
+			? getRestorableSessionModels(existingSession.models, sessionManager.getLastModelChangeRole())
+			: [];
 	const allowedModels = await logger.time("resolveAllowedModels", () =>
 		resolveAllowedModels(modelRegistry, settings, modelMatchPreferences),
 	);
@@ -1271,10 +1275,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// host preconnect) can use the restored model; extension-registered
 	// providers aren't visible yet, so we retry the preferred candidates once
 	// extensions register below.
-	const sessionModelStrings =
-		!hasExplicitModel && hasExistingSession
-			? getRestorableSessionModels(existingSession.models, sessionManager.getLastModelChangeRole())
-			: [];
 	let restoredSessionModelIndex = -1;
 	let restoredSessionThinkingLevel: ConfiguredThinkingLevel | undefined;
 	if (!hasExplicitModel && !model && sessionModelStrings.length > 0) {
@@ -1319,6 +1319,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	}
 
 	const taskDepth = options.taskDepth ?? 0;
+	let deferredThinkingLevel: ConfiguredThinkingLevel | undefined;
 
 	// Resolves the session/agent thinking level using the same precedence we
 	// apply at startup: explicit option → persisted session entry → restored
@@ -1327,7 +1328,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// role reclaim so the final model's own defaults aren't masked by an earlier
 	// fallback model's.
 	const pickInitialThinkingLevel = (selectedModel: Model | undefined): ConfiguredThinkingLevel | undefined => {
-		let level = options.thinkingLevel;
+		let level = options.thinkingLevel ?? deferredThinkingLevel;
 		if (level === undefined && hasExistingSession && hasThinkingEntry) {
 			level =
 				parseConfiguredThinkingLevel(existingSession.configuredThinkingLevel) ??
@@ -1914,12 +1915,47 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 			extensionsResult.runtime.pendingProviderRegistrations = [];
 		}
+		// Resolve account-only models after extension overrides own their endpoints.
+		const discoverySelectors = options.modelPattern
+			? [options.modelPattern]
+			: !hasExplicitModel
+				? [...sessionModelStrings, settings.getModelRole("default")]
+				: [];
+		const refreshedProviders = new Set<string>();
+		for (const selector of discoverySelectors) {
+			if (!selector) continue;
+			const parsed = parseModelString(selector, {
+				allowMaxAlias: true,
+				allowAutoAlias: true,
+				isLiteralModelId: (provider, id) => modelRegistry.find(provider, id) !== undefined,
+			});
+			if (!parsed || /[?*[\]]/.test(parsed.id)) continue;
+			const existing = modelRegistry.find(parsed.provider, parsed.id);
+			if (existing && hasModelAuth(existing)) break;
+			if (!existing && selector.includes("@")) {
+				const routed = parseModelPattern(selector, modelRegistry.getAll(), modelMatchPreferences);
+				if (routed.upstream && routed.model && hasModelAuth(routed.model)) break;
+			}
+			const providerKey = parsed.provider.toLowerCase();
+			if (existing || refreshedProviders.has(providerKey)) continue;
+			refreshedProviders.add(providerKey);
+			try {
+				await modelRegistry.refreshProvider(parsed.provider, "online");
+			} catch (error) {
+				logger.debug("startup model discovery failed", {
+					provider: parsed.provider,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+			const discovered = modelRegistry.find(parsed.provider, parsed.id);
+			if (discovered && hasModelAuth(discovered)) break;
+		}
 		// Discover runtime (extension) provider catalogs now that they are
 		// registered. The startup refreshInBackground() ran before extensions
 		// loaded, so dynamic extension providers are only discovered here. Runs in
 		// the background (cache-aware) so startup is never blocked on the fetch; the
 		// model list re-renders when the catalog arrives, like other dynamic providers.
-		void modelRegistry.refreshRuntimeProviders().catch(error => {
+		void modelRegistry.refreshRuntimeProviders("online-if-uncached", refreshedProviders).catch(error => {
 			logger.warn("runtime provider discovery failed", {
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -1964,14 +2000,28 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 			}
 		}
+		if (!hasExplicitModel && restoredSessionModelIndex < 0 && refreshedProviders.size > 0) {
+			model = undefined;
+		}
 		// Resolve deferred --model pattern now that extension models are registered.
 		if (!model && options.modelPattern) {
 			const availableModels = modelRegistry.getAll();
 			const matchPreferences = getModelMatchPreferences(settings);
-			const { model: resolved } = parseModelPattern(options.modelPattern, availableModels, matchPreferences);
+			const { model: resolved, thinkingLevel: selectorThinkingLevel } = parseModelPattern(
+				options.modelPattern,
+				availableModels,
+				matchPreferences,
+				{ allowInvalidThinkingSelectorFallback: false },
+			);
 			if (resolved) {
 				model = resolved;
 				modelFallbackMessage = undefined;
+				deferredThinkingLevel = selectorThinkingLevel;
+				thinkingLevel = pickInitialThinkingLevel(resolved);
+				autoThinking = thinkingLevel === AUTO_THINKING;
+				effectiveThinkingLevel = autoThinking
+					? resolveProvisionalAutoLevel(resolved)
+					: resolveThinkingLevelForModel(resolved, concreteThinkingLevel(thinkingLevel));
 			} else {
 				modelFallbackMessage = `Model "${options.modelPattern}" not found`;
 			}
@@ -1994,7 +2044,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// default with a bundled provider's default whenever a stray
 			// `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` is in the environment.
 			// (issue #3569)
-			if (!hasExplicitModel && !defaultRoleSpec.model) {
+			if (!hasExplicitModel && (!defaultRoleSpec.model || refreshedProviders.size > 0)) {
 				const reResolvedRoleSpec = resolveModelRoleValue(settings.getModelRole("default"), fallbackCandidates, {
 					settings,
 					matchPreferences: modelMatchPreferences,
