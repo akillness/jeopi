@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.6] - 2026-10-17
+
 ### Fixed
 
 - Fixed Google Cloud Code Assist quota failures retrying exhausted credentials or alternate endpoints before existing authentication recovery. Structured quota errors now retain their status across HTTP, SSE, and empty-stream retries, while transient throttling keeps normal retry behavior.
