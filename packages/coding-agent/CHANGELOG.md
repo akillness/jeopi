@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.9] - 2026-10-17
+
 ### Fixed
 
 - Prevent Cloud Code Assist false-positive 429 quota exhaustion errors on Google Antigravity models by replacing XML `<system-conventions>` prompt tags with standard markdown headers.

@@ -695,11 +695,11 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.6.9]** (2026-10-17) — Prevent Cloud Code Assist false-positive 429 quota exhaustion errors on Google Antigravity models by replacing XML `<system-conventions>` prompt tags with standard markdown headers.
 - **[16.6.8]** (2026-10-17) — Preserve prompt continuation timing when retry credential cancellation is not needed.
 - **[16.6.7]** (2026-10-17) — Read long session records once to reduce resume latency and peak memory while preserving malformed-record recovery and UTF-8 content.
 - **[16.6.5]** (2026-10-17) — Bound optional startup model discovery and provider refresh work so explicit Antigravity Argon model selection remains responsive while late catalog data can still populate caches.
 - **[16.6.4]** (2026-10-17) — Resolve newly discovered Antigravity Argon models at startup before rejecting an explicit model selection or falling back from a saved default or resumed session. Refresh only the requested provider,…
-- **[16.6.3]** (2026-10-16) — Show newly entitled Antigravity models, including Gemini 4 Argon, in the model selector after login or model refresh without reusing an older client's cached list.
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->
