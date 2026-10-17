@@ -59,7 +59,11 @@ export function createAbortSourceTracker(callerSignal?: AbortSignal): AbortSourc
  */
 export function raceWithSignal<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
 	if (!signal) return promise;
-	if (signal.aborted) return Promise.reject(signal.reason ?? new AIError.AbortError());
+	if (signal.aborted) {
+		// The supplied work already started; observe its rejection after the caller cancels.
+		void promise.catch(() => {});
+		return Promise.reject(signal.reason ?? new AIError.AbortError());
+	}
 	const { promise: aborted, reject } = Promise.withResolvers<never>();
 	const onAbort = () => reject(signal.reason ?? new AIError.AbortError());
 	signal.addEventListener("abort", onAbort, { once: true });

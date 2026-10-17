@@ -218,7 +218,14 @@ export async function fetchWithRetry(
 		if (!isRetryableStatus(response.status)) return response;
 		if (attempt + 1 >= maxAttempts) return response;
 
-		const retryBody = await response.clone().text();
+		let retryBody: string;
+		try {
+			retryBody = await response.clone().text();
+		} catch {
+			if (signal?.aborted) throw new Error("Request was aborted");
+			// Keep the HTTP status and original body error available to the caller.
+			return response;
+		}
 		if (shouldRetryResponse && !(await shouldRetryResponse(response, retryBody, attempt))) return response;
 
 		const hint = extractRetryHint(response, retryBody);

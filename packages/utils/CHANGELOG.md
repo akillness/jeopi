@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserved the original HTTP response, status, and body failure when retry-body inspection fails, while continuing to honor caller cancellation.
+
 ## [16.4.3] - 2026-07-22
 
 ### Added

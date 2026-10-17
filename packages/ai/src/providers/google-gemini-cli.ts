@@ -15,6 +15,7 @@ import {
 } from "jeopi-catalog/wire/gemini-headers";
 import { extractHttpStatusFromError, fetchWithRetry, readSseJson } from "jeopi-utils";
 import * as AIError from "../error";
+import { parseRateLimitReason } from "../error/rate-limit";
 import type {
 	Api,
 	AssistantMessage,
@@ -28,6 +29,7 @@ import type {
 	ToolCall,
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
+import { raceWithSignal } from "../utils/abort";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../utils/google-validation";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
@@ -440,49 +442,48 @@ function stringField(record: Record<string, unknown> | undefined, key: string): 
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function extractCloudCodeAssistQuotaDetails(errorBody: string): CloudCodeAssistQuotaDetails | undefined {
-	if (!/\bquota\b|QUOTA_EXHAUSTED|RESOURCE_EXHAUSTED/i.test(errorBody)) return undefined;
+function parseCloudCodeAssistError(errorBody: string): Record<string, unknown> | undefined {
 	const jsonStart = errorBody.indexOf("{");
 	if (jsonStart === -1) return undefined;
-
 	try {
-		const jsonText = errorBody.slice(jsonStart).replace(/\r?\n/g, " ");
-		const parsed = JSON.parse(jsonText);
-		const root = recordOf(parsed);
-		const error = recordOf(root?.error);
-		if (!error) return undefined;
-
-		const message = stringField(error, "message");
-		const status = stringField(error, "status");
-		const details = Array.isArray(error.details) ? error.details : [];
-
-		let isQuotaExhausted =
-			status === "RESOURCE_EXHAUSTED" && message !== undefined && /\bquota\b|exhausted/i.test(message);
-		let model: string | undefined;
-		let quotaResetDelay: string | undefined;
-		let quotaResetTimeStamp: string | undefined;
-		let retryDelay: string | undefined;
-
-		for (const rawDetail of details) {
-			const detail = recordOf(rawDetail);
-			if (!detail) continue;
-			const reason = stringField(detail, "reason");
-			if (reason === "QUOTA_EXHAUSTED") {
-				isQuotaExhausted = true;
-			}
-			retryDelay ??= stringField(detail, "retryDelay");
-			const metadata = recordOf(detail.metadata);
-			model ??= stringField(metadata, "model");
-			quotaResetDelay ??= stringField(metadata, "quotaResetDelay");
-			quotaResetTimeStamp ??=
-				stringField(metadata, "quotaResetTimeStamp") ?? stringField(metadata, "quotaResetTimestamp");
-		}
-
-		if (!isQuotaExhausted) return undefined;
-		return { message, model, quotaResetDelay, quotaResetTimeStamp, retryDelay };
+		return recordOf(recordOf(JSON.parse(errorBody.slice(jsonStart).replace(/\r?\n/g, " ")))?.error);
 	} catch {
 		return undefined;
 	}
+}
+
+function extractCloudCodeAssistQuotaDetails(errorBody: string): CloudCodeAssistQuotaDetails | undefined {
+	if (!/\bquota\b|QUOTA_EXHAUSTED|RESOURCE_EXHAUSTED/i.test(errorBody)) return undefined;
+	const error = parseCloudCodeAssistError(errorBody);
+	if (!error) return undefined;
+
+	const message = stringField(error, "message");
+	const status = stringField(error, "status");
+	const details = Array.isArray(error.details) ? error.details : [];
+	let isQuotaExhausted =
+		status === "RESOURCE_EXHAUSTED" && message !== undefined && parseRateLimitReason(message) === "QUOTA_EXHAUSTED";
+	let model: string | undefined;
+	let quotaResetDelay: string | undefined;
+	let quotaResetTimeStamp: string | undefined;
+	let retryDelay: string | undefined;
+
+	for (const rawDetail of details) {
+		const detail = recordOf(rawDetail);
+		if (!detail) continue;
+		const reason = stringField(detail, "reason");
+		if (reason === "QUOTA_EXHAUSTED") {
+			isQuotaExhausted = true;
+		}
+		retryDelay ??= stringField(detail, "retryDelay");
+		const metadata = recordOf(detail.metadata);
+		model ??= stringField(metadata, "model");
+		quotaResetDelay ??= stringField(metadata, "quotaResetDelay");
+		quotaResetTimeStamp ??=
+			stringField(metadata, "quotaResetTimeStamp") ?? stringField(metadata, "quotaResetTimestamp");
+	}
+
+	if (!isQuotaExhausted) return undefined;
+	return { message, model, quotaResetDelay, quotaResetTimeStamp, retryDelay };
 }
 
 function sentence(text: string): string {
@@ -515,6 +516,39 @@ function formatCloudCodeAssistQuotaMessage(errorBody: string, email?: string): s
 
 	parts.push("Add another Google account with /login, switch models/providers, or wait for the reset.");
 	return parts.join(" ");
+}
+
+async function createCloudCodeAssistHttpError(
+	response: Response,
+	email?: string,
+	signal?: AbortSignal,
+): Promise<AIError.GeminiCliApiError> {
+	let errorText: string;
+	try {
+		signal?.throwIfAborted();
+		errorText = await raceWithSignal(response.text(), signal);
+	} catch (error) {
+		return new AIError.GeminiCliApiError(
+			`Cloud Code Assist API error (${response.status}): Could not read response body`,
+			response.status,
+			{ headers: response.headers, cause: error },
+		);
+	}
+	const quotaMessage = formatCloudCodeAssistQuotaMessage(errorText, email);
+	const validationUrl = quotaMessage ? undefined : extractGoogleValidationUrl(errorText);
+	const detail =
+		quotaMessage ??
+		(validationUrl
+			? formatGoogleValidationRequiredMessage(validationUrl, "retry your request", email)
+			: (stringField(parseCloudCodeAssistError(errorText), "message") ?? errorText));
+	return new AIError.GeminiCliApiError(
+		`Cloud Code Assist API error (${response.status}): ${detail}`,
+		response.status,
+		{
+			headers: response.headers,
+			code: quotaMessage ? "QUOTA_EXHAUSTED" : undefined,
+		},
+	);
 }
 
 interface CloudCodeAssistRequest {
@@ -873,7 +907,9 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						const detail = quotaDetail ?? chunk.error.message ?? chunk.error.status ?? "unknown error";
 						const message = `Cloud Code Assist stream error: ${detail}`;
 						throw typeof chunk.error.code === "number" && chunk.error.code >= 400
-							? new AIError.GeminiCliApiError(message, chunk.error.code)
+							? new AIError.GeminiCliApiError(message, chunk.error.code, {
+									code: quotaDetail ? "QUOTA_EXHAUSTED" : undefined,
+								})
 							: new AIError.ProviderResponseError(message, { provider: model.provider, kind: "runtime" });
 					}
 					const responseData = chunk.response;
@@ -1032,9 +1068,8 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					started = false;
 					resetOutput();
 
-					// Per attempt: arm a pre-response (TTFT) timer, cleared the instant
-					// headers arrive so it never aborts the actively streaming body —
-					// an absolute `AbortSignal.timeout` would (issue #2422).
+					// Guard headers and error-body inspection; clear before reading a
+					// successful SSE body so ongoing output is not cut off (issue #2422).
 					const watchdog = armPreResponseTimeout(callerSignal, firstEventTimeoutMs);
 					let response: Response;
 					try {
@@ -1046,36 +1081,16 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
 							defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
 							maxDelayMs: options?.maxRetryDelayMs ?? RATE_LIMIT_BUDGET_MS,
+							shouldRetryResponse: (response, body) =>
+								response.status !== 429 || extractCloudCodeAssistQuotaDetails(body) === undefined,
 							fetch: options?.fetch,
 							timeout: false,
 						});
+						if (!response.ok) {
+							throw await createCloudCodeAssistHttpError(response, parsedCredentials.email, watchdog.signal);
+						}
 					} finally {
 						watchdog.clear();
-					}
-
-					if (!response.ok) {
-						if (AIError.isTransientStatus(response.status)) {
-							if (!isLastEndpoint) {
-								continue;
-							}
-						}
-						const errorText = await response.text();
-						const quotaMessage = formatCloudCodeAssistQuotaMessage(errorText, parsedCredentials.email);
-						const validationUrl = quotaMessage ? undefined : extractGoogleValidationUrl(errorText);
-						const errorMessage =
-							quotaMessage ??
-							(validationUrl
-								? formatGoogleValidationRequiredMessage(
-										validationUrl,
-										"retry your request",
-										parsedCredentials.email,
-									)
-								: errorText);
-						throw new AIError.GeminiCliApiError(
-							`Cloud Code Assist API error (${response.status}): ${errorMessage}`,
-							response.status,
-							{ headers: response.headers },
-						);
 					}
 
 					const requestUrl = response.url;
@@ -1098,22 +1113,24 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 								throw new AIError.ConfigurationError("Missing request URL");
 							}
 
-							currentResponse = await (options?.fetch ?? fetch)(requestUrl, {
-								method: "POST",
-								headers: requestHeaders,
-								body: requestBodyJson,
-								signal: options?.signal,
-							});
+							const retryWatchdog = armPreResponseTimeout(callerSignal, firstEventTimeoutMs);
+							try {
+								currentResponse = await (options?.fetch ?? fetch)(requestUrl, {
+									method: "POST",
+									headers: requestHeaders,
+									body: requestBodyJson,
+									signal: retryWatchdog.signal,
+								});
 
-							if (!currentResponse.ok) {
-								const retryErrorText = await currentResponse.text();
-								const retryErrorMessage =
-									formatCloudCodeAssistQuotaMessage(retryErrorText, parsedCredentials.email) ?? retryErrorText;
-								throw new AIError.GeminiCliApiError(
-									`Cloud Code Assist API error (${currentResponse.status}): ${retryErrorMessage}`,
-									currentResponse.status,
-									{ headers: currentResponse.headers },
-								);
+								if (!currentResponse.ok) {
+									throw await createCloudCodeAssistHttpError(
+										currentResponse,
+										parsedCredentials.email,
+										retryWatchdog.signal,
+									);
+								}
+							} finally {
+								retryWatchdog.clear();
 							}
 						}
 
@@ -1162,7 +1179,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					break;
 				} catch (error) {
 					const status = extractHttpStatusFromError(error);
-					if (AIError.isTransientStatus(status)) {
+					if (
+						AIError.isTransientStatus(status) &&
+						!callerSignal?.aborted &&
+						!(error instanceof AIError.GeminiCliApiError && error.code === "QUOTA_EXHAUSTED")
+					) {
 						if (!isLastEndpoint && !started) {
 							continue;
 						}

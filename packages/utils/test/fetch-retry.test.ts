@@ -2,6 +2,62 @@ import { describe, expect, it } from "bun:test";
 import { fetchWithRetry } from "jeopi-utils/fetch-retry";
 
 describe("fetchWithRetry", () => {
+	for (const status of [429, 503]) {
+		it(`returns HTTP ${status} when retry inspection cannot read the body, leaving the original body failure observable`, async () => {
+			let attempts = 0;
+			const bodyError = new Error("Synthetic retry body disconnected");
+			const original = new Response(
+				new ReadableStream({
+					start(controller) {
+						controller.error(bodyError);
+					},
+				}),
+				{ status },
+			);
+			const response = await fetchWithRetry("https://example.invalid/unreadable", {
+				maxAttempts: 3,
+				defaultDelayMs: 0,
+				fetch: async () => {
+					attempts += 1;
+					return original;
+				},
+			});
+
+			expect(response).toBe(original);
+			expect(response.status).toBe(status);
+			await expect(response.text()).rejects.toBe(bodyError);
+			expect(attempts).toBe(1);
+		});
+
+		it(`does not swallow caller cancellation while inspecting an unreadable HTTP ${status} body`, async () => {
+			const abort = new AbortController();
+			let attempts = 0;
+			const request = fetchWithRetry("https://example.invalid/cancelled-body", {
+				signal: abort.signal,
+				maxAttempts: 3,
+				defaultDelayMs: 0,
+				fetch: async () => {
+					attempts += 1;
+					return new Response(
+						new ReadableStream(
+							{
+								pull(controller) {
+									abort.abort();
+									controller.error(new Error("Synthetic cancelled body disconnected"));
+								},
+							},
+							{ highWaterMark: 0 },
+						),
+						{ status },
+					);
+				},
+			});
+
+			await expect(request).rejects.toThrow("Request was aborted");
+			expect(attempts).toBe(1);
+		});
+	}
+
 	it("routes requests through the `fetch` override when provided", async () => {
 		const calls: Array<{ input: string | URL | Request; init: RequestInit | undefined }> = [];
 		const customFetch = async (input: string | URL | Request, init?: RequestInit) => {
