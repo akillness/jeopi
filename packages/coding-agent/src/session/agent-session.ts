@@ -4242,18 +4242,25 @@ export class AgentSession {
 					}
 					this.#beginInFlight();
 					try {
-						const restoreSignal = options?.signal ? AbortSignal.any([signal, options.signal]) : signal;
-						const cancelled = Promise.withResolvers<void>();
-						const onAbort = () => cancelled.resolve();
-						restoreSignal.addEventListener("abort", onAbort, { once: true });
-						try {
-							if (!restoreSignal.aborted) {
-								await Promise.race([this.#maybeRestoreRetryFallbackPrimary(restoreSignal), cancelled.promise]);
+						if (options?.signal) {
+							const restoreSignal = AbortSignal.any([signal, options.signal]);
+							const cancelled = Promise.withResolvers<void>();
+							const onAbort = () => cancelled.resolve();
+							restoreSignal.addEventListener("abort", onAbort, { once: true });
+							try {
+								if (!restoreSignal.aborted) {
+									await Promise.race([
+										this.#maybeRestoreRetryFallbackPrimary(restoreSignal),
+										cancelled.promise,
+									]);
+								}
+							} finally {
+								restoreSignal.removeEventListener("abort", onAbort);
 							}
-						} finally {
-							restoreSignal.removeEventListener("abort", onAbort);
+						} else {
+							await this.#maybeRestoreRetryFallbackPrimary(signal);
 						}
-						if (options?.shouldContinue && !options.shouldContinue()) {
+						if (options?.signal && options.shouldContinue && !options.shouldContinue()) {
 							this.#skipAgentContinue("should-continue-false", options);
 							return;
 						}
@@ -4261,8 +4268,8 @@ export class AgentSession {
 							this.#skipAgentContinue("post-restore-unavailable", options);
 							return;
 						}
-						await options?.onSettled?.();
-						if (options?.shouldContinue && !options.shouldContinue()) {
+						if (options?.onSettled) await options.onSettled();
+						if (options?.signal && options.shouldContinue && !options.shouldContinue()) {
 							this.#skipAgentContinue("should-continue-false", options);
 							return;
 						}
@@ -4277,7 +4284,7 @@ export class AgentSession {
 						this.#endInFlight();
 					}
 				} finally {
-					await options?.onSettled?.();
+					if (options?.onSettled) await options.onSettled();
 				}
 			},
 			{
@@ -4285,7 +4292,7 @@ export class AgentSession {
 				generation: options?.generation,
 				onSkip: async reason => {
 					this.#skipAgentContinue(reason, options);
-					await options?.onSettled?.();
+					if (options?.onSettled) await options.onSettled();
 				},
 			},
 		);

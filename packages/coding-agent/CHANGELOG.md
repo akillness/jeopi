@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve prompt continuation timing when retry credential cancellation is not needed.
+
 ## [16.6.7] - 2026-10-17
 
 ### Fixed
