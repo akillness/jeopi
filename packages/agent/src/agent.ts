@@ -479,6 +479,11 @@ export class Agent {
 		return this.#sessionId;
 	}
 
+	/** Absolute deadline shared by streaming and session recovery work. */
+	get deadline(): number | undefined {
+		return this.#deadline;
+	}
+
 	/**
 	 * Set the session ID for provider caching.
 	 * Call this when switching sessions (new session, branch, resume).

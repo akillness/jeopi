@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Read long session records once to reduce resume latency and peak memory while preserving malformed-record recovery and UTF-8 content.
+- Stop retrying exhausted quotas without an available credential or model fallback, and apply cancellation and the request deadline during retry preparation and backoff.
+
 ## [16.6.5] - 2026-10-17
 
 ### Fixed

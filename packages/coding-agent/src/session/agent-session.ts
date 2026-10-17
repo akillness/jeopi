@@ -645,6 +645,12 @@ type CompactionCheckResult = Readonly<{
 	historyRewritten?: boolean;
 }>;
 
+interface RetryErrorOptions {
+	allowModelFallback?: boolean;
+	fireworksFastFallback?: boolean;
+	hardErrorFallback?: boolean;
+}
+
 const COMPACTION_CHECK_NONE: CompactionCheckResult = {
 	deferredHandoff: false,
 	continuationScheduled: false,
@@ -1545,6 +1551,8 @@ type ScheduledAgentContinueOptions = {
 	delayMs?: number;
 	generation?: number;
 	shouldContinue?: () => boolean;
+	signal?: AbortSignal;
+	onSettled?: () => Promise<void>;
 	onSkip?: (reason: AgentContinueSkipReason) => void;
 	onError?: () => void;
 };
@@ -1694,6 +1702,7 @@ export class AgentSession {
 
 	// Retry state
 	#retryAbortController: AbortController | undefined = undefined;
+	#retryGeneration = 0;
 	#retryAttempt = 0;
 	/** Rung-4 classifier-refusal resend streak (post fallback-ladder). */
 	#refusalBackoff: { startedAt: number; attempt: number } | undefined = undefined;
@@ -4179,7 +4188,11 @@ export class AgentSession {
 
 	#schedulePostPromptTask(
 		task: (signal: AbortSignal) => Promise<void>,
-		options?: { delayMs?: number; generation?: number; onSkip?: (reason: PostPromptSkipReason) => void },
+		options?: {
+			delayMs?: number;
+			generation?: number;
+			onSkip?: (reason: PostPromptSkipReason) => void | Promise<void>;
+		},
 	): void {
 		const delayMs = options?.delayMs ?? 0;
 		const signal = this.#postPromptTasksAbortController.signal;
@@ -4188,15 +4201,16 @@ export class AgentSession {
 				try {
 					await scheduler.wait(delayMs, { signal });
 				} catch {
+					await options?.onSkip?.("aborted");
 					return;
 				}
 			}
 			if (signal.aborted) {
-				options?.onSkip?.("aborted");
+				await options?.onSkip?.("aborted");
 				return;
 			}
 			if (options?.generation !== undefined && this.#promptGeneration !== options.generation) {
-				options.onSkip?.("stale-generation");
+				await options.onSkip?.("stale-generation");
 				return;
 			}
 			await task(signal);
@@ -4212,41 +4226,67 @@ export class AgentSession {
 	#scheduleAgentContinue(options?: ScheduledAgentContinueOptions): void {
 		this.#schedulePostPromptTask(
 			async signal => {
-				// Defense in depth: if compaction/handoff slipped onto the post-prompt queue
-				// alongside us (e.g. via a scheduler we don't own), refuse to start a fresh
-				// streaming turn — agent.continue() here would race the handoff's session
-				// reset. The first-class fix is in #checkCompaction/the agent_end handler,
-				// but this guard catches anything that bypasses that path.
-				if (signal.aborted || this.#isDisposed || this.isCompacting || this.isGeneratingHandoff) {
-					this.#skipAgentContinue("session-unavailable", options);
-					return;
-				}
-				if (options?.shouldContinue && !options.shouldContinue()) {
-					this.#skipAgentContinue("should-continue-false", options);
-					return;
-				}
-				this.#beginInFlight();
 				try {
-					await this.#maybeRestoreRetryFallbackPrimary();
-					if (signal.aborted || this.#isDisposed) {
-						this.#skipAgentContinue("post-restore-unavailable", options);
+					// Defense in depth: if compaction/handoff slipped onto the post-prompt queue
+					// alongside us (e.g. via a scheduler we don't own), refuse to start a fresh
+					// streaming turn — agent.continue() here would race the handoff's session
+					// reset. The first-class fix is in #checkCompaction/the agent_end handler,
+					// but this guard catches anything that bypasses that path.
+					if (signal.aborted || this.#isDisposed || this.isCompacting || this.isGeneratingHandoff) {
+						this.#skipAgentContinue("session-unavailable", options);
 						return;
 					}
-					await this.agent.continue();
-				} catch (error) {
-					logger.warn("agent.continue failed after scheduling", {
-						error: error instanceof Error ? error.message : String(error),
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-					options?.onError?.();
+					if (options?.shouldContinue && !options.shouldContinue()) {
+						this.#skipAgentContinue("should-continue-false", options);
+						return;
+					}
+					this.#beginInFlight();
+					try {
+						const restoreSignal = options?.signal ? AbortSignal.any([signal, options.signal]) : signal;
+						const cancelled = Promise.withResolvers<void>();
+						const onAbort = () => cancelled.resolve();
+						restoreSignal.addEventListener("abort", onAbort, { once: true });
+						try {
+							if (!restoreSignal.aborted) {
+								await Promise.race([this.#maybeRestoreRetryFallbackPrimary(restoreSignal), cancelled.promise]);
+							}
+						} finally {
+							restoreSignal.removeEventListener("abort", onAbort);
+						}
+						if (options?.shouldContinue && !options.shouldContinue()) {
+							this.#skipAgentContinue("should-continue-false", options);
+							return;
+						}
+						if (signal.aborted || this.#isDisposed) {
+							this.#skipAgentContinue("post-restore-unavailable", options);
+							return;
+						}
+						await options?.onSettled?.();
+						if (options?.shouldContinue && !options.shouldContinue()) {
+							this.#skipAgentContinue("should-continue-false", options);
+							return;
+						}
+						await this.agent.continue();
+					} catch (error) {
+						logger.warn("agent.continue failed after scheduling", {
+							error: error instanceof Error ? error.message : String(error),
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+						options?.onError?.();
+					} finally {
+						this.#endInFlight();
+					}
 				} finally {
-					this.#endInFlight();
+					await options?.onSettled?.();
 				}
 			},
 			{
 				delayMs: options?.delayMs,
 				generation: options?.generation,
-				onSkip: reason => this.#skipAgentContinue(reason, options),
+				onSkip: async reason => {
+					this.#skipAgentContinue(reason, options);
+					await options?.onSettled?.();
+				},
 			},
 		);
 	}
@@ -13183,6 +13223,7 @@ export class AgentSession {
 		selector: RetryFallbackSelector,
 		currentSelector: string,
 		options?: { pinFallback?: boolean },
+		cancelled?: () => boolean,
 	): Promise<void> {
 		const resolved = resolveModelOverride([selector.raw], this.#modelRegistry, this.settings);
 		const candidate = resolved.model ?? this.#modelRegistry.find(selector.provider, selector.id);
@@ -13190,6 +13231,7 @@ export class AgentSession {
 			throw new Error(`Retry fallback model not found: ${selector.raw}`);
 		}
 		const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
+		if (cancelled?.()) return;
 		if (!apiKey) {
 			throw new Error(`No API key for retry fallback ${selector.raw}`);
 		}
@@ -13223,7 +13265,11 @@ export class AgentSession {
 		});
 	}
 
-	async #tryRetryModelFallback(currentSelector: string, options?: { pinFallback?: boolean }): Promise<boolean> {
+	async #tryRetryModelFallback(
+		currentSelector: string,
+		options?: { pinFallback?: boolean },
+		cancelled?: () => boolean,
+	): Promise<boolean> {
 		const role = this.#activeRetryFallback?.role ?? this.#resolveRetryFallbackRole(currentSelector);
 		if (!role) return false;
 
@@ -13233,8 +13279,9 @@ export class AgentSession {
 			const candidate = resolved.model ?? this.#modelRegistry.find(selector.provider, selector.id);
 			if (!candidate) continue;
 			const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
+			if (cancelled?.()) return false;
 			if (!apiKey) continue;
-			await this.#applyRetryFallbackCandidate(role, selector, currentSelector, options);
+			await this.#applyRetryFallbackCandidate(role, selector, currentSelector, options, cancelled);
 			return true;
 		}
 
@@ -13305,13 +13352,13 @@ export class AgentSession {
 	 * fallback that makes Fast a safe default. Returns false when the current
 	 * model is not a fast variant, the base id is missing, or it has no key.
 	 */
-	async #tryFireworksFastFallback(currentSelector: string): Promise<boolean> {
+	async #tryFireworksFastFallback(currentSelector: string, cancelled?: () => boolean): Promise<boolean> {
 		const model = this.#activeFireworksFastModel();
 		if (!model) return false;
 		const baseModel = this.#modelRegistry.find("fireworks", toFireworksBaseModelId(model.id));
 		if (!baseModel) return false;
 		const apiKey = await this.#modelRegistry.getApiKey(baseModel, this.sessionId);
-		if (!apiKey) return false;
+		if (cancelled?.() || !apiKey) return false;
 		const baseSelector = formatModelStringWithRouting(baseModel);
 		this.#setModelWithProviderSessionReset(baseModel);
 		this.sessionManager.appendModelChange(baseSelector, EPHEMERAL_MODEL_CHANGE_ROLE);
@@ -13325,7 +13372,7 @@ export class AgentSession {
 		return true;
 	}
 
-	async #maybeRestoreRetryFallbackPrimary(): Promise<void> {
+	async #maybeRestoreRetryFallbackPrimary(signal?: AbortSignal): Promise<void> {
 		if (!this.#activeRetryFallback) return;
 		if (this.#activeRetryFallback.pinned) return;
 		if (this.#getRetryFallbackRevertPolicy() !== "cooldown-expiry") return;
@@ -13357,7 +13404,7 @@ export class AgentSession {
 			resolvedPrimary.model ?? this.#modelRegistry.find(originalSelector.provider, originalSelector.id);
 		if (!primaryModel) return;
 		const apiKey = await this.#modelRegistry.getApiKey(primaryModel, this.sessionId);
-		if (!apiKey) return;
+		if (signal?.aborted || !apiKey) return;
 
 		const currentThinkingLevel = this.configuredThinkingLevel();
 		const thinkingToApply =
@@ -13435,9 +13482,79 @@ export class AgentSession {
 	 * the error without a same-model backoff retry.
 	 * @returns true if retry was initiated, false if max retries exceeded or disabled
 	 */
-	async #handleRetryableError(
+	async #handleRetryableError(message: AssistantMessage, options?: RetryErrorOptions): Promise<boolean> {
+		if (!this.settings.get("retry.enabled") && !options?.fireworksFastFallback) return false;
+		const generation = this.#promptGeneration;
+		const retryGeneration = this.#retryGeneration;
+		const controller = new AbortController();
+		this.#retryAbortController?.abort();
+		this.#retryAbortController = controller;
+		const deadline = this.agent.deadline;
+		const cancelled = () =>
+			controller.signal.aborted ||
+			this.#retryGeneration !== retryGeneration ||
+			this.#promptGeneration !== generation ||
+			this.#abortInProgress ||
+			this.#isDisposed ||
+			(deadline !== undefined && Date.now() >= deadline);
+		const cancellation = Promise.withResolvers<boolean>();
+		const onAbort = () => cancellation.resolve(false);
+		controller.signal.addEventListener("abort", onAbort, { once: true });
+		let deadlineTimer: Timer | undefined;
+		if (deadline !== undefined) {
+			if (deadline <= Date.now()) controller.abort("Deadline exceeded");
+			else deadlineTimer = setTimeout(() => controller.abort("Deadline exceeded"), deadline - Date.now());
+		}
+		let scheduled = false;
+		let finished = false;
+		const finish = async () => {
+			if (finished) return;
+			finished = true;
+			controller.signal.removeEventListener("abort", onAbort);
+			if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+			const ownsRetry = this.#retryAbortController === controller;
+			if (ownsRetry) this.#retryAbortController = undefined;
+			if (ownsRetry && cancelled()) {
+				const attempt = this.#retryAttempt;
+				this.#retryAttempt = 0;
+				this.#refusalBackoff = undefined;
+				await this.#emitSessionEvent({
+					type: "auto_retry_end",
+					success: false,
+					attempt,
+					finalError: deadline !== undefined && Date.now() >= deadline ? "Deadline exceeded" : "Retry cancelled",
+				});
+				this.#resolveRetry();
+			}
+		};
+		const scheduleRetry = () => {
+			scheduled = true;
+			this.#scheduleAgentContinue({
+				delayMs: 1,
+				generation,
+				signal: controller.signal,
+				shouldContinue: () => !cancelled(),
+				onSkip: () => this.#resolveRetry(),
+				onSettled: finish,
+			});
+		};
+		try {
+			if (cancelled()) return false;
+			return await Promise.race([
+				this.#prepareRetry(message, options, controller, cancelled, scheduleRetry),
+				cancellation.promise,
+			]);
+		} finally {
+			if (!scheduled || cancelled()) await finish();
+		}
+	}
+
+	async #prepareRetry(
 		message: AssistantMessage,
-		options?: { allowModelFallback?: boolean; fireworksFastFallback?: boolean; hardErrorFallback?: boolean },
+		options: RetryErrorOptions | undefined,
+		retryAbortController: AbortController,
+		cancelled: () => boolean,
+		scheduleRetry: () => void,
 	): Promise<boolean> {
 		const retrySettings = this.settings.getGroup("retry");
 		// The Fireworks Fast→base degrade is an intrinsic model-selection safety net,
@@ -13446,7 +13563,7 @@ export class AgentSession {
 		if (!retrySettings.enabled && !options?.fireworksFastFallback) return false;
 		const classifierRefusal = this.#isClassifierRefusal(message);
 
-		const generation = this.#promptGeneration;
+		if (cancelled()) return false;
 		this.#retryAttempt++;
 
 		// Create retry promise on first attempt so waitForRetry() can await it
@@ -13508,14 +13625,23 @@ export class AgentSession {
 					errorMessage,
 					errorId: message.errorId,
 				});
-				this.#scheduleAgentContinue({ delayMs: 1, generation });
+				if (cancelled()) return false;
+				scheduleRetry();
 				return true;
 			}
 		}
 
 		const id = this.#classifyRetryMessage(message);
-		const staleOpenAIResponsesReplayError = AIError.is(id, AIError.Flag.StaleResponsesItem);
 		const parsedRetryAfterMs = this.#parseRetryAfterMsFromError(errorMessage);
+		const explicitQuotaExhaustion =
+			/\bquota[\s_-]+exhausted\b|quota will reset|exhausted your capacity|insufficient_quota|billing_hard_limit_reached/i.test(
+				errorMessage,
+			);
+		const hardQuota =
+			AIError.is(id, AIError.Flag.UsageLimit) &&
+			(explicitQuotaExhaustion ||
+				(parsedRetryAfterMs === undefined && parseRateLimitReason(errorMessage) === "QUOTA_EXHAUSTED"));
+		const staleOpenAIResponsesReplayError = AIError.is(id, AIError.Flag.StaleResponsesItem);
 		let delayMs = staleOpenAIResponsesReplayError
 			? 0
 			: calculateRetryBackoffDelayMs(retrySettings.baseDelayMs, this.#retryAttempt);
@@ -13524,6 +13650,7 @@ export class AgentSession {
 		// Set when a usage-limit error pinned the wait to credential
 		// availability — suppresses the generic retry-after bump below.
 		let usageLimitWaitMs: number | undefined;
+		let waitingForSibling = false;
 
 		if (staleOpenAIResponsesReplayError) {
 			this.#resetCurrentResponsesProviderSession("stale replay error");
@@ -13538,8 +13665,10 @@ export class AgentSession {
 					retryAfterMs,
 					baseUrl: this.model.baseUrl,
 					modelId: this.model.id,
+					signal: retryAbortController.signal,
 				},
 			);
+			if (cancelled()) return false;
 			if (outcome.switched) {
 				switchedCredential = true;
 				delayMs = 0;
@@ -13561,6 +13690,7 @@ export class AgentSession {
 				// trips the fail-fast cap below.
 				usageLimitWaitMs = retryAfterMs;
 				if (outcome.retryAtMs !== undefined) {
+					waitingForSibling = true;
 					const siblingWaitMs = Math.max(0, outcome.retryAtMs - Date.now()) + SIBLING_UNBLOCK_BUFFER_MS;
 					if (siblingWaitMs < usageLimitWaitMs) {
 						usageLimitWaitMs = siblingWaitMs;
@@ -13571,6 +13701,7 @@ export class AgentSession {
 				}
 			}
 		}
+		if (cancelled()) return false;
 
 		const allowModelFallback = options?.allowModelFallback !== false;
 		const currentSelector = this.model ? formatRetryFallbackSelector(this.model, this.thinkingLevel) : undefined;
@@ -13579,14 +13710,20 @@ export class AgentSession {
 				if (!classifierRefusal) {
 					this.#noteRetryFallbackCooldown(currentSelector, parsedRetryAfterMs, errorMessage);
 				}
-				switchedModel = await this.#tryRetryModelFallback(currentSelector, { pinFallback: classifierRefusal });
+				switchedModel = await this.#tryRetryModelFallback(
+					currentSelector,
+					{ pinFallback: classifierRefusal },
+					cancelled,
+				);
+				if (cancelled()) return false;
 			}
 			// Auto fallback from a Fireworks Fast variant to its base model. Independent
 			// of the role-fallback setting: it's intrinsic to the Fast contract (speed
 			// best-effort, degrade to Standard on failure) and triggers on hard router
 			// errors the generic retry classifier would otherwise reject.
 			if (!switchedModel && allowModelFallback && options?.fireworksFastFallback) {
-				switchedModel = await this.#tryFireworksFastFallback(currentSelector);
+				switchedModel = await this.#tryFireworksFastFallback(currentSelector, cancelled);
+				if (cancelled()) return false;
 			}
 			if (switchedModel) {
 				delayMs = 0;
@@ -13661,6 +13798,18 @@ export class AgentSession {
 			return false;
 		}
 
+		// Explicit account exhaustion cannot recover by resending. Generic quota errors
+		// with concrete retry hints can describe transient token windows instead.
+		if (hardQuota && !switchedCredential && !switchedModel && !waitingForSibling) {
+			const attempt = this.#retryAttempt;
+			this.#retryAttempt = 0;
+			this.#refusalBackoff = undefined;
+			await this.#emitSessionEvent({ type: "auto_retry_end", success: false, attempt, finalError: errorMessage });
+			this.#resolveRetry();
+			return false;
+		}
+
+		if (cancelled()) return false;
 		await this.#emitSessionEvent({
 			type: "auto_retry_start",
 			attempt: this.#retryAttempt,
@@ -13669,6 +13818,7 @@ export class AgentSession {
 			errorMessage,
 			errorId: message.errorId,
 		});
+		if (cancelled()) return false;
 
 		// Remove the failed assistant message from active context before retrying.
 		this.#removeAssistantMessageFromActiveContext(message, "auto-retry");
@@ -13679,35 +13829,16 @@ export class AgentSession {
 		this.#maybeInjectThinkingLoopRedirect(id);
 
 		// Wait with exponential backoff (abortable).
-		const retryAbortController = new AbortController();
-		this.#retryAbortController?.abort();
-		this.#retryAbortController = retryAbortController;
 		try {
 			await scheduler.wait(delayMs, { signal: retryAbortController.signal });
 		} catch {
-			if (this.#retryAbortController !== retryAbortController) {
-				return false;
-			}
-			// Aborted during sleep - emit end event so UI can clean up
-			const attempt = this.#retryAttempt;
-			this.#retryAttempt = 0;
-			this.#refusalBackoff = undefined;
-			this.#retryAbortController = undefined;
-			await this.#emitSessionEvent({
-				type: "auto_retry_end",
-				success: false,
-				attempt,
-				finalError: "Retry cancelled",
-			});
-			this.#resolveRetry();
+			retryAbortController.abort();
 			return false;
 		}
-		if (this.#retryAbortController === retryAbortController) {
-			this.#retryAbortController = undefined;
-		}
+		if (cancelled()) return false;
 
 		// Retry via continue() outside the agent_end event callback chain.
-		this.#scheduleAgentContinue({ delayMs: 1, generation });
+		scheduleRetry();
 
 		return true;
 	}
@@ -13745,8 +13876,9 @@ export class AgentSession {
 	 * Cancel in-progress retry.
 	 */
 	abortRetry(): void {
+		this.#retryGeneration++;
 		this.#retryAbortController?.abort();
-		// Note: _retryAttempt is reset in the catch block of _autoRetry
+		// The retry owner resets attempt state when cancellation settles.
 		this.#resolveRetry();
 	}
 

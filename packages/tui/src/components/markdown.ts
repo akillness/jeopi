@@ -454,9 +454,23 @@ markdownParser.use({ extensions: [customHrExtension, mathBlockExtension, mathEnv
 // component lifetimes and eliminates redundant marked.lexer + highlightCode
 // (Rust FFI) work for content/layout combinations already seen this session.
 
-const RENDER_CACHE_MAX = 256; // sane cap: ~256 distinct message × width combos
+const RENDER_CACHE_MAX = 256;
+const RENDER_CACHE_MAX_BYTES = 8 * 1024 * 1024;
+const RENDER_CACHE_MAX_ENTRY_BYTES = 1024 * 1024;
 const EMPTY_RENDER_LINES: readonly string[] = [];
-const renderCache = new LRUCache<string, readonly string[]>({ max: RENDER_CACHE_MAX });
+const renderCache = new LRUCache<string, readonly string[]>({
+	max: RENDER_CACHE_MAX,
+	maxSize: RENDER_CACHE_MAX_BYTES,
+	maxEntrySize: RENDER_CACHE_MAX_ENTRY_BYTES,
+	sizeCalculation: (lines, key) => {
+		// Charge both the full-text key and rendered output at UTF-16 size, plus
+		// estimated string/array overhead. Entry counts alone retain arbitrarily
+		// large transcripts, including separate copies for each terminal width.
+		let bytes = key.length * 2 + 64;
+		for (const line of lines) bytes += line.length * 2 + 64;
+		return bytes;
+	},
+});
 
 // A reference-link definition (`[label]: dest`) resolves across the whole
 // document, so a split lex cannot reproduce it — disable the streaming fast path

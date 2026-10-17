@@ -6,7 +6,7 @@ import type { FileEntry } from "jeopi-cli/session/session-entries";
 import { loadEntriesFromFileStream, parseSessionContent } from "jeopi-cli/session/session-loader";
 import { serializeTitleSlot } from "jeopi-cli/session/session-title-slot";
 
-// Parity contract for the ≥8MiB streaming loader (now Bun.JSONL-based): it must
+// Parity contract for the ≥8MiB streaming JSONL loader: it must
 // produce the SAME entries + titleSlot as the common-path parser
 // (parseSessionContent, which uses parseJsonlLenient) on identical content —
 // including a first-line title slot, blank lines, and malformed JSON lines that
@@ -149,5 +149,30 @@ describe("loadEntriesFromFileStream (Bun.JSONL parity)", () => {
 		const stream = await loadEntriesFromFileStream(missing);
 		expect(stream.entries).toEqual([]);
 		expect(stream.titleSlot).toBeUndefined();
+	});
+
+	it("skips a malformed record spanning chunks without replaying earlier entries", async () => {
+		const content = [
+			JSON.stringify(HEADER),
+			JSON.stringify(msg("m1", "s1", "before malformed record")),
+			`{ malformed ${"x".repeat(256 * 1024)}`,
+			JSON.stringify(msg("m2", "m1", "after malformed record")),
+		].join("\n");
+		const stream = await loadEntriesFromFileStream(await writeTemp(content));
+		expect(stream).toEqual(parseSessionContent(content));
+		expect(entryIds(stream.entries)).toEqual(["s1", "m1", "m2"]);
+	});
+
+	it("preserves a multi-megabyte UTF-8 record and its neighboring records", async () => {
+		const text = "요약 🚀 ".repeat(256 * 1024);
+		const content = [
+			serializeTitleSlot({ title: "Large session", source: "user", updatedAt: ISO }),
+			JSON.stringify(HEADER),
+			JSON.stringify(msg("m1", "s1", text)),
+			JSON.stringify(msg("m2", "m1", "last record without newline")),
+		].join("\n");
+		const stream = await loadEntriesFromFileStream(await writeTemp(content));
+		expect(stream).toEqual(parseSessionContent(content));
+		expect(messageTexts(stream.entries)).toEqual([text, "last record without newline"]);
 	});
 });
