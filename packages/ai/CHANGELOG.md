@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.10] - 2026-10-25
+
 ### Fixed
 
 - Synthesize an empty `items` schema on bare `type: "array"` tool-parameter properties in `normalizeSchemaForCCA` and `normalizeSchemaForGoogle` so switching from Anthropic or OpenAI to Antigravity (`gemini-4-argon-*`) with MCP or custom tools does not fail with HTTP 400 (`items: missing field`).

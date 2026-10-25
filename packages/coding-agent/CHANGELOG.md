@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.10] - 2026-10-25
+
 ### Fixed
 
 - Resolve account-scoped `google-antigravity` discovery cache keys during synchronous `ModelRegistry` startup and static reloads, and include `google-antigravity` and `openai-codex` in authoritative runtime catalog providers so cached `gemini-4-argon-*` models are immediately available at startup and are not overwritten when other providers (`anthropic`, `openai-codex`) refresh.

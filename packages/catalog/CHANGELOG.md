@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.10] - 2026-10-25
+
 ### Fixed
 
 - Add Antigravity Cloud Code Assist wire profiles (`model_enum` and `maxOutputTokens: 65536`) for `gemini-4-argon-{low,medium,high}` and `gemini-3.8-flash-{low,medium,high}`, and compute `googleAntigravityModelManagerOptions` cache keys whenever an account `cacheScope` is available even before an OAuth token is resolved.
