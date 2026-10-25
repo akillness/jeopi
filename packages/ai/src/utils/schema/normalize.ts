@@ -415,8 +415,12 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaWa
 		if (keys.length > 1) result.propertyOrdering = keys;
 	}
 
-	if (options.ensureObjectProperties && result.type === "object" && !outHasOwn(result, "properties")) {
-		result.properties = {};
+	if (options.ensureObjectProperties) {
+		if (result.type === "object" && !outHasOwn(result, "properties")) {
+			result.properties = {};
+		} else if (result.type === "array" && (!outHasOwn(result, "items") || Array.isArray(result.items))) {
+			result.items = {};
+		}
 	}
 
 	applyDescriptionSpill(result, spill, options);
@@ -432,6 +436,13 @@ function applyNodePostProcessing(schema: JsonObject, options: NormalizeSchemaWal
 	}
 	if (options.foldOneOfIntoAnyOf) current = foldOneOfIntoAnyOf(current);
 	if (options.dropNonScalarEnum) current = dropNonScalarEnumForMfjs(current);
+	if (options.ensureObjectProperties) {
+		if (current.type === "object" && !outHasOwn(current, "properties")) {
+			current = { ...current, properties: {} };
+		} else if (current.type === "array" && (!outHasOwn(current, "items") || Array.isArray(current.items))) {
+			current = { ...current, items: {} };
+		}
+	}
 	return current;
 }
 

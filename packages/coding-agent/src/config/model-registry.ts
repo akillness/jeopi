@@ -155,11 +155,13 @@ export function mergeDiscoveredModel<TApi extends Api>(
 	return model;
 }
 
-const AUTHORITATIVE_RUNTIME_CATALOG_PROVIDERS = new Set<string>(
-	PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.dynamicModelsAuthoritative).map(
+const AUTHORITATIVE_RUNTIME_CATALOG_PROVIDERS = new Set<string>([
+	...PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.dynamicModelsAuthoritative).map(
 		descriptor => descriptor.providerId,
 	),
-);
+	"google-antigravity",
+	"openai-codex",
+]);
 
 function isAuthoritativeLocalDiscovery(providerConfig: DiscoveryProviderConfig): boolean {
 	switch (providerConfig.discovery.type) {
@@ -1067,13 +1069,32 @@ export class ModelRegistry {
 	}
 
 	#resolveStartupModelCacheProviderId(providerId: string): string {
+		const baseUrl =
+			this.#runtimeProviderOverrides.get(providerId)?.baseUrl ??
+			this.#providerOverrides.get(providerId)?.baseUrl ??
+			this.getProviderBaseUrl(providerId) ??
+			getBundledModels(providerId as GeneratedProvider).find(m => m.baseUrl)?.baseUrl;
+		if (providerId === "google-antigravity") {
+			const commandKey = this.#resolveCommandBackedApiKey(providerId);
+			const rawKey = commandKey.configured ? commandKey.value : this.authStorage.getModelCacheIdentity(providerId);
+			const oauthToken =
+				extractGoogleOAuthToken(rawKey) ?? this.authStorage.getOAuthCredential("google-antigravity")?.access;
+			const account = this.authStorage.listOAuthAccounts("google-antigravity")[0];
+			const cacheScope = account
+				? JSON.stringify([account.credentialId, account.accountId ?? account.email, account.projectId])
+				: undefined;
+			return (
+				googleAntigravityModelManagerOptions({
+					oauthToken,
+					cacheScope,
+					endpoint: baseUrl,
+					fetch: this.#fetch,
+				}).cacheProviderId ?? providerId
+			);
+		}
 		if (providerId === "openai" || providerId === "openai-codex") {
 			const commandKey = this.#resolveCommandBackedApiKey(providerId);
 			const apiKey = commandKey.configured ? commandKey.value : this.authStorage.getModelCacheIdentity(providerId);
-			const baseUrl =
-				this.#runtimeProviderOverrides.get(providerId)?.baseUrl ??
-				this.#providerOverrides.get(providerId)?.baseUrl ??
-				this.getProviderBaseUrl(providerId);
 			if (providerId === "openai-codex") {
 				return (
 					openaiCodexModelManagerOptions({
@@ -1089,10 +1110,6 @@ export class ModelRegistry {
 		if (!descriptor) {
 			return providerId;
 		}
-		const baseUrl =
-			this.#runtimeProviderOverrides.get(providerId)?.baseUrl ??
-			this.#providerOverrides.get(providerId)?.baseUrl ??
-			this.getProviderBaseUrl(providerId);
 		return descriptor.createModelManagerOptions({ baseUrl, fetch: this.#fetch }).cacheProviderId ?? providerId;
 	}
 
@@ -1785,7 +1802,11 @@ export class ModelRegistry {
 			options.push(descriptor.createOptions(key));
 		}
 		for (const option of options) {
-			if (option.providerId === "openai" || option.providerId === "openai-codex") {
+			if (
+				option.providerId === "openai" ||
+				option.providerId === "openai-codex" ||
+				option.providerId === "google-antigravity"
+			) {
 				option.cacheProviderId = this.#resolveStartupModelCacheProviderId(option.providerId);
 			}
 		}
@@ -2043,7 +2064,7 @@ export class ModelRegistry {
 	 * Find a model by provider and ID.
 	 */
 	find(provider: string, modelId: string): Model<Api> | undefined {
-		return resolveProviderModelReference(provider, modelId, this.#models);
+		return resolveProviderModelReference(provider, modelId, this.getAll());
 	}
 
 	/**

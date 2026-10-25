@@ -66,14 +66,19 @@ export function googleAntigravityModelManagerOptions(
 	config?: GoogleAntigravityModelManagerConfig,
 ): ModelManagerOptions<"google-gemini-cli"> {
 	const token = config?.oauthToken?.trim();
+	const cacheScope = config?.cacheScope?.trim() || token;
 	const endpoint = (config?.endpoint ?? ANTIGRAVITY_PRIMARY_ENDPOINT).replace(/\/+$/, "");
 	return {
 		providerId: "google-antigravity",
-		...(token
+		...(cacheScope
 			? {
-					cacheProviderId: `google-antigravity:discovery-v3:${Bun.hash(JSON.stringify([endpoint, config?.cacheScope ?? token, getAntigravityUserAgent()])).toString(36)}`,
+					cacheProviderId: `google-antigravity:discovery-v3:${Bun.hash(JSON.stringify([endpoint, cacheScope, getAntigravityUserAgent()])).toString(36)}`,
 					dynamicModelsAuthoritative: true,
 					preserveAuthoritativeCacheOnFailure: true,
+				}
+			: undefined),
+		...(token || config?.resolveOAuthToken
+			? {
 					fetchDynamicModels: async () => {
 						const signal = AbortSignal.timeout(10_000);
 						const resolvedToken = config?.resolveOAuthToken ? await config.resolveOAuthToken(signal) : token;

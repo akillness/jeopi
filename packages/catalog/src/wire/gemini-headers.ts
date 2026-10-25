@@ -58,8 +58,14 @@ export interface AntigravityModelWireProfile {
 	maxOutputTokens: number;
 }
 export const ANTIGRAVITY_MODEL_WIRE_PROFILES: Readonly<Record<string, AntigravityModelWireProfile>> = {
+	"gemini-4-argon-low": { modelEnum: "MODEL_PLACEHOLDER_M419", maxOutputTokens: 65536 },
+	"gemini-4-argon-medium": { modelEnum: "MODEL_PLACEHOLDER_M418", maxOutputTokens: 65536 },
+	"gemini-4-argon-high": { modelEnum: "MODEL_PLACEHOLDER_M417", maxOutputTokens: 65536 },
 	"gemini-3.8-flash-tiered": { modelEnum: "MODEL_PLACEHOLDER_M322", maxOutputTokens: 65536 },
 	"gemini-3.8-flash": { modelEnum: "MODEL_PLACEHOLDER_M322", maxOutputTokens: 65536 },
+	"gemini-3.8-flash-low": { modelEnum: "MODEL_PLACEHOLDER_M320", maxOutputTokens: 65536 },
+	"gemini-3.8-flash-medium": { modelEnum: "MODEL_PLACEHOLDER_M319", maxOutputTokens: 65536 },
+	"gemini-3.8-flash-high": { modelEnum: "MODEL_PLACEHOLDER_M318", maxOutputTokens: 65536 },
 	"gemini-3.5-flash-extra-low": { modelEnum: "MODEL_PLACEHOLDER_M187", maxOutputTokens: 65536 },
 	"gemini-3.5-flash-low": { modelEnum: "MODEL_PLACEHOLDER_M20", maxOutputTokens: 65536 },
 	"gemini-3-flash-agent": { modelEnum: "MODEL_PLACEHOLDER_M132", maxOutputTokens: 65536 },

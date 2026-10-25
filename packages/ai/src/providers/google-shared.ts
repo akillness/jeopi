@@ -163,7 +163,11 @@ function supportsMultimodalFunctionResponse(modelId: string): boolean {
 }
 
 function isGemini3Model(modelId: string): boolean {
-	return modelId.includes("gemini-3");
+	const geminiMajorVersion = getGeminiMajorVersion(modelId);
+	if (geminiMajorVersion !== undefined) {
+		return geminiMajorVersion >= 3;
+	}
+	return modelId.toLowerCase().includes("gemini-3");
 }
 
 /**

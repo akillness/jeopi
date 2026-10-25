@@ -979,4 +979,75 @@ describe("Google Gemini CLI alignment", () => {
 			expect(result.content).toHaveLength(0);
 		});
 	});
+
+	it("stamps skip_thought_signature_validator and wire profile on cross-provider tool calls for gemini-4-argon models", () => {
+		const argonModel = buildModel({
+			id: "gemini-4-argon-high",
+			name: "Argon High",
+			api: "google-gemini-cli",
+			provider: "google-antigravity",
+			baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 333_000,
+			maxTokens: 33_000,
+		});
+		const crossProviderContext: Context = {
+			messages: [
+				{ role: "user", content: "Inspect the repository", timestamp: 1 },
+				{
+					role: "assistant",
+					api: "openai-codex-responses",
+					provider: "openai-codex",
+					model: "gpt-6.1-sol",
+					content: [
+						{
+							type: "toolCall",
+							id: "call_cross_provider_1",
+							name: "read",
+							arguments: { path: "README.md" },
+						},
+					],
+					usage: {
+						input: 10,
+						output: 5,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 15,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					stopReason: "toolUse",
+					timestamp: 2,
+				},
+				{
+					role: "toolResult",
+					toolCallId: "call_cross_provider_1",
+					toolName: "read",
+					content: [{ type: "text", text: "# Readme" }],
+					isError: false,
+					timestamp: 3,
+				},
+			],
+		};
+
+		const payload = buildRequest(argonModel, crossProviderContext, "proj-123", {}, true) as {
+			model: string;
+			request: {
+				contents: Array<{
+					role: string;
+					parts: Array<{ functionCall?: { name: string }; thoughtSignature?: string }>;
+				}>;
+				generationConfig?: { maxOutputTokens?: number };
+				labels?: Record<string, string>;
+			};
+		};
+
+		expect(payload.model).toBe("gemini-4-argon-high");
+		expect(payload.request.generationConfig?.maxOutputTokens).toBe(65536);
+		expect(payload.request.labels?.model_enum).toBe("MODEL_PLACEHOLDER_M417");
+		const modelTurn = payload.request.contents.find(turn => turn.role === "model");
+		expect(modelTurn?.parts[0]?.functionCall?.name).toBe("read");
+		expect(modelTurn?.parts[0]?.thoughtSignature).toBe("skip_thought_signature_validator");
+	});
 });

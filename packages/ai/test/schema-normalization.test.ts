@@ -1128,6 +1128,32 @@ describe("normalizeSchemaForCCA", () => {
 			properties: { list: { type: "array", items: true } },
 		});
 	});
+
+	it("synthesizes empty items object for bare array schemas so CCA and Google do not reject tool declarations with missing items", () => {
+		const schema = {
+			type: "object",
+			properties: {
+				results: { type: "array", description: "Fan-out results" },
+				personas: { anyOf: [{ type: "array" }, { type: "null" }] },
+			},
+			required: ["results"],
+		};
+
+		expect(normalizeSchemaForCCA(schema)).toEqual({
+			type: "object",
+			properties: {
+				results: { type: "array", description: "Fan-out results", items: {} },
+				personas: { type: "array", items: {} },
+			},
+			required: ["results"],
+		});
+		expect(normalizeSchemaForGoogle(schema)).toMatchObject({
+			type: "object",
+			properties: {
+				results: { type: "array", description: "Fan-out results", items: {} },
+			},
+		});
+	});
 });
 
 // ---------------------------------------------------------------------------

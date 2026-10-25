@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Synthesize an empty `items` schema on bare `type: "array"` tool-parameter properties in `normalizeSchemaForCCA` and `normalizeSchemaForGoogle` so switching from Anthropic or OpenAI to Antigravity (`gemini-4-argon-*`) with MCP or custom tools does not fail with HTTP 400 (`items: missing field`).
+- Treat Gemini 4+ models (`gemini-4-argon-*`) as Gemini 3+ in `google-shared` so cross-provider unsigned `functionCall` turns receive `skip_thought_signature_validator` instead of failing thought-signature validation when switching from Anthropic or OpenAI mid-session.
+
 ## [16.6.6] - 2026-10-17
 
 ### Fixed

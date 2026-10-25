@@ -874,6 +874,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 						},
 						[],
 						{
+							discoverAuthStorage: async () => authStorage,
 							settings: Settings.isolated({ "marketplace.autoUpdate": "off", defaultThinkingLevel: "low" }),
 							createAgentSession: async options => {
 								const result = await createAgentSession({

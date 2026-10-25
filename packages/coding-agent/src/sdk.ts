@@ -1921,11 +1921,18 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const refreshedProviders = new Set<string>();
 		for (const selector of discoverySelectors) {
 			if (!selector) continue;
-			const parsed = parseModelString(selector, {
-				allowMaxAlias: true,
-				allowAutoAlias: true,
-				isLiteralModelId: (provider, id) => modelRegistry.find(provider, id) !== undefined,
-			});
+			const parsed =
+				parseModelString(selector, {
+					allowMaxAlias: true,
+					allowAutoAlias: true,
+					isLiteralModelId: (provider, id) => modelRegistry.find(provider, id) !== undefined,
+				}) ??
+				(!selector.includes("/") &&
+				!/[?*[\]]/.test(selector) &&
+				/argon|gemini-(?:3\.8|4)/i.test(selector) &&
+				!parseModelPattern(selector, modelRegistry.getAll(), modelMatchPreferences).model
+					? { provider: "google-antigravity", id: selector.split(":")[0] }
+					: undefined);
 			if (!parsed || /[?*[\]]/.test(parsed.id)) continue;
 			const existing = modelRegistry.find(parsed.provider, parsed.id);
 			if (existing && hasModelAuth(existing)) break;

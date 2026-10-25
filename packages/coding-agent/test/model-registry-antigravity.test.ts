@@ -211,6 +211,21 @@ describe("ModelRegistry Antigravity OAuth discovery", () => {
 		});
 
 		const restarted = new ModelRegistry(f.auth, f.modelsPath, { fetch: f.fetch });
+		expect(modelIds(restarted)).toEqual([
+			"command-only-model",
+			"gemini-4-argon-high",
+			"gemini-4-argon-low",
+			"gemini-4-argon-medium",
+			"legacy-chat-model",
+		]);
+		await restarted.refreshProvider("anthropic", "offline");
+		expect(modelIds(restarted)).toEqual([
+			"command-only-model",
+			"gemini-4-argon-high",
+			"gemini-4-argon-low",
+			"gemini-4-argon-medium",
+			"legacy-chat-model",
+		]);
 		f.resolve.mockClear();
 		f.requests.length = 0;
 		await restarted.refreshProvider(provider, "online-if-uncached");
