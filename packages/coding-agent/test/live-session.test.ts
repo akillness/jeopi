@@ -533,7 +533,7 @@ describe("live Discord bridge", () => {
 		expect(delivered).toHaveLength(1);
 	});
 });
- 
+
 describe("live Discord bridge with the real AgentSession SDK", () => {
 	test("executes one authorized prompt in the active SDK session and ignores an unauthorized message", async () => {
 		const root = await mkdtemp(join(tmpdir(), "live-discord-runtime-"));
@@ -643,16 +643,14 @@ describe("live Discord bridge with the real AgentSession SDK", () => {
 				"[Discord:runtime-authorized sender:authorized-user channel:authorized-channel] hello from Discord";
 			expect(sent.map(item => item.text)).toEqual(["deterministic Discord reply"]);
 			expect(model.calls).toHaveLength(1);
-			const modelUserTexts = model.calls[0]!.context.messages
-				.filter(item => item.role === "user")
-				.map(item =>
-					typeof item.content === "string"
-						? item.content
-						: item.content
-								.filter(block => block.type === "text")
-								.map(block => block.text)
-								.join(""),
-				);
+			const modelUserTexts = model.calls[0]!.context.messages.filter(item => item.role === "user").map(item =>
+				typeof item.content === "string"
+					? item.content
+					: item.content
+							.filter(block => block.type === "text")
+							.map(block => block.text)
+							.join(""),
+			);
 			expect(modelUserTexts.at(-1)).toBe(expectedPrompt);
 			const assistant = session.messages.findLast(item => item.role === "assistant");
 			expect(assistant?.stopReason).toBe("stop");
