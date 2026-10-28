@@ -3,6 +3,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { FetchImpl } from "jeopi-ai";
+import { buildModel } from "jeopi-catalog/build";
+import { writeModelCache } from "jeopi-catalog/model-cache";
 import { ModelRegistry } from "../src/config/model-registry";
 import { AuthStorage, type OAuthCredential } from "../src/session/auth-storage";
 
@@ -352,5 +354,65 @@ describe("ModelRegistry Antigravity OAuth discovery", () => {
 		expect(modelIds(restarted)).toEqual([]);
 		expect(f.resolve).not.toHaveBeenCalled();
 		expect(f.requests).toEqual([]);
+	});
+
+	it("scopes runtime and config API-key caches separately and reads legacy cache without credentials", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "jeopi-antigravity-cache-"));
+		const auth = await AuthStorage.create(":memory:");
+		resources.push({ dir, auth, restore: () => {} });
+		const modelsPath = path.join(dir, "models.json");
+		await Bun.write(
+			modelsPath,
+			JSON.stringify({ providers: { [provider]: { baseUrl: endpoint, apiKey: "config-cache-a" } } }),
+		);
+		const modelForToken: Record<string, string> = {
+			"config-cache-a": "future-config-cache-a-2099",
+			"runtime-cache-b": "future-runtime-cache-b-2099",
+		};
+		const fetch: FetchImpl = async (input, init) => {
+			if (String(input) !== `${endpoint}/v1internal:fetchAvailableModels`) {
+				return new Response("Unexpected URL", { status: 404 });
+			}
+			const token = new Headers(init?.headers).get("Authorization")?.replace("Bearer ", "");
+			const modelId = token ? modelForToken[token] : undefined;
+			if (!modelId) return new Response("Unauthorized", { status: 401 });
+			return Response.json(catalog(modelId));
+		};
+
+		const configRegistry = new ModelRegistry(auth, modelsPath, { fetch });
+		await configRegistry.refreshProvider(provider, "online");
+		expect(configRegistry.find(provider, "future-config-cache-a-2099")).toMatchObject({
+			name: "Live future-config-cache-a-2099",
+		});
+
+		auth.setRuntimeApiKey(provider, "runtime-cache-b");
+		const runtimeRegistry = new ModelRegistry(auth, modelsPath, { fetch });
+		expect(runtimeRegistry.find(provider, "future-config-cache-a-2099")).toBeUndefined();
+		await runtimeRegistry.refreshProvider(provider, "online");
+		expect(runtimeRegistry.find(provider, "future-runtime-cache-b-2099")).toMatchObject({
+			name: "Live future-runtime-cache-b-2099",
+		});
+
+		auth.removeRuntimeApiKey(provider);
+		auth.removeConfigApiKey(provider);
+		const legacyModel = buildModel({
+			id: "legacy-bare-cache-model",
+			name: "Legacy bare cache model",
+			api: "google-gemini-cli",
+			provider,
+			baseUrl: endpoint,
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 200_000,
+			maxTokens: 64_000,
+		});
+		writeModelCache(provider, Date.now(), [legacyModel], true, "", path.join(dir, "models.db"));
+		const legacyModelsPath = path.join(dir, "legacy-models.json");
+		await Bun.write(legacyModelsPath, JSON.stringify({ providers: { [provider]: { baseUrl: endpoint } } }));
+		const unauthenticatedRegistry = new ModelRegistry(auth, legacyModelsPath, { fetch });
+		expect(unauthenticatedRegistry.find(provider, "legacy-bare-cache-model")).toMatchObject({
+			name: "Legacy bare cache model",
+		});
 	});
 });

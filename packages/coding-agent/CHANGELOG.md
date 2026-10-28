@@ -6,6 +6,10 @@
 
 - Added `/discord live <configPath> --allow-full-control` command to attach an authorized Discord channel directly to an active interactive session without running a standalone `messenger` gateway. The bridge loads a private `messenger.json` config, reuses the Discord platform setup, maintains per-channel-per-user conversation history, and terminates with `/discord stop`. Full documentation in `docs/messenger/discord.md`.
 
+### Fixed
+
+- Fall back to the base `google-antigravity` provider cache key during synchronous `ModelRegistry` startup when unauthenticated rather than deriving a pseudo-scoped cache key from an opaque identity hash.
+
 ## [16.6.10] - 2026-10-25
 
 ### Fixed

@@ -1068,6 +1068,24 @@ export class ModelRegistry {
 		});
 	}
 
+	#resolveGoogleAntigravityCacheContext() {
+		const account = this.authStorage.listOAuthAccounts("google-antigravity")[0];
+		if (account) {
+			return {
+				account,
+				cacheScope: JSON.stringify([account.credentialId, account.accountId ?? account.email, account.projectId]),
+			};
+		}
+		const origin = this.authStorage.getCredentialOrigin("google-antigravity")?.kind;
+		return {
+			account: undefined,
+			cacheScope:
+				origin === "runtime" || origin === "config"
+					? this.authStorage.getModelCacheIdentity("google-antigravity")
+					: undefined,
+		};
+	}
+
 	#resolveStartupModelCacheProviderId(providerId: string): string {
 		const baseUrl =
 			this.#runtimeProviderOverrides.get(providerId)?.baseUrl ??
@@ -1076,13 +1094,10 @@ export class ModelRegistry {
 			getBundledModels(providerId as GeneratedProvider).find(m => m.baseUrl)?.baseUrl;
 		if (providerId === "google-antigravity") {
 			const commandKey = this.#resolveCommandBackedApiKey(providerId);
-			const rawKey = commandKey.configured ? commandKey.value : this.authStorage.getModelCacheIdentity(providerId);
-			const oauthToken =
-				extractGoogleOAuthToken(rawKey) ?? this.authStorage.getOAuthCredential("google-antigravity")?.access;
-			const account = this.authStorage.listOAuthAccounts("google-antigravity")[0];
-			const cacheScope = account
-				? JSON.stringify([account.credentialId, account.accountId ?? account.email, account.projectId])
-				: undefined;
+			const oauthToken = commandKey.configured
+				? extractGoogleOAuthToken(commandKey.value)
+				: this.authStorage.getOAuthCredential("google-antigravity")?.access;
+			const { cacheScope } = this.#resolveGoogleAntigravityCacheContext();
 			return (
 				googleAntigravityModelManagerOptions({
 					oauthToken,
@@ -1696,10 +1711,7 @@ export class ModelRegistry {
 				createOptions: oauthToken => {
 					// Pin discovery to one stable account, including when its access token has expired.
 					// Independent peek/getApiKey calls otherwise advance round-robin and poison the cache scope.
-					const account = this.authStorage.listOAuthAccounts("google-antigravity")[0];
-					const cacheScope = account
-						? JSON.stringify([account.credentialId, account.accountId ?? account.email, account.projectId])
-						: undefined;
+					const { account, cacheScope } = this.#resolveGoogleAntigravityCacheContext();
 					return googleAntigravityModelManagerOptions({
 						oauthToken,
 						cacheScope,
