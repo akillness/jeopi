@@ -72,10 +72,12 @@ export function createSessionTeardown(deps: SessionTeardownDeps): SessionTeardow
 	let pending: Promise<void> | undefined;
 	const run = async (reason?: postmortem.Reason): Promise<void> => {
 		const draftText = deps.getDraftText();
-		try {
-			await deps.beforeDispose?.();
-		} catch (err) {
-			logger.warn("Failed pre-dispose cleanup during teardown", { error: String(err) });
+		if (deps.beforeDispose) {
+			try {
+				await deps.beforeDispose();
+			} catch (err) {
+				logger.warn("Failed pre-dispose cleanup during teardown", { error: String(err) });
+			}
 		}
 		deps.beginDispose();
 		try {

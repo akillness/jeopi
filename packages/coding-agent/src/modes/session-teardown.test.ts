@@ -66,6 +66,67 @@ describe("createSessionTeardown", () => {
 		expect(order).toEqual(["snapshot", "beginDispose", "saveDraft:start", "saveDraft:done", "disposeSession"]);
 	});
 
+	it("awaits beforeDispose before marking the session disposing", async () => {
+		const order: string[] = [];
+		const release = Promise.withResolvers<void>();
+
+		const teardown = createSessionTeardown({
+			getDraftText: () => "draft",
+			beforeDispose: async () => {
+				order.push("beforeDispose:start");
+				await release.promise;
+				order.push("beforeDispose:done");
+			},
+			beginDispose: () => {
+				order.push("beginDispose");
+			},
+			saveDraft: async () => {
+				order.push("saveDraft");
+			},
+			disposeSession: async () => {
+				order.push("disposeSession");
+			},
+		});
+
+		const running = teardown();
+		expect(order).toEqual(["beforeDispose:start"]);
+		release.resolve();
+		await running;
+
+		expect(order).toEqual([
+			"beforeDispose:start",
+			"beforeDispose:done",
+			"beginDispose",
+			"saveDraft",
+			"disposeSession",
+		]);
+	});
+
+	it("continues teardown when beforeDispose rejects", async () => {
+		const order: string[] = [];
+
+		const teardown = createSessionTeardown({
+			getDraftText: () => "draft",
+			beforeDispose: async () => {
+				order.push("beforeDispose");
+				throw new Error("revocation failed");
+			},
+			beginDispose: () => {
+				order.push("beginDispose");
+			},
+			saveDraft: async () => {
+				order.push("saveDraft");
+			},
+			disposeSession: async () => {
+				order.push("disposeSession");
+			},
+		});
+
+		await teardown();
+
+		expect(order).toEqual(["beforeDispose", "beginDispose", "saveDraft", "disposeSession"]);
+	});
+
 	it("still disposes when saveDraft rejects — never leaves session_shutdown unemitted", async () => {
 		let disposed = false;
 
