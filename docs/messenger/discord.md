@@ -130,3 +130,116 @@ Create `messenger.json` in a private directory:
 | Bot joins server but does not see messages in a channel | Missing channel permissions | Ensure the bot's role has "View Channel", "Send Messages", and "Read Message History" in that channel. |
 | Bot receives messages in DM but not in server channel | Bot was not mentioned in server message | Guild messages require an explicit mention (`@BotName`). Mentions are stripped automatically before prompt execution. |
 | Message from user receives no response | User ID not in `allowedUserIds` | Copy the 17-19 digit Snowflake user ID with Developer Mode and verify it matches `allowedUserIds`. |
+
+
+---
+
+## Live Session Bridge (`/discord live`)
+
+**Optional**: Attach an authorized Discord channel directly to an active jeopi interactive session without running a standalone `messenger` gateway.
+
+### Overview
+
+The `/discord live` command bridges a Discord channel into the current interactive session, allowing authorized Discord users to send messages directly to that session's agent and receive responses in near real-time. The bridge:
+
+- **Does not create or switch sessions**. It attaches to the currently active session.
+- **Requires explicit opt-in**: The command demands an acknowledgement flag (`--allow-full-control`) to confirm authorization for Discord to control host tools.
+- **Loads a private `messenger.json` configuration**: Reuses the same config format as the standalone `jeopi messenger` gateway.
+- **Shares one conversation**: All allowed users and channels interact with the same host session; their histories are not isolated.
+- **Terminates cleanly**: Use `/discord stop` to revoke Discord access and close the bridge.
+
+### Activation: `/discord live`
+
+```sh
+/discord live /path/to/private-messenger.json --allow-full-control
+```
+
+**Parameters:**
+- `<configPath>`: Absolute or relative path (resolved against the session's working directory) to a `messenger.json` file with Discord platform configuration. Must exist and be readable.
+- `--allow-full-control`: Explicit acknowledgement that this Discord channel has execution authority over the host session's active tools and settings, and can execute any action the authorized user would perform interactively. This flag is **required** and cannot be abbreviated.
+
+**Config Prerequisites:**
+- The `messenger.json` file must have a `platforms.discord` section with `tokenEnv` and `allowedUserIds` (see Step 5 above).
+- **Required**: `allowedChannelIds` must be a non-empty array of exact Discord channel/thread Snowflake IDs. The live bridge does not support omitted or empty channel lists.
+- The bot token (from `JEOPI_DISCORD_BOT_TOKEN` or the configured `tokenEnv`) must be a valid bot token for an application with the Message Content Intent enabled.
+- At least one user ID in `allowedUserIds` must match the Discord user sending messages.
+
+**Security Constraints:**
+- The bridge grants full host control (`--allow-full-control` acknowledges this). Only activate the bridge in trusted Discord channels with authorized users.
+- The `toolNames` field in the config is **ignored by the live bridge**. The bridge runs in the active session and inherits its full set of enabled tools. Discord users can execute any tool the host session has enabled.
+- Session transcripts are saved to disk in the configured `sessionDir` (if using standalone `jeopi messenger`) or in the host session's transcript location. Ensure these directories are not world-readable.
+- **Config is read once at startup**: Changes to `allowedUserIds` or `allowedChannelIds` in the config file are NOT detected while the bridge is active. To apply config changes, stop the bridge (`/discord stop`) and restart it (`/discord live`).
+
+**Activation Example:**
+```sh
+/discord live ~/.jeopi/private-discord.json --allow-full-control
+```
+
+On success:
+```text
+Discord live bridge active with full host control acknowledged. Approval mode: <mode>; active tools: <tools>. /discord stop revokes access.
+```
+
+If the command fails:
+- Missing `--allow-full-control`: `Usage: /discord live <private messenger.json> --allow-full-control`
+- Config validation error: `Failed to start Discord live bridge: <error message>`
+- Missing or empty `allowedChannelIds` in config: `Failed to start Discord live bridge: Live Discord requires an explicit nonempty allowedChannelIds list`
+- Bridge already active: `Discord live bridge is already active or starting (/discord stop first)`
+
+### Status: `/discord status`
+
+Check if a Discord live bridge is currently active:
+
+```sh
+/discord status
+```
+
+Output when active:
+```text
+Discord live bridge is active with full host control acknowledged. Approval mode: <mode>; active tools: <tools>.
+```
+
+Output when inactive:
+```text
+Discord live bridge is off
+```
+
+### Busy State
+
+While a Discord message is being processed (including tool calls, streaming responses, etc.), subsequent Discord messages are rejected with:
+
+```text
+The live session is busy. Please try again when it is idle.
+```
+
+This is NOT a queue — messages are rejected, not buffered. The user must retry after the current turn completes.
+
+### Stop: `/discord stop`
+
+Immediately stop the Discord live bridge and revoke all Discord access to the host session:
+
+```sh
+/discord stop
+```
+
+Output on success:
+```text
+Discord live bridge stopped; access revoked
+```
+
+Output if no bridge is active:
+```text
+Discord live bridge is not active
+```
+
+### Important Notes
+
+- **Shared Session Context**: All Discord messages (regardless of sender or channel) contribute to the same active session's conversation history. Each message is tagged with `[Discord:<messageId> sender:<senderId> channel:<channelId>]` in the transcript.
+- **Tool Execution**: Discord messages execute in the active session's context with all tools enabled in that session. The bridge inherits the active session's tool set and approval mode; it does not restrict or filter tools.
+- **Concurrent Requests**: The bridge processes Discord messages one at a time. While a turn is active (streaming, compacting, running tools, retrying, etc.), new Discord messages are immediately rejected with "The live session is busy. Please try again when it is idle." Senders must retry after the active turn completes.
+- **Bridge Lifecycle**: The bridge closes when:
+  - `/discord stop` is invoked.
+  - The host session switches (via `/switch`, `/tan`, or external session change).
+  - The host session shuts down (via `/quit`, Ctrl+C, or crash).
+  - A permanent Discord authentication or configuration error occurs (permanent codes: 4004, 4010, 4011, 4012, 4013, 4014). Transient network errors trigger automatic reconnection with exponential backoff (max 30s delay).
+- **Message Splitting**: Long Discord replies are automatically split into chunks of up to 2,000 characters to respect Discord's message length limits.

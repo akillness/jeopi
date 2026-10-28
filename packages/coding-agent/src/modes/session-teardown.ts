@@ -16,11 +16,16 @@ export interface SessionTeardownDeps {
 	/** Snapshot the current editor text; called once, before disposal touches session state. */
 	getDraftText: () => string;
 	/**
-	 * Synchronously mark the session as disposing before any awaited teardown
-	 * work. This closes the async gap where deferred jobs could otherwise start
-	 * after a signal requested shutdown but before `disposeSession()` begins.
+	 * Synchronously mark the session as disposing after asynchronous revocation
+	 * completes and before any further awaited teardown work. This closes the async
+	 * gap where deferred jobs could otherwise start after a signal requested shutdown.
 	 */
 	beginDispose: () => void;
+	/**
+	 * Complete asynchronous revocation before the session is marked disposed.
+	 * Failures are logged and never skip the disposal chain.
+	 */
+	beforeDispose?: () => Promise<void>;
 	/**
 	 * Persist the snapshotted draft. Called even for an empty string so a
 	 * previously-persisted draft sidecar is cleared on a clean exit.
@@ -44,11 +49,11 @@ export interface SessionTeardownDeps {
 export type SessionTeardown = (reason?: postmortem.Reason) => Promise<void>;
 
 /**
- * Build a promise-memoized teardown function. The first call snapshots the
- * draft text, marks the session disposing synchronously, runs `saveDraft`
- * (draft-loss protection for `--resume`), then `disposeSession`; subsequent
- * calls await the same settled promise, so the keypress
- * `InteractiveMode.shutdown()` path and the postmortem signal callback cannot
+ * Build a promise-memoized teardown: snapshot the draft, complete asynchronous
+ * revocation, mark the session disposing synchronously, run `saveDraft` (draft-loss
+ * protection for `--resume`), then `disposeSession`; subsequent calls await the same
+ * settled promise so the keypress `InteractiveMode.shutdown()` path and the postmortem
+ * signal callback cannot
  * double-emit `session_shutdown`, double-dispose the session's async-job
  * manager, or race each other.
  *
@@ -67,6 +72,11 @@ export function createSessionTeardown(deps: SessionTeardownDeps): SessionTeardow
 	let pending: Promise<void> | undefined;
 	const run = async (reason?: postmortem.Reason): Promise<void> => {
 		const draftText = deps.getDraftText();
+		try {
+			await deps.beforeDispose?.();
+		} catch (err) {
+			logger.warn("Failed pre-dispose cleanup during teardown", { error: String(err) });
+		}
 		deps.beginDispose();
 		try {
 			await deps.saveDraft(draftText);

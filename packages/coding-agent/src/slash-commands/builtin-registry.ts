@@ -24,6 +24,7 @@ import {
 	MarketplaceManager,
 } from "../extensibility/plugins/marketplace";
 import { resolveMemoryBackend } from "../memory-backend";
+import { loadAndCreateLiveDiscordBridge } from "../messenger/live-session";
 import { describeLoopLimitRuntime } from "../modes/loop-limit";
 import { theme } from "../modes/theme/theme";
 import type { InteractiveModeContext } from "../modes/types";
@@ -65,6 +66,13 @@ import type {
 } from "./types";
 
 export type { BuiltinSlashCommand, SubcommandDef } from "./types";
+
+interface LiveDiscordStart {
+	cancelled: boolean;
+	promise: Promise<void>;
+}
+
+const liveDiscordStarts = new WeakMap<InteractiveModeContext, LiveDiscordStart>();
 
 /** TUI-specific runtime accepted by `executeBuiltinSlashCommand`. */
 export type BuiltinSlashCommandRuntime = TuiSlashCommandRuntime;
@@ -650,6 +658,102 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			runtime.ctx.editor.setText("");
 		},
 	},
+	{
+		name: "discord",
+		description: "Opt in to this session from an authorized Discord channel",
+		inlineHint: "[live|stop|status] [configPath] [--allow-full-control]",
+		subcommands: [
+			{ name: "live", description: "Start the live Discord bridge with a private config file" },
+			{ name: "status", description: "Show live Discord bridge status" },
+			{ name: "stop", description: "Stop the live Discord bridge" },
+		],
+		allowArgs: true,
+		getTuiAutocompleteDescription: runtime =>
+			runtime.ctx.liveDiscordBridge?.active ? "Discord live bridge: active" : "Discord live bridge: off",
+		handleTui: async (command, runtime) => {
+			const ctx = runtime.ctx;
+			ctx.editor.setText("");
+			const { verb, rest } = parseSubcommand(command.args.trim());
+			if (verb === "status") {
+				if (!ctx.liveDiscordBridge?.active) {
+					ctx.showStatus("Discord live bridge is off");
+					return;
+				}
+				const approvalMode = String(ctx.session.settings.get("tools.approvalMode"));
+				const activeTools = ctx.session.getActiveToolNames();
+				ctx.showStatus(
+					`Discord live bridge is active with full host control acknowledged. Approval mode: ${approvalMode}; active tools: ${activeTools.length > 0 ? activeTools.join(", ") : "none"}.`,
+				);
+				return;
+			}
+			if (verb === "stop") {
+				const bridge = ctx.liveDiscordBridge;
+				const start = liveDiscordStarts.get(ctx);
+				if (!bridge && start) {
+					start.cancelled = true;
+					ctx.showStatus("Discord live bridge startup cancellation requested");
+					return;
+				}
+				if (!bridge) {
+					ctx.showStatus("Discord live bridge is not active");
+					return;
+				}
+				ctx.liveDiscordBridge = undefined;
+				try {
+					await bridge.close();
+					ctx.showStatus("Discord live bridge stopped; access revoked");
+				} catch (error) {
+					ctx.showError(`Failed to stop Discord live bridge: ${errorMessage(error)}`);
+				}
+				return;
+			}
+			const acknowledgment = /^(.+?)\s+--allow-full-control$/.exec(rest);
+			if (verb !== "live" || !acknowledgment) {
+				ctx.showError("Usage: /discord live <private messenger.json> --allow-full-control");
+				return;
+			}
+			if (ctx.liveDiscordBridge?.active || liveDiscordStarts.has(ctx)) {
+				ctx.showError("Discord live bridge is already active or starting (/discord stop first)");
+				return;
+			}
+			let resolveStart!: () => void;
+			const startPromise = new Promise<void>(resolve => {
+				resolveStart = resolve;
+			});
+			const startState: LiveDiscordStart = { cancelled: false, promise: startPromise };
+			liveDiscordStarts.set(ctx, startState);
+			try {
+				const configPath = resolveToCwd(acknowledgment[1]!, ctx.sessionManager.getCwd());
+				const bridge = await loadAndCreateLiveDiscordBridge(ctx, configPath, {}, { acknowledgeFullControl: true });
+				if (startState.cancelled || ctx.shutdownRequested || ctx.isShuttingDown) {
+					await bridge.close().catch(() => {});
+					return;
+				}
+				if (ctx.liveDiscordBridge?.active) {
+					await bridge.close().catch(() => {});
+					ctx.showError("Discord live bridge is already active (/discord stop first)");
+					return;
+				}
+				ctx.liveDiscordBridge = bridge;
+				void bridge.run().catch(error => {
+					if (ctx.liveDiscordBridge !== bridge || ctx.isShuttingDown) return;
+					ctx.liveDiscordBridge = undefined;
+					ctx.showError(`Discord live bridge stopped: ${errorMessage(error)}`);
+				});
+				const approvalMode = String(ctx.session.settings.get("tools.approvalMode"));
+				const activeTools = ctx.session.getActiveToolNames();
+				ctx.showStatus(
+					`Discord live bridge active with full host control acknowledged. Approval mode: ${approvalMode}; active tools: ${activeTools.length > 0 ? activeTools.join(", ") : "none"}. /discord stop revokes access.`,
+				);
+			} catch (error) {
+				ctx.showError(`Failed to start Discord live bridge: ${errorMessage(error)}`);
+			} finally {
+				resolveStart();
+				if (liveDiscordStarts.get(ctx)?.promise === startPromise) liveDiscordStarts.delete(ctx);
+			}
+		},
+	},
+
 	{
 		name: "collab",
 		description: "Share this session live via a relay",

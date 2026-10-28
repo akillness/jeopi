@@ -16,6 +16,7 @@ import type {
 import type { CompactOptions } from "../extensibility/extensions/types";
 import type { Skill } from "../extensibility/skills";
 import type { MCPManager } from "../mcp";
+import type { LiveDiscordBridge } from "../messenger/live-session";
 import type { PlanApprovalDetails } from "../plan-mode/approved-plan";
 import type { AgentSession } from "../session/agent-session";
 import type { CompactMode } from "../session/compact-modes";
@@ -134,6 +135,7 @@ export interface InteractiveModeContext {
 	collabGuest?: CollabGuestLink;
 	eventController: EventController;
 	eventBus?: EventBus;
+	liveDiscordBridge?: LiveDiscordBridge;
 
 	// State
 	isInitialized: boolean;

@@ -80,6 +80,7 @@ import {
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
 	type McpConnectionStatusEvent,
 } from "../mcp/startup-events";
+import type { LiveDiscordBridge } from "../messenger/live-session";
 import {
 	humanizePlanTitle,
 	type PlanApprovalDetails,
@@ -491,6 +492,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	oauthManualInput: OAuthManualInputManager = new OAuthManualInputManager();
 	collabHost?: CollabHost;
 	collabGuest?: CollabGuestLink;
+	liveDiscordBridge?: LiveDiscordBridge;
 
 	#pendingSlashCommands: SlashCommand[] = [];
 	#cleanupUnsubscribe?: () => void;
@@ -796,10 +798,27 @@ export class InteractiveMode implements InteractiveModeContext {
 		// signal arriving mid-Ctrl+C no-ops instead of racing a second dispose.
 		this.#signalTeardown = createSessionTeardown({
 			getDraftText: () => this.editor.getText(),
+			beforeDispose: async () => {
+				const liveDiscordBridge = this.liveDiscordBridge;
+				this.liveDiscordBridge = undefined;
+				try {
+					await liveDiscordBridge?.close();
+				} catch (error) {
+					logger.warn("Failed to close live Discord bridge before teardown", { error: String(error) });
+				}
+			},
 			beginDispose: () => this.session.beginDispose(),
 			saveDraft: text => this.sessionManager.saveDraft(text),
-			disposeSession: reason =>
-				this.session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS, reason }),
+			disposeSession: async reason => {
+				const liveDiscordBridge = this.liveDiscordBridge;
+				this.liveDiscordBridge = undefined;
+				try {
+					await liveDiscordBridge?.close();
+				} catch (error) {
+					logger.warn("Failed to close live Discord bridge during teardown", { error: String(error) });
+				}
+				await this.session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS, reason });
+			},
 		});
 		// Forward the postmortem reason (SIGTERM/SIGHUP/uncaughtException/…) so the
 		// persisted `session_exit` diagnostic carries the real trigger. Postmortem
@@ -3349,14 +3368,19 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#isShuttingDown = true;
 
 		this.#btwController.dispose();
-		this.#omfgController.dispose();
 		this.#focusController.dispose();
-
+		this.#omfgController.dispose();
 		// Surface an explicit "Closing session…" line so the user sees a reason
 		// for the pause while `session.dispose()` flushes memory consolidate and
-		// other cleanups (issue #3641). The await on the next line yields the
-		// event loop, giving requestRender() a tick to paint the status before
-		// dispose blocks.
+		// other cleanups (issue #3641). The bridge is closed before disposal so
+		// revoked Discord work cannot race session teardown.
+		const liveDiscordBridge = this.liveDiscordBridge;
+		this.liveDiscordBridge = undefined;
+		try {
+			await liveDiscordBridge?.close();
+		} catch (error) {
+			logger.warn("Failed to close live Discord bridge during shutdown", { error: String(error) });
+		}
 		this.showStatus("Closing session…");
 
 		// Persist the draft and dispose the session through the shared teardown
