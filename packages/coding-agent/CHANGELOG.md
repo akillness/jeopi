@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.12] - 2026-10-29
+
 ### Added
 
 - Added explicitly opted-in local response relay with `/discord relay <allowed-channel-id|off>`; the destination resets when the bridge stops or the session changes.

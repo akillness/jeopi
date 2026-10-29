@@ -695,11 +695,11 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.6.12]** (2026-10-29) — Added explicitly opted-in local response relay with `/discord relay <allowed-channel-id|off>`; the destination resets when the bridge stops or the session changes.
 - **[16.6.11]** (2026-10-28) — Added `/discord live <configPath> --allow-full-control` command to attach an authorized Discord channel directly to an active interactive session without running a standalone `messenger` gateway. The…
 - **[16.6.10]** (2026-10-25) — Resolve account-scoped `google-antigravity` discovery cache keys during synchronous `ModelRegistry` startup and static reloads, and include `google-antigravity` and `openai-codex` in authoritative…
 - **[16.6.9]** (2026-10-17) — Prevent Cloud Code Assist false-positive 429 quota exhaustion errors on Google Antigravity models by replacing XML `<system-conventions>` prompt tags with standard markdown headers.
 - **[16.6.8]** (2026-10-17) — Preserve prompt continuation timing when retry credential cancellation is not needed.
-- **[16.6.7]** (2026-10-17) — Read long session records once to reduce resume latency and peak memory while preserving malformed-record recovery and UTF-8 content.
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->
