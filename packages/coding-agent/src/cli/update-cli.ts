@@ -972,10 +972,14 @@ export function buildMiseForceInstallArgs(expectedVersion: string): string[] {
 /**
  * Update via package manager.
  */
-export async function updateViaBun(expectedVersion: string): Promise<void> {
+export async function updateViaBun(
+	expectedVersion: string,
+	runInstall: (args: string[]) => Promise<{ exitCode: number; stderr: { toString(): string } }> = async args =>
+		await $`bun ${args}`.nothrow(),
+): Promise<void> {
 	console.log(chalk.dim("Updating via bun..."));
 	const args = buildBunInstallArgs(expectedVersion);
-	const result = await $`bun ${args}`.nothrow();
+	const result = await runInstall(args);
 	if (result.exitCode !== 0) {
 		const guidance =
 			/^error: empty dependency name \(in "dependencies"\)\r?\n\s+at .+[\\/]package\.json:\d+:\d+\s*$/m.test(

@@ -126,21 +126,18 @@ describe("update-cli package manager commands", () => {
 });
 
 describe("update-cli bun install failures", () => {
-	async function runBunUpdate(dir: string, forceColor = false) {
+	async function runBunUpdate(dir: string, diagnostic: string, installExitCode = 1) {
 		const script = `import { updateViaBun } from ${JSON.stringify(new URL("../src/cli/update-cli.ts", import.meta.url).href)};
-			try { await updateViaBun("1.2.3"); } catch (error) { console.error("Update failed: " + error); process.exit(1); }`;
+			try {
+				await updateViaBun("1.2.3", async (args) => {
+					console.log("INSTALL_ARGS=" + JSON.stringify(args));
+					process.stderr.write(${JSON.stringify(diagnostic)});
+					return { exitCode: ${installExitCode}, stderr: Buffer.from(${JSON.stringify(diagnostic)}) };
+				});
+			} catch (error) { console.error("Update failed: " + error); process.exitCode = 1; }`;
 		const proc = Bun.spawn([process.execPath, "-e", script], {
 			cwd: dir,
-			env: {
-				...process.env,
-				HOME: dir,
-				XDG_CONFIG_HOME: path.join(dir, "config"),
-				BUN_INSTALL_GLOBAL_DIR: path.join(dir, "global"),
-				BUN_INSTALL_BIN: path.join(dir, "bin"),
-				PATH: path.dirname(process.execPath),
-				FORCE_COLOR: forceColor ? "1" : "0",
-				NO_COLOR: forceColor ? "" : "1",
-			},
+			env: { ...process.env, HOME: dir, BUN_INSTALL_GLOBAL_DIR: path.join(dir, "global") },
 			stdout: "pipe",
 			stderr: "pipe",
 		});
@@ -149,6 +146,8 @@ describe("update-cli bun install failures", () => {
 			new Response(proc.stderr).text(),
 			proc.exited,
 		]);
+		expect(stdout).toContain(`INSTALL_ARGS=${JSON.stringify(buildBunInstallArgs("1.2.3"))}`);
+		expect(stderr).toContain(diagnostic);
 		return { output: stdout + stderr, exitCode };
 	}
 
@@ -159,16 +158,17 @@ describe("update-cli bun install failures", () => {
 		const manifestPath = path.join(globalDir, "package.json");
 		const manifest = '{"dependencies":{"":".","keep":"1.0.0"}}\n';
 		await fs.writeFile(manifestPath, manifest);
-
-		const { output, exitCode } = await runBunUpdate(dir);
+		// Captured from Bun 1.4.4; only the temporary manifest path is substituted.
+		const diagnostic = `9 |     "": "."\n        ^\nerror: empty dependency name (in "dependencies")\n    at ${manifestPath}:9:5\n`;
+		const { output, exitCode } = await runBunUpdate(dir, diagnostic);
 		const plain = Bun.stripANSI(output);
 		expect(exitCode).toBe(1);
 		expect(plain).toContain('error: empty dependency name (in "dependencies")');
 		expect(plain).toContain(manifestPath);
 		expect(plain).toContain("bun install failed with exit code 1");
 		expect(plain.toLowerCase()).toContain("remove only the empty-name entry");
-		expect(await fs.readFile(manifestPath, "utf8")).toBe(manifest);
 		expect(plain.toLowerCase()).toContain("back up");
+		expect(await fs.readFile(manifestPath, "utf8")).toBe(manifest);
 	});
 
 	it("recognizes Bun's colored diagnostic without changing the manifest", async () => {
@@ -178,7 +178,9 @@ describe("update-cli bun install failures", () => {
 		const manifestPath = path.join(globalDir, "package.json");
 		const manifest = '{"dependencies":{"":"."}}\n';
 		await fs.writeFile(manifestPath, manifest);
-		const { output, exitCode } = await runBunUpdate(dir, true);
+		// Captured from Bun 1.4.4 with FORCE_COLOR=1; only the path is substituted.
+		const diagnostic = `\u001b[1m3 | \u001b[0m    \u001b[0m\u001b[32m""\u001b[0m: \u001b[0m\u001b[32m"."\u001b[0m,\n        \u001b[1m\u001b[31m\u001b[1m^\u001b[0m\n\u001b[31merror\u001b[0m\u001b[2m: \u001b[0m\u001b[1mempty dependency name (in "dependencies")\u001b[0m\n    \u001b[2mat \u001b[0m\u001b[36m${manifestPath}\u001b[0m\u001b[2m:\u001b[0m\u001b[33m3\u001b[0m\u001b[2m:\u001b[0m\u001b[33m5\u001b[0m\n`;
+		const { output, exitCode } = await runBunUpdate(dir, diagnostic);
 		const plain = Bun.stripANSI(output);
 		expect(exitCode).toBe(1);
 		expect(output).toContain("\u001b[");
@@ -197,14 +199,58 @@ describe("update-cli bun install failures", () => {
 		const manifestPath = path.join(globalDir, "package.json");
 		const manifest = "{ invalid json";
 		await fs.writeFile(manifestPath, manifest);
-		const { output, exitCode } = await runBunUpdate(dir);
+		const diagnostic = `error: failed to parse package.json\n    at ${manifestPath}:1:3\n`;
+		const { output, exitCode } = await runBunUpdate(dir, diagnostic, 7);
 		const plain = Bun.stripANSI(output);
 		expect(exitCode).toBe(1);
-		expect(plain).toContain("error:");
-		expect(plain).toContain("bun install failed with exit code 1");
+		expect(plain).toContain("error: failed to parse package.json");
+		expect(plain).toContain("bun install failed with exit code 7");
 		expect(await fs.readFile(manifestPath, "utf8")).toBe(manifest);
 		expect(plain.toLowerCase()).not.toContain("back up");
 		expect(plain.toLowerCase()).not.toContain("empty dependency");
+	});
+
+	it("does not recommend manifest repair for unrelated output that mentions an empty dependency", async () => {
+		const dir = await makeTempDir();
+		const diagnostic = 'error: empty dependency name (in "dependencies")\n    at /tmp/other-file.json:3:5\n';
+		const { output, exitCode } = await runBunUpdate(dir, diagnostic, 2);
+		expect(exitCode).toBe(1);
+		expect(output).toContain("bun install failed with exit code 2");
+		expect(output.toLowerCase()).not.toContain("back up");
+		expect(output.toLowerCase()).not.toContain("remove only the empty-name entry");
+	});
+
+	it("streams the real Bun parser error without repairing an invalid global manifest", async () => {
+		const dir = await fs.realpath(await makeTempDir());
+		const globalDir = path.join(dir, "global");
+		await fs.mkdir(globalDir);
+		const manifestPath = path.join(globalDir, "package.json");
+		const manifest = "{ invalid json";
+		await fs.writeFile(manifestPath, manifest);
+		const script = `import { updateViaBun } from ${JSON.stringify(new URL("../src/cli/update-cli.ts", import.meta.url).href)};
+			try { await updateViaBun("1.2.3"); } catch (error) { console.error("Update failed: " + error); process.exitCode = 1; }`;
+		const proc = Bun.spawn([process.execPath, "-e", script], {
+			cwd: dir,
+			env: {
+				...process.env,
+				HOME: dir,
+				XDG_CONFIG_HOME: path.join(dir, "config"),
+				BUN_INSTALL_GLOBAL_DIR: globalDir,
+				BUN_INSTALL_BIN: path.join(dir, "bin"),
+				PATH: path.dirname(process.execPath),
+				NO_COLOR: "1",
+			},
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+		const plain = Bun.stripANSI(stderr);
+		expect(exitCode).toBe(1);
+		expect(plain).toContain("error: failed to parse package.json");
+		expect(plain).toContain(manifestPath);
+		expect(plain).toContain("bun install failed with exit code 1");
+		expect(plain.toLowerCase()).not.toContain("remove only the empty-name entry");
+		expect(await fs.readFile(manifestPath, "utf8")).toBe(manifest);
 	});
 });
 
