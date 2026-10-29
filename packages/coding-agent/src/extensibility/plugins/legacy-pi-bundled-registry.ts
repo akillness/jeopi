@@ -238,6 +238,7 @@ import * as bundledPiCodingAgentCliGcCli from "jeopi-cli/cli/gc-cli";
 import * as bundledPiCodingAgentCliGrepCli from "jeopi-cli/cli/grep-cli";
 import * as bundledPiCodingAgentCliGrievancesCli from "jeopi-cli/cli/grievances-cli";
 import * as bundledPiCodingAgentCliInitialMessage from "jeopi-cli/cli/initial-message";
+import * as bundledPiCodingAgentCliMessengerCli from "jeopi-cli/cli/messenger-cli";
 import * as bundledPiCodingAgentCliModelsCli from "jeopi-cli/cli/models-cli";
 import * as bundledPiCodingAgentCliPluginCli from "jeopi-cli/cli/plugin-cli";
 import * as bundledPiCodingAgentCliProfileAlias from "jeopi-cli/cli/profile-alias";
@@ -274,6 +275,7 @@ import * as bundledPiCodingAgentCommandsGrievances from "jeopi-cli/commands/grie
 import * as bundledPiCodingAgentCommandsInstall from "jeopi-cli/commands/install";
 import * as bundledPiCodingAgentCommandsJoin from "jeopi-cli/commands/join";
 import * as bundledPiCodingAgentCommandsLaunch from "jeopi-cli/commands/launch";
+import * as bundledPiCodingAgentCommandsMessenger from "jeopi-cli/commands/messenger";
 import * as bundledPiCodingAgentCommandsModels from "jeopi-cli/commands/models";
 import * as bundledPiCodingAgentCommandsPlugin from "jeopi-cli/commands/plugin";
 import * as bundledPiCodingAgentCommandsRead from "jeopi-cli/commands/read";
@@ -1591,6 +1593,9 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 	"@oh-my-pi/pi-coding-agent/cli/initial-message": bundledPiCodingAgentCliInitialMessage as unknown as Readonly<
 		Record<string, unknown>
 	>,
+	"@oh-my-pi/pi-coding-agent/cli/messenger-cli": bundledPiCodingAgentCliMessengerCli as unknown as Readonly<
+		Record<string, unknown>
+	>,
 	"@oh-my-pi/pi-coding-agent/cli/models-cli": bundledPiCodingAgentCliModelsCli as unknown as Readonly<
 		Record<string, unknown>
 	>,
@@ -1725,6 +1730,9 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 		Record<string, unknown>
 	>,
 	"@oh-my-pi/pi-coding-agent/commands/launch": bundledPiCodingAgentCommandsLaunch as unknown as Readonly<
+		Record<string, unknown>
+	>,
+	"@oh-my-pi/pi-coding-agent/commands/messenger": bundledPiCodingAgentCommandsMessenger as unknown as Readonly<
 		Record<string, unknown>
 	>,
 	"@oh-my-pi/pi-coding-agent/commands/models": bundledPiCodingAgentCommandsModels as unknown as Readonly<
