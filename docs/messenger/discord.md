@@ -85,6 +85,7 @@ Create `messenger.json` in a private directory:
     "discord": {
       "tokenEnv": "JEOPI_DISCORD_BOT_TOKEN",
       "allowedUserIds": ["123456789012345678"],
+      "artifactDir": "./discord-artifacts",
       "allowedChannelIds": ["987654321098765432"]
     }
   }
@@ -94,6 +95,9 @@ Create `messenger.json` in a private directory:
 - `tokenEnv`: Names the environment variable containing the bot token.
 - `allowedUserIds`: Exact Snowflake IDs of human users allowed to trigger the bot. Messages from any other user are ignored.
 - `allowedChannelIds`: (Optional) Restricts valid channel or thread IDs. When omitted, allowed users can communicate with the bot in any channel or DM the bot has access to.
+- `artifactDir`: Optional Discord file staging root. Create it first as a private directory; relative paths resolve against the configuration file's directory. The root must already exist and must not be a symlink. Omit it to disable file exchange.
+
+Before validating this example, create `discord-artifacts` alongside `messenger.json` with `mkdir -m 700 /absolute/private/discord-artifacts`, or omit `artifactDir` if file exchange is not needed. Create `workspace` as well.
 
 ---
 
@@ -124,6 +128,18 @@ Create `messenger.json` in a private directory:
 
 ---
 
+## Discord file workflow
+
+1. Create a dedicated private staging directory, for example `mkdir -m 700 /absolute/private/discord-artifacts`, and set `platforms.discord.artifactDir` to that path. The example above uses a path relative to `messenger.json`. Grant the bot **Attach Files** in the destination.
+2. For the headless gateway, explicitly set `toolNames` to the minimum needed: `read`, `grep`, `glob`, `edit`, and `write` are available for file work; `bash` permits command execution and is appropriate only for fully trusted users. The default `[]` grants no tools. The live bridge ignores `toolNames` and instead uses the active session's tools and approval policy.
+3. Send a Discord attachment with a request, or ask for an output file. With staging enabled, incoming files are saved in a per-conversation hashed subdirectory and supplied to the agent as local paths. To deliver a file, the agent writes it under that directory and includes `[artifact:relative/path]` on a line by itself in its final reply. Only regular files within that directory are eligible; absolute paths, traversal, and symlinks are rejected.
+
+Incoming messages may contain up to 5 attachments, each at most 8 MiB; downloads use Discord's HTTPS CDN and have a 30-second timeout per file. Outgoing replies may attach up to 10 files, each at most 8 MiB, subject also to Discord's upload limits. File formats are not restricted by extension; the agent still needs suitable tools or provider capabilities to work with their contents. Delivery can fail or be partial. File staging and transcripts persist on disk; manage their retention yourself.
+
+The gateway uses the configured model/provider authentication, and the live bridge uses the active session's provider authentication. Prompts, file contents accessed by tools, and tool results may be sent to the provider. Neither mode is a sandbox: authorized tool users can access host resources available to the process, and `cwd` and `artifactDir` are not filesystem jails. Do not place secrets in the workspace or rely on automatic secret redaction. Server requests create public threads visible to channel readers, including people not on the allowlist; attachments and replies share that audience.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause | Solution |
@@ -149,7 +165,7 @@ The `/discord live` command bridges a Discord channel into the current interacti
 - **Requires explicit opt-in**: The command demands an acknowledgement flag (`--allow-full-control`) to confirm authorization for Discord to control host tools.
 - **Loads a private `messenger.json` configuration**: Reuses the same config format as the standalone `jeopi messenger` gateway.
 - **Shares one conversation**: All allowed users and channels interact with the same host session; their histories are not isolated.
-- **Terminates cleanly**: Use `/discord stop` to revoke Discord access and close the bridge.
+- **Stops accepting new requests**: Use `/discord stop` to close the bridge; it cannot undo an already-started host action or retract messages and files already delivered.
 
 ### Activation: `/discord live`
 
@@ -219,7 +235,7 @@ This is NOT a queue — messages are rejected, not buffered. The user must retry
 
 ### Stop: `/discord stop`
 
-Immediately stop the Discord live bridge and revoke all Discord access to the host session:
+Stop the Discord live bridge and prevent new Discord requests from reaching the host session. This cannot undo an already-started host action or retract delivered content:
 
 ```sh
 /discord stop

@@ -27,7 +27,8 @@ export function isMessengerMessageAllowed(message: MessengerMessage, config: Mes
 			message.channelId &&
 			message.senderId &&
 			message.messageId &&
-			message.text.trim() &&
+			(message.text.trim() ||
+				(message.platform === "discord" && config.platforms.discord?.artifactDir && message.attachments?.length)) &&
 			message.text.length <= MAX_MESSAGE_LENGTH &&
 			platform.allowedUserIds.includes(message.senderId) &&
 			(!platform.allowedChannelIds ||

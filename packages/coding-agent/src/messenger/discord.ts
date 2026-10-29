@@ -1,4 +1,5 @@
 import { isRecord, logger } from "jeopi-utils";
+import { readMessengerArtifacts } from "./artifacts";
 import { MessengerHttpError, messengerFetchJson } from "./http";
 import type { MessengerAdapter, MessengerMessage, MessengerPlatformConfig, MessengerTransportDeps } from "./types";
 
@@ -119,14 +120,24 @@ function normalizeMessage(value: unknown, accountId: string): MessengerMessage |
 		typeof value.author.id !== "string" ||
 		!value.author.id ||
 		typeof value.content !== "string" ||
-		!value.content.trim() ||
+		(!value.content.trim() && !(Array.isArray(value.attachments) && value.attachments.length > 0)) ||
 		(value.type !== undefined && value.type !== 0 && value.type !== 19)
 	)
 		return;
 	const mentioned =
 		Array.isArray(value.mentions) && value.mentions.some(user => isRecord(user) && user.id === accountId);
 	const text = value.content.replaceAll(`<@${accountId}>`, "").replaceAll(`<@!${accountId}>`, "").trim();
-	if (!text) return;
+	const attachments = Array.isArray(value.attachments)
+		? value.attachments.map(item =>
+				isRecord(item) &&
+				typeof item.url === "string" &&
+				typeof item.filename === "string" &&
+				typeof item.size === "number"
+					? { url: item.url, filename: item.filename, size: item.size }
+					: { url: "", filename: "", size: -1 },
+			)
+		: [];
+	if (!text && attachments.length === 0) return;
 	return {
 		platform: "discord",
 		accountId,
@@ -135,6 +146,7 @@ function normalizeMessage(value: unknown, accountId: string): MessengerMessage |
 		messageId: value.id,
 		text,
 		direct: value.guild_id === undefined,
+		attachments,
 		mentioned,
 	};
 }
@@ -493,6 +505,29 @@ export function createDiscordAdapter(
 			);
 		},
 		async send(message, text, signal) {
+			let files: { name: string; data: Uint8Array }[] = [];
+			if (config.artifactDir) {
+				try {
+					const result = await readMessengerArtifacts(config.artifactDir, message, text);
+					text = result.text;
+					files = result.files;
+				} catch {
+					await messengerFetchJson(
+						`${API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
+						{
+							method: "POST",
+							headers: headers(),
+							body: JSON.stringify({
+								content: "File delivery failed: check the output path and size (maximum 8 MiB).",
+								allowed_mentions: { parse: [], replied_user: false },
+							}),
+						},
+						signal,
+						deps.fetch,
+					);
+					throw new Error("Discord artifact delivery failed");
+				}
+			}
 			const { chunks, needsAttachment } = splitDiscordText(text);
 			for (let index = 0; index < chunks.length + Number(needsAttachment); index++) {
 				for (let attempt = 0; ; attempt++) {
@@ -549,6 +584,45 @@ export function createDiscordAdapter(
 							totalChunks: chunks.length,
 							...(index === chunks.length ? { attachmentFailed: true } : {}),
 						});
+						throw error;
+					}
+				}
+			}
+			for (const file of files) {
+				const requestHeaders = headers();
+				delete requestHeaders["Content-Type"];
+				const form = new FormData();
+				form.append("payload_json", JSON.stringify({ allowed_mentions: { parse: [], replied_user: false } }));
+				form.append("files[0]", new Blob([file.data]), file.name);
+				for (let attempt = 0; ; attempt++) {
+					try {
+						await messengerFetchJson(
+							`${API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
+							{ method: "POST", headers: requestHeaders, body: form },
+							signal,
+							deps.fetch,
+						);
+						break;
+					} catch (error) {
+						if (error instanceof MessengerHttpError && error.status === 429 && attempt < 3 && !signal?.aborted) {
+							await waitForReconnect(error.retryAfterMs ?? 1_000, signal ?? new AbortController().signal, clock);
+							continue;
+						}
+						if (!signal?.aborted) {
+							await messengerFetchJson(
+								`${API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
+								{
+									method: "POST",
+									headers: headers(),
+									body: JSON.stringify({
+										content: "File upload failed; some files may not have been delivered.",
+										allowed_mentions: { parse: [], replied_user: false },
+									}),
+								},
+								signal,
+								deps.fetch,
+							).catch(() => {});
+						}
 						throw error;
 					}
 				}

@@ -1,5 +1,6 @@
 import type { AssistantMessage, UserMessage } from "jeopi-ai";
 import type { InteractiveModeContext } from "../modes/types";
+import { messengerArtifactPrompt } from "./artifacts";
 import { loadMessengerConfig, validateMessengerEnvironment } from "./config";
 import { createDiscordAdapter, type DiscordTransportDeps } from "./discord";
 import { createMessengerGateway, isMessengerMessageAllowed, type MessengerGateway } from "./gateway";
@@ -32,7 +33,7 @@ export interface LiveDiscordBridge {
 }
 
 interface TurnCapture {
-	readonly promptText: string;
+	promptText: string;
 	promptSeen: boolean;
 	dispatched: boolean;
 	hostSettled: boolean;
@@ -171,7 +172,7 @@ export function createLiveDiscordBridge(
 			currentTurn
 		)
 			return LIVE_BUSY_MESSAGE;
-		const promptText = `[Discord:${message.messageId} sender:${message.senderId} channel:${message.channelId}] ${message.text}`;
+		let promptText = `[Discord:${message.messageId} sender:${message.senderId} channel:${message.channelId}] ${message.text}`;
 		const capture: TurnCapture = {
 			promptText,
 			promptSeen: false,
@@ -203,6 +204,21 @@ export function createLiveDiscordBridge(
 			if (capture.promptSeen && isCompetingMessage(event.message)) capture.conflicted = true;
 		});
 		try {
+			const guidance = await messengerArtifactPrompt(
+				scopedConfig.platforms.discord?.artifactDir,
+				message,
+				operationSignal,
+			);
+			if (guidance) promptText += `\n\n${guidance}`;
+			capture.promptText = promptText;
+			if (
+				attachedSession.isStreaming ||
+				attachedSession.isCompacting ||
+				attachedSession.isBashRunning ||
+				attachedSession.isEvalRunning ||
+				localCapture
+			)
+				throw new Error(LIVE_UNAVAILABLE_MESSAGE);
 			if (closed || operationSignal.aborted || !sameSession(ctx, attachedSession, sessionId, sessionFile))
 				throw new Error(LIVE_UNAVAILABLE_MESSAGE);
 			const promptPromise = attachedSession.prompt(promptText, {

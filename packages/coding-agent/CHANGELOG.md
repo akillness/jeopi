@@ -6,6 +6,7 @@
 
 - Added explicitly opted-in local response relay with `/discord relay <allowed-channel-id|off>`; the destination resets when the bridge stops or the session changes.
 - Discord server-channel requests now use threads, report progress with reactions, and send long replies in ordered chunks with bounded rate-limit retries.
+- Added opt-in Discord attachment staging and file delivery via `platforms.discord.artifactDir`; see the [file workflow and security limits](../../docs/messenger/discord.md#discord-file-workflow).
 
 ### Changed
 

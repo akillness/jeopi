@@ -10,6 +10,7 @@ import type { AgentSession } from "../session/agent-session";
 import type { AuthStorage } from "../session/auth-storage";
 import { USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
+import { messengerArtifactPrompt } from "./artifacts";
 import { messengerConversationKey } from "./gateway";
 import { type MessengerConfig, MessengerFatalError, type MessengerReply } from "./types";
 
@@ -175,7 +176,13 @@ export function createMessengerSessionBridge(
 			await constrainTools(current);
 			if (closed || signal.aborted || runtimeFailed) throw new Error("Messenger session unavailable");
 			// Slash-looking text is ordinary user data, never an extension command or developer message.
-			const dispatched = await current.prompt(message.text, { expandPromptTemplates: false });
+			let prompt = message.text;
+			const artifactRoot = message.platform === "discord" ? config.platforms.discord?.artifactDir : undefined;
+			if (message.platform === "discord") {
+				const guidance = await messengerArtifactPrompt(artifactRoot, message, signal);
+				if (guidance) prompt += `\n\n${guidance}`;
+			}
+			const dispatched = await current.prompt(prompt, { expandPromptTemplates: false });
 			await current.waitForIdle();
 			await current.sessionManager.flush();
 			if (!dispatched || closed || signal.aborted || runtimeFailed) throw new Error("Messenger request failed");

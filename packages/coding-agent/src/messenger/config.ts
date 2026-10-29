@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { MessengerConfig, MessengerPlatform, MessengerPlatformConfig } from "./types";
 
@@ -51,7 +52,9 @@ export function parseMessengerConfig(value: unknown, baseDir: string): Messenger
 			item,
 			platform === "slack"
 				? ["tokenEnv", "appTokenEnv", "allowedUserIds", "allowedChannelIds"]
-				: ["tokenEnv", "allowedUserIds", "allowedChannelIds"],
+				: platform === "discord"
+					? ["tokenEnv", "allowedUserIds", "allowedChannelIds", "artifactDir"]
+					: ["tokenEnv", "allowedUserIds", "allowedChannelIds"],
 			`${platform} config`,
 		);
 		const config: MessengerPlatformConfig = {
@@ -62,6 +65,8 @@ export function parseMessengerConfig(value: unknown, baseDir: string): Messenger
 			config.appTokenEnv = envName(item.appTokenEnv, "JEOPI_SLACK_APP_TOKEN", "slack.appTokenEnv");
 		if (item.allowedChannelIds !== undefined)
 			config.allowedChannelIds = ids(item.allowedChannelIds, `${platform}.allowedChannelIds`);
+		if (platform === "discord" && item.artifactDir !== undefined)
+			config.artifactDir = path.resolve(baseDir, string(item.artifactDir, "discord.artifactDir"));
 		platforms[platform] = config;
 	}
 	const toolNames = input.toolNames === undefined ? [] : input.toolNames;
@@ -90,7 +95,14 @@ export async function loadMessengerConfig(file: string): Promise<MessengerConfig
 	} catch {
 		throw new Error("Cannot read messenger configuration as JSON");
 	}
-	return parseMessengerConfig(value, path.dirname(path.resolve(file)));
+	const config = parseMessengerConfig(value, path.dirname(path.resolve(file)));
+	const artifactDir = config.platforms.discord?.artifactDir;
+	if (artifactDir) {
+		const stat = await fs.lstat(artifactDir).catch(() => undefined);
+		if (!stat?.isDirectory() || stat.isSymbolicLink())
+			throw new Error("discord.artifactDir must be an existing directory, not a symlink");
+	}
+	return config;
 }
 
 export function validateMessengerEnvironment(

@@ -11,6 +11,7 @@ export interface MessengerMessage {
 	parentChannelId?: string;
 	direct: boolean;
 	mentioned: boolean;
+	attachments?: { url: string; filename: string; size: number }[];
 }
 
 export interface MessengerAdapter {
@@ -30,6 +31,8 @@ export interface MessengerPlatformConfig {
 	appTokenEnv?: string;
 	allowedUserIds: string[];
 	allowedChannelIds?: string[];
+	/** Dedicated operator-approved directory for Discord output files. */
+	artifactDir?: string;
 }
 
 export interface MessengerConfig {

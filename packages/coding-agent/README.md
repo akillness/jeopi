@@ -15,7 +15,7 @@ Package-specific references:
 
 ## Messenger gateway
 
-`jeopi messenger` connects authorized Discord, Telegram, and Slack bots to headless agent sessions for bidirectional **text** conversations. Discord Gateway and Slack Socket Mode use outbound WebSockets; Telegram uses outbound long polling. No public HTTP ingress, webhook endpoint, or tunnel is required. Configure a working jeopi model/provider first using the [main setup guide](../../README.md).
+`jeopi messenger` connects authorized Discord, Telegram, and Slack bots to headless agent sessions for bidirectional conversations. Discord optionally supports file attachments as described in the [Discord guide](../../docs/messenger/discord.md#discord-file-workflow). Discord Gateway and Slack Socket Mode use outbound WebSockets; Telegram uses outbound long polling. No public HTTP ingress, webhook endpoint, or tunnel is required. Configure a working jeopi model/provider first using the [main setup guide](../../README.md).
 
 ### Configuration and CLI
 
@@ -75,6 +75,8 @@ jeopi messenger run --config /absolute/private/path/messenger.json
 4. Enable Developer Mode in Discord's Advanced settings, then use **Copy User ID** for each authorized human and **Copy Channel ID** for each allowed channel/DM. Use exact numeric IDs as strings. Allowing a parent channel permits authorized requests in its threads; a thread ID can also be allowed directly. Users must be able to DM the bot under their Discord privacy settings.
 5. Mention the bot for a server-channel request: it creates a thread for that request. A request in an existing thread stays there; DMs remain direct. The original sender can continue without mentioning the bot in a bot-created thread while its in-memory mapping survives; restart or eviction loses that association. Explicitly mention the bot in other thread requests. Progress reactions are best-effort: ⏳ while processing, then ✅ or ❌.
 
+For Discord file exchange, explicitly configure `platforms.discord.artifactDir` as a pre-existing private staging directory and enable the needed host tools; see the [file workflow and limits](../../docs/messenger/discord.md#discord-file-workflow). The gateway reuses the configured model/provider authentication; attachments and tool results may be sent to that provider. Created server threads are public to people who can view the channel, not just allowlisted users.
+
 **Slack** ([Socket Mode setup](https://docs.slack.dev/apis/events-api/using-socket-mode/), [app settings](https://api.slack.com/apps)):
 
 1. Create an app in the intended workspace and enable **Socket Mode**. Generate an app-level `xapp-` token with `connections:write`; store it as `JEOPI_SLACK_APP_TOKEN`.
@@ -92,7 +94,7 @@ In an interactive jeopi session, start the bridge with the private configuration
 /discord stop
 ```
 
-**Full control is dangerous:** authorized Discord users prompt the active local session, with its active tools and approval policy, rather than the isolated headless gateway's `toolNames` restrictions. They may read or modify local data or execute commands according to that policy. This is not a sandbox; use a dedicated account and workspace, restrict both allowlists, and do not expose secrets. Other members who can view a destination can see messages posted there.
+**Full control is dangerous:** authorized Discord users prompt the active local session, with its active tools, provider authentication, and approval policy, rather than the isolated headless gateway's `toolNames` restrictions. They may read or modify local data or execute commands according to that policy. This is not a sandbox; use a dedicated account and workspace, restrict both allowlists, and do not expose secrets. Other members who can view a destination can see messages and files posted there. Stopping the bridge prevents new remote requests but cannot undo an already-started host action or retract delivered content.
 
 Local responses are not relayed by default. To explicitly opt in, add the exact destination channel or thread ID to Discord's `allowedChannelIds`, then run:
 
