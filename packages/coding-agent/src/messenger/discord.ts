@@ -1,5 +1,5 @@
 import { isRecord, logger } from "jeopi-utils";
-import { MessengerHttpError, messengerFetchJson, splitMessengerText } from "./http";
+import { MessengerHttpError, messengerFetchJson } from "./http";
 import type { MessengerAdapter, MessengerMessage, MessengerPlatformConfig, MessengerTransportDeps } from "./types";
 
 // Protocol: https://docs.discord.com/developers/events/gateway
@@ -8,6 +8,36 @@ import type { MessengerAdapter, MessengerMessage, MessengerPlatformConfig, Messe
 const API = "https://discord.com/api/v10";
 const INTENTS = (1 << 9) | (1 << 12) | (1 << 15);
 const PERMANENT_CLOSE_CODES = new Set([4004, 4010, 4011, 4012, 4013, 4014]);
+
+// Discord strips boundary whitespace. Invisible guards preserve it in message content;
+// they are part of the delivered text, and consume one UTF-16 unit each.
+const DISCORD_WHITESPACE = /^[\s\u0085\u001c-\u001f]$/u;
+const DISCORD_BOUNDARY_GUARD = "\u200b";
+
+function splitDiscordText(text: string): { chunks: string[]; needsAttachment: boolean } {
+	const chunks: string[] = [];
+	let needsAttachment = false;
+	for (let start = 0; start < text.length; ) {
+		const leadingGuard = DISCORD_WHITESPACE.test(text[start]) ? DISCORD_BOUNDARY_GUARD : "";
+		let fallback = 0;
+		let end = Math.min(start + 2_000 - leadingGuard.length, text.length);
+		for (; end > start; end--) {
+			const last = text.charCodeAt(end - 1);
+			if (end < text.length && last >= 0xd800 && last <= 0xdbff) continue;
+			const trailingWhitespace = DISCORD_WHITESPACE.test(text[end - 1]);
+			if (end - start + leadingGuard.length + Number(trailingWhitespace) > 2_000) continue;
+			if (!fallback) fallback = end;
+			if (end === text.length || (!trailingWhitespace && !DISCORD_WHITESPACE.test(text[end]))) break;
+		}
+		if (end === start) end = fallback;
+		const chunk = text.slice(start, end);
+		const trailingGuard = DISCORD_WHITESPACE.test(chunk[chunk.length - 1]) ? DISCORD_BOUNDARY_GUARD : "";
+		if (leadingGuard || trailingGuard) needsAttachment = true;
+		chunks.push(`${leadingGuard}${chunk}${trailingGuard}`);
+		start = end;
+	}
+	return { chunks, needsAttachment };
+}
 
 class DiscordConfigurationError extends Error {}
 
@@ -283,6 +313,14 @@ export function createDiscordAdapter(
 ): MessengerAdapter {
 	const token = env[config.tokenEnv]?.trim();
 	const clock = deps.clock ?? defaultClock;
+	const createdThreads = new Map<string, { parentChannelId: string; senderId: string }>();
+	const rememberThread = (threadId: string, parentChannelId: string, senderId: string): void => {
+		createdThreads.set(threadId, { parentChannelId, senderId });
+		if (createdThreads.size > 10_000) {
+			const oldest = createdThreads.keys().next().value;
+			if (oldest !== undefined) createdThreads.delete(oldest);
+		}
+	};
 	const headers = (): Record<string, string> => {
 		if (!token) throw new DiscordConfigurationError("Discord bot token is missing");
 		return { Authorization: `Bot ${token}`, "Content-Type": "application/json" };
@@ -319,12 +357,54 @@ export function createDiscordAdapter(
 						}
 						initialUrl = gatewayUrl(gateway.url);
 					}
+					const deliver = async (message: MessengerMessage): Promise<void> => {
+						const thread = createdThreads.get(message.channelId);
+						if (thread && thread.senderId === message.senderId) {
+							await onMessage({
+								...message,
+								threadId: message.channelId,
+								parentChannelId: thread.parentChannelId,
+							});
+						} else if (
+							!message.direct &&
+							message.mentioned &&
+							config.allowedUserIds.includes(message.senderId) &&
+							config.allowedChannelIds &&
+							!config.allowedChannelIds.includes(message.channelId)
+						) {
+							try {
+								const channel = await messengerFetchJson(
+									`${API}/channels/${encodeURIComponent(message.channelId)}`,
+									{ headers: headers() },
+									signal,
+									deps.fetch,
+								);
+								if (
+									isRecord(channel) &&
+									typeof channel.type === "number" &&
+									[10, 11, 12].includes(channel.type) &&
+									typeof channel.parent_id === "string" &&
+									channel.parent_id
+								) {
+									await onMessage({
+										...message,
+										threadId: message.channelId,
+										parentChannelId: channel.parent_id,
+									});
+								}
+							} catch {
+								if (!signal.aborted) logger.warn("Discord thread parent lookup failed");
+							}
+						} else {
+							await onMessage(message);
+						}
+					};
 					await connectGateway(
 						session.url ?? initialUrl,
 						token!,
 						accountId,
 						session,
-						onMessage,
+						deliver,
 						signal,
 						deps.WebSocket ?? WebSocket,
 						clock,
@@ -357,25 +437,121 @@ export function createDiscordAdapter(
 				delay = Math.min(delay * 2, 30_000);
 			}
 		},
+		async prepare(message, signal) {
+			if (message.direct) return message;
+			if (message.threadId) {
+				if (message.parentChannelId) rememberThread(message.threadId, message.parentChannelId, message.senderId);
+				return message;
+			}
+			const channel = await messengerFetchJson(
+				`${API}/channels/${encodeURIComponent(message.channelId)}`,
+				{ headers: headers() },
+				signal,
+				deps.fetch,
+			);
+			if (!isRecord(channel) || typeof channel.type !== "number")
+				throw new Error("Discord channel type unavailable");
+			if ([10, 11, 12].includes(channel.type)) {
+				if (typeof channel.parent_id !== "string" || !channel.parent_id)
+					throw new Error("Discord thread parent unavailable");
+				rememberThread(message.channelId, channel.parent_id, message.senderId);
+				return { ...message, threadId: message.channelId, parentChannelId: channel.parent_id };
+			}
+			if (channel.type !== 0 && channel.type !== 5) throw new Error("Discord channel cannot host a reply thread");
+			const thread = await messengerFetchJson(
+				`${API}/channels/${encodeURIComponent(message.channelId)}/messages/${encodeURIComponent(message.messageId)}/threads`,
+				{ method: "POST", headers: headers(), body: JSON.stringify({ name: `Request ${message.messageId}` }) },
+				signal,
+				deps.fetch,
+			);
+			if (!isRecord(thread) || typeof thread.id !== "string" || !thread.id)
+				throw new Error("Discord thread creation returned no ID");
+			rememberThread(thread.id, message.channelId, message.senderId);
+			return { ...message, threadId: thread.id };
+		},
+		async status(message, state, signal) {
+			const base = `${API}/channels/${encodeURIComponent(message.channelId)}/messages/${encodeURIComponent(message.messageId)}/reactions`;
+			const processing = encodeURIComponent("⏳");
+			if (state !== "processing") {
+				try {
+					await messengerFetchJson(
+						`${base}/${processing}/@me`,
+						{ method: "DELETE", headers: headers() },
+						signal,
+						deps.fetch,
+					);
+				} catch {
+					logger.warn("Discord processing reaction removal failed");
+				}
+			}
+			const emoji = state === "processing" ? "⏳" : state === "success" ? "✅" : "❌";
+			await messengerFetchJson(
+				`${base}/${encodeURIComponent(emoji)}/@me`,
+				{ method: "PUT", headers: headers() },
+				signal,
+				deps.fetch,
+			);
+		},
 		async send(message, text, signal) {
-			const chunks = splitMessengerText(text, 2_000);
-			for (let index = 0; index < chunks.length; index++) {
-				await messengerFetchJson(
-					`${API}/channels/${encodeURIComponent(message.channelId)}/messages`,
-					{
-						method: "POST",
-						headers: headers(),
-						body: JSON.stringify({
-							content: chunks[index],
-							allowed_mentions: { parse: [], replied_user: false },
-							...(index === 0
-								? { message_reference: { message_id: message.messageId, fail_if_not_exists: false } }
-								: {}),
-						}),
-					},
-					signal,
-					deps.fetch,
-				);
+			const { chunks, needsAttachment } = splitDiscordText(text);
+			for (let index = 0; index < chunks.length + Number(needsAttachment); index++) {
+				for (let attempt = 0; ; attempt++) {
+					try {
+						const attachment = index === chunks.length;
+						const requestHeaders = headers();
+						let body: string | FormData;
+						if (attachment) {
+							delete requestHeaders["Content-Type"];
+							const form = new FormData();
+							form.append(
+								"payload_json",
+								JSON.stringify({ allowed_mentions: { parse: [], replied_user: false } }),
+							);
+							form.append("files[0]", new Blob([text], { type: "text/plain; charset=utf-8" }), "response.txt");
+							body = form;
+						} else {
+							body = JSON.stringify({
+								content: chunks[index],
+								allowed_mentions: { parse: [], replied_user: false },
+								...(index === 0 &&
+								message.messageId &&
+								(!message.threadId || message.threadId === message.channelId)
+									? { message_reference: { message_id: message.messageId, fail_if_not_exists: false } }
+									: {}),
+							});
+						}
+						await messengerFetchJson(
+							`${API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
+							{
+								method: "POST",
+								headers: requestHeaders,
+								body,
+							},
+							signal,
+							deps.fetch,
+						);
+						break;
+					} catch (error) {
+						if (error instanceof MessengerHttpError && error.status === 429 && attempt < 3 && !signal?.aborted) {
+							try {
+								await waitForReconnect(
+									error.retryAfterMs ?? 1_000,
+									signal ?? new AbortController().signal,
+									clock,
+								);
+								if (!signal?.aborted) continue;
+							} catch {
+								// Cancellation or timer failure stops delivery without replaying prior chunks.
+							}
+						}
+						logger.warn("Discord reply partially delivered", {
+							deliveredChunks: Math.min(index, chunks.length),
+							totalChunks: chunks.length,
+							...(index === chunks.length ? { attachmentFailed: true } : {}),
+						});
+						throw error;
+					}
+				}
 			}
 		},
 	};

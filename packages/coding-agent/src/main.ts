@@ -296,7 +296,11 @@ export function buildModelScopeNotification(
 export async function submitInteractiveInput(
 	mode: Pick<
 		InteractiveMode,
-		"markPendingSubmissionStarted" | "finishPendingSubmission" | "showError" | "checkShutdownRequested"
+		| "markPendingSubmissionStarted"
+		| "finishPendingSubmission"
+		| "showError"
+		| "checkShutdownRequested"
+		| "liveDiscordBridge"
 	>,
 	session: Pick<AgentSession, "prompt" | "promptCustomMessage" | "isStreaming">,
 	input: SubmittedUserInput,
@@ -346,7 +350,13 @@ export async function submitInteractiveInput(
 				userInitiated: input.userInitiated,
 			});
 		} else {
-			await session.prompt(input.text, { images: input.images, streamingBehavior });
+			const submit = () => session.prompt(input.text, { images: input.images, streamingBehavior });
+			const bridge = mode.liveDiscordBridge;
+			await (input.streamingBehavior === "steer" && bridge?.active
+				? bridge.withLocalTurn(input.text, onPreparedUserMessage =>
+						session.prompt(input.text, { images: input.images, streamingBehavior, onPreparedUserMessage }),
+					)
+				: submit());
 		}
 	} catch (error: unknown) {
 		const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";

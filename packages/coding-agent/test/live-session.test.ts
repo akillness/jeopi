@@ -2,15 +2,18 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { UserMessage } from "jeopi-ai";
 import { unregisterCustomApis } from "jeopi-ai/api-registry";
 import { createMockModel, registerMockApi } from "jeopi-ai/providers/mock";
 import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { Settings } from "jeopi-cli/config/settings";
+import { InputController } from "jeopi-cli/modes/controllers/input-controller";
 import type { InteractiveModeContext } from "jeopi-cli/modes/types";
 import { createAgentSession } from "jeopi-cli/sdk";
 import type { AgentSession } from "jeopi-cli/session/agent-session";
 import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import { SessionManager } from "jeopi-cli/session/session-manager";
+import { submitInteractiveInput } from "../src/main";
 import { createLiveDiscordBridge, type LiveDiscordBridge } from "../src/messenger/live-session";
 import type { MessengerAdapter, MessengerConfig, MessengerMessage } from "../src/messenger/types";
 
@@ -53,6 +56,7 @@ interface SessionFixture {
 	ctx: InteractiveModeContext;
 	prompts: string[];
 	readonly aborts: number;
+	readonly listenerCount: number;
 	manager: { sessionId: string; sessionFile: string };
 	busy: {
 		isCompacting: boolean;
@@ -63,10 +67,10 @@ interface SessionFixture {
 		hasPostPromptWork: boolean;
 	};
 	setStreaming(value: boolean): void;
-	setPromptImpl(value: (text: string) => Promise<boolean>): void;
+	setPromptImpl(value: (text: string, prepared?: (message: UserMessage) => void) => Promise<boolean>): void;
 	setAbortImpl(value: () => Promise<void>): void;
 	replaceMessages(value: unknown[]): void;
-	emitTurn(text: string): void;
+	emitTurn(text: string, prepared?: (message: UserMessage) => void): void;
 	emitEvent(event: unknown): void;
 }
 
@@ -97,8 +101,10 @@ function sessionFixture(): SessionFixture {
 		}
 		for (const listener of listeners) listener(event);
 	};
-	const emitTurn = (text: string): void => {
-		emitEvent({ type: "message_end", message: { role: "user", content: [{ type: "text", text }] } });
+	const emitTurn = (text: string, prepared?: (message: UserMessage) => void): void => {
+		const user = { role: "user", content: [{ type: "text", text }] } as UserMessage;
+		prepared?.(user);
+		emitEvent({ type: "message_end", message: user });
 		emitEvent({
 			type: "message_end",
 			message: {
@@ -108,9 +114,9 @@ function sessionFixture(): SessionFixture {
 			},
 		});
 	};
-	let promptImpl = async (text: string): Promise<boolean> => {
+	let promptImpl = async (text: string, prepared?: (message: UserMessage) => void): Promise<boolean> => {
 		prompts.push(text);
-		emitTurn(text);
+		emitTurn(text, prepared);
 		return true;
 	};
 	const session = {
@@ -142,8 +148,8 @@ function sessionFixture(): SessionFixture {
 			listeners.add(listener);
 			return () => listeners.delete(listener);
 		},
-		prompt(text: string) {
-			return promptImpl(text);
+		prompt(text: string, options?: { onPreparedUserMessage?: (message: UserMessage) => void }) {
+			return promptImpl(text, options?.onPreparedUserMessage);
 		},
 		waitForIdle: async () => {},
 		abort: async () => {
@@ -166,6 +172,9 @@ function sessionFixture(): SessionFixture {
 		prompts,
 		get aborts() {
 			return aborts;
+		},
+		get listenerCount() {
+			return listeners.size;
 		},
 		busy,
 		manager,
@@ -223,6 +232,165 @@ describe("live Discord bridge", () => {
 				env: { TEST_DISCORD_TOKEN: "fixture-token" },
 			}),
 		).toThrow("Live Discord requires explicit full-control acknowledgement");
+	});
+
+	test("relays local answers only after choosing an allowed destination and never duplicates remote turns", async () => {
+		const fixture = sessionFixture();
+		const sent = Promise.withResolvers<void>();
+		const observed: Array<[string, string]> = [];
+		const { bridge } = bridgeFixture(fixture, async (incoming, text) => {
+			observed.push([incoming.channelId, text]);
+			if (text === "answer for local enabled") sent.resolve();
+		});
+		await bridge.withLocalTurn("local private", async () => fixture.emitTurn("local private"));
+		expect(() => bridge.setRelayDestination("other-channel")).toThrow("explicitly allowed channel ID");
+		bridge.setRelayDestination("authorized-channel");
+		await bridge.gateway.handle(message({ messageId: "remote" }));
+		await bridge.withLocalTurn("local enabled", async prepared => fixture.emitTurn("local enabled", prepared));
+		await sent.promise;
+		expect(observed).toEqual([
+			[
+				"authorized-channel",
+				"answer for [Discord:remote sender:authorized-user channel:authorized-channel] hello from Discord",
+			],
+			["authorized-channel", "answer for local enabled"],
+		]);
+	});
+	test("captures the next local answer while the previous Discord delivery is pending", async () => {
+		const fixture = sessionFixture();
+		const firstStarted = Promise.withResolvers<void>();
+		const releaseFirst = Promise.withResolvers<void>();
+		const secondSent = Promise.withResolvers<void>();
+		const observed: string[] = [];
+		const { bridge } = bridgeFixture(fixture, async (_incoming, text) => {
+			observed.push(text);
+			if (text === "answer for first local") {
+				firstStarted.resolve();
+				await releaseFirst.promise;
+			} else if (text === "answer for second local") secondSent.resolve();
+		});
+		bridge.setRelayDestination("authorized-channel");
+		await bridge.withLocalTurn("first local", async prepared => fixture.emitTurn("first local", prepared));
+		await firstStarted.promise;
+		await bridge.withLocalTurn("second local", async prepared => fixture.emitTurn("second local", prepared));
+		releaseFirst.resolve();
+		await secondSent.promise;
+		expect(observed).toEqual(["answer for first local", "answer for second local"]);
+	});
+
+	test("a pending local submission makes Discord busy and bridge closure does not abort it", async () => {
+		const fixture = sessionFixture();
+		const { bridge, delivered } = bridgeFixture(fixture);
+		bridge.setRelayDestination("authorized-channel");
+		const release = Promise.withResolvers<boolean>();
+		const local = bridge.withLocalTurn("local preflight", () => release.promise);
+		await bridge.gateway.handle(message({ messageId: "during-local" }));
+		expect(delivered.map(item => item.text)).toEqual(["The live session is busy. Please try again when it is idle."]);
+		expect(fixture.prompts).toEqual([]);
+		await bridge.close();
+		expect(fixture.aborts).toBe(0);
+		release.resolve(true);
+		expect(await local).toBe(true);
+	});
+
+	test.each(["off", "close"])(
+		"%s immediately releases deferred local capture without abort or later delivery",
+		async action => {
+			const fixture = sessionFixture();
+			const { bridge, delivered } = bridgeFixture(fixture);
+			bridge.setRelayDestination("authorized-channel");
+			const baseline = fixture.listenerCount;
+			const release = Promise.withResolvers<void>();
+			const local = bridge.withLocalTurn("deferred", async prepared => {
+				await release.promise;
+				fixture.emitTurn("deferred", prepared);
+				return true;
+			});
+			expect(fixture.listenerCount).toBe(baseline + 1);
+			if (action === "off") bridge.setRelayDestination(undefined);
+			else await bridge.close();
+			expect(fixture.listenerCount).toBe(baseline);
+			expect(fixture.aborts).toBe(0);
+			release.resolve();
+			expect(await local).toBe(true);
+			expect(delivered).toEqual([]);
+		},
+	);
+
+	test("relays the answer to a prepared prompt even when its text was expanded", async () => {
+		const fixture = sessionFixture();
+		const sent = Promise.withResolvers<string>();
+		const { bridge } = bridgeFixture(fixture, async (_message, text) => sent.resolve(text));
+		bridge.setRelayDestination("authorized-channel");
+		await bridge.withLocalTurn("original input", async prepared => {
+			fixture.emitTurn("expanded input with context", prepared);
+			return true;
+		});
+		expect(await sent.promise).toBe("answer for expanded input with context");
+	});
+
+	test.each(["same text", "different text"])(
+		"suppresses relay when another user turn intervenes with %s",
+		async text => {
+			const fixture = sessionFixture();
+			const warning = Promise.withResolvers<string>();
+			Object.assign(fixture.ctx, { showWarning: (value: string) => warning.resolve(value) });
+			const { bridge, delivered } = bridgeFixture(fixture);
+			bridge.setRelayDestination("authorized-channel");
+			await bridge.withLocalTurn("local", async prepared => {
+				fixture.emitTurn("local", prepared);
+				fixture.emitTurn(text === "same text" ? "local" : "other user");
+				return true;
+			});
+			expect(await warning.promise).toContain("could not safely identify");
+			expect(delivered).toEqual([]);
+		},
+	);
+
+	test.each([true, false])("an ordinary idle Enter relays its answer (input waiter: %s)", async hasWaiter => {
+		const fixture = sessionFixture();
+		const sent = Promise.withResolvers<string>();
+		const { bridge } = bridgeFixture(fixture, async (_message, text) => sent.resolve(text));
+		bridge.setRelayDestination("authorized-channel");
+		const ctx = fixture.ctx;
+		const editor = {
+			pendingImages: [],
+			pendingImageLinks: [],
+			addToHistory() {},
+		} as unknown as InteractiveModeContext["editor"];
+		Object.assign(ctx, {
+			editor,
+			liveDiscordBridge: bridge,
+			fileSlashCommands: new Set(),
+			isKnownSlashCommand: () => false,
+			flushPendingBashComponents() {},
+			startPendingSubmission: (input: object) => ({ ...input, cancelled: false, started: true }),
+			withLocalSubmission: async (_text: string, submit: () => Promise<unknown>) => submit(),
+			updatePendingMessagesDisplay() {},
+			ui: { requestRender() {} },
+			showError: (error: string) => {
+				throw new Error(error);
+			},
+		});
+		Object.assign(ctx.sessionManager, { getSessionName: () => "named" });
+		const mode = {
+			liveDiscordBridge: bridge,
+			markPendingSubmissionStarted: () => true,
+			finishPendingSubmission() {},
+			showError: (error: string) => {
+				throw new Error(error);
+			},
+			checkShutdownRequested: async () => {},
+		};
+		let submitted: Promise<void> | undefined;
+		if (hasWaiter)
+			ctx.onInputCallback = input => {
+				submitted = submitInteractiveInput(mode, ctx.session, input);
+			};
+		new InputController(ctx).setupEditorSubmitHandler();
+		await editor.onSubmit!("a local question");
+		await submitted;
+		expect(await sent.promise).toBe("answer for a local question");
 	});
 
 	test("routes an authorized Discord message through the active session and returns its assistant reply", async () => {
@@ -540,7 +708,9 @@ describe("live Discord bridge with the real AgentSession SDK", () => {
 		const sourceId = "live-discord-runtime-test";
 		const cwd = join(root, "workspace");
 		const authStorage = await AuthStorage.create(join(root, "auth.db"));
-		const model = createMockModel({ responses: [{ content: ["deterministic Discord reply"] }] });
+		const model = createMockModel({
+			responses: [{ content: ["deterministic Discord reply"] }, { content: ["expanded local reply"] }],
+		});
 		let session: AgentSession | undefined;
 		let bridge: LiveDiscordBridge | undefined;
 
@@ -578,7 +748,9 @@ describe("live Discord bridge with the real AgentSession SDK", () => {
 				skills: [],
 				rules: [],
 				contextFiles: [],
-				promptTemplates: [],
+				promptTemplates: [
+					{ name: "relay-template", description: "fixture", content: "expanded real template", source: "test" },
+				],
 				slashCommands: [],
 				enableMCP: false,
 				enableLsp: false,
@@ -589,6 +761,7 @@ describe("live Discord bridge with the real AgentSession SDK", () => {
 			}));
 
 			const sent: Array<{ message: MessengerMessage; text: string }> = [];
+			const localSent = Promise.withResolvers<void>();
 			let receive: ((incoming: MessengerMessage) => Promise<void>) | undefined;
 			const started = Promise.withResolvers<void>();
 			const adapter: MessengerAdapter = {
@@ -600,6 +773,7 @@ describe("live Discord bridge with the real AgentSession SDK", () => {
 				},
 				async send(incoming, text) {
 					sent.push({ message: incoming, text });
+					if (text === "expanded local reply") localSent.resolve();
 				},
 			};
 			const ctx = {
@@ -664,6 +838,26 @@ describe("live Discord bridge with the real AgentSession SDK", () => {
 			await receive({ ...authorized, senderId: "intruder", messageId: "runtime-unauthorized" });
 			expect(model.calls).toHaveLength(1);
 			expect(sent).toHaveLength(1);
+
+			bridge.setRelayDestination("authorized-channel");
+			let preparedMessage: UserMessage | undefined;
+			let observedMessage: UserMessage | undefined;
+			const unsubscribe = session.subscribe(event => {
+				if (event.type === "message_end" && event.message.role === "user") observedMessage = event.message;
+			});
+			await bridge.withLocalTurn("/relay-template", prepared =>
+				session!.prompt("/relay-template", {
+					onPreparedUserMessage: user => {
+						preparedMessage = user;
+						prepared(user);
+					},
+				}),
+			);
+			await localSent.promise;
+			unsubscribe();
+			expect(preparedMessage).toBe(observedMessage);
+			expect(preparedMessage?.content).toEqual([{ type: "text", text: "expanded real template" }]);
+			expect(sent.map(item => item.text)).toEqual(["deterministic Discord reply", "expanded local reply"]);
 
 			await bridge.close();
 			await running;

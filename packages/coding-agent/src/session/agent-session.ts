@@ -97,6 +97,7 @@ import type {
 	ToolChoice,
 	Usage,
 	UsageReport,
+	UserMessage,
 } from "jeopi-ai";
 import {
 	calculateRateLimitBackoffMs,
@@ -944,6 +945,8 @@ export interface PromptOptions {
 	userInitiated?: boolean;
 	/** Explicit billing/initiator attribution for the prompt. Defaults to user prompts as `user` and synthetic prompts as `agent`. */
 	attribution?: MessageAttribution;
+	/** Observe the exact user message prepared for this submission, including queued messages. */
+	onPreparedUserMessage?: (message: UserMessage) => void;
 	/** Skip pre-send compaction checks for this prompt (internal use for maintenance flows). */
 	skipCompactionCheck?: boolean;
 }
@@ -7539,9 +7542,9 @@ export class AgentSession {
 				await this.sendCustomMessage(notice, { deliverAs: options.streamingBehavior });
 			}
 			if (options.streamingBehavior === "followUp") {
-				await this.#queueUserMessage(expandedText, options?.images, "followUp");
+				await this.#queueUserMessage(expandedText, options?.images, "followUp", options?.onPreparedUserMessage);
 			} else {
-				await this.#queueUserMessage(expandedText, options?.images, "steer");
+				await this.#queueUserMessage(expandedText, options?.images, "steer", options?.onPreparedUserMessage);
 			}
 			return true;
 		}
@@ -7568,6 +7571,7 @@ export class AgentSession {
 		const message = options?.synthetic
 			? { role: "developer" as const, content: userContent, attribution: promptAttribution, timestamp: Date.now() }
 			: { role: "user" as const, content: userContent, attribution: promptAttribution, timestamp: Date.now() };
+		if (message.role === "user") options?.onPreparedUserMessage?.(message);
 
 		const preludeMessages: AgentMessage[] = [];
 		if (eagerTodoPrelude) {
@@ -8021,6 +8025,7 @@ export class AgentSession {
 		text: string,
 		images: ImageContent[] | undefined,
 		mode: "steer" | "followUp",
+		onPreparedUserMessage?: (message: UserMessage) => void,
 	): Promise<void> {
 		// A queued user message (RPC/SDK/collab steer or follow-up, or a typed message
 		// while streaming) is a deliberate resume; re-enable advisor auto-resume that
@@ -8038,21 +8043,20 @@ export class AgentSession {
 			: undefined;
 		if (mode === "followUp") {
 			if (imageDescriptionNotice) this.agent.followUp(imageDescriptionNotice);
-			this.agent.followUp({
-				role: "user",
-				content,
-				attribution: "user",
-				timestamp: Date.now(),
-			});
+			const message: UserMessage = { role: "user", content, attribution: "user", timestamp: Date.now() };
+			onPreparedUserMessage?.(message);
+			this.agent.followUp(message);
 		} else {
 			if (imageDescriptionNotice) this.agent.steer(imageDescriptionNotice);
-			this.agent.steer({
+			const message: UserMessage = {
 				role: "user",
 				content,
 				steering: true,
 				attribution: "user",
 				timestamp: Date.now(),
-			});
+			};
+			onPreparedUserMessage?.(message);
+			this.agent.steer(message);
 		}
 		this.#scheduleIdleQueueDrain();
 	}

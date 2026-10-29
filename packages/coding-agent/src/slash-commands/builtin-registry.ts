@@ -661,9 +661,10 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	{
 		name: "discord",
 		description: "Opt in to this session from an authorized Discord channel",
-		inlineHint: "[live|stop|status] [configPath] [--allow-full-control]",
+		inlineHint: "[live|relay|stop|status] [configPath|channelId|off] [--allow-full-control]",
 		subcommands: [
 			{ name: "live", description: "Start the live Discord bridge with a private config file" },
+			{ name: "relay", description: "Relay local responses to an allowed channel, or turn relay off" },
 			{ name: "status", description: "Show live Discord bridge status" },
 			{ name: "stop", description: "Stop the live Discord bridge" },
 		],
@@ -682,8 +683,30 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				const approvalMode = String(ctx.session.settings.get("tools.approvalMode"));
 				const activeTools = ctx.session.getActiveToolNames();
 				ctx.showStatus(
-					`Discord live bridge is active with full host control acknowledged. Approval mode: ${approvalMode}; active tools: ${activeTools.length > 0 ? activeTools.join(", ") : "none"}.`,
+					`Discord live bridge is active with full host control acknowledged. Approval mode: ${approvalMode}; active tools: ${activeTools.length > 0 ? activeTools.join(", ") : "none"}. Local response relay: ${ctx.liveDiscordBridge.relayDestination ?? "off"}.`,
 				);
+				return;
+			}
+			if (verb === "relay") {
+				const bridge = ctx.liveDiscordBridge;
+				if (!bridge?.active) {
+					ctx.showError("Start the Discord live bridge before enabling relay");
+					return;
+				}
+				if (!rest || /\s/.test(rest)) {
+					ctx.showError("Usage: /discord relay <allowed-channel-id|off>");
+					return;
+				}
+				try {
+					bridge.setRelayDestination(rest === "off" ? undefined : rest);
+					ctx.showStatus(
+						rest === "off"
+							? "Discord local response relay is off"
+							: `Discord local responses will be sent to channel ${rest}; /discord relay off revokes relay.`,
+					);
+				} catch (error) {
+					ctx.showError(`Failed to configure Discord relay: ${errorMessage(error)}`);
+				}
 				return;
 			}
 			if (verb === "stop") {

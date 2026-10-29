@@ -21,6 +21,12 @@ export interface LiveDiscordBridgeDependencies {
 export interface LiveDiscordBridge {
 	readonly gateway: MessengerGateway;
 	readonly active: boolean;
+	readonly relayDestination: string | undefined;
+	setRelayDestination(channelId: string | undefined): void;
+	withLocalTurn<T>(
+		text: string,
+		submit: (onPreparedUserMessage: (message: UserMessage) => void) => Promise<T>,
+	): Promise<T>;
 	run(signal?: AbortSignal): Promise<void>;
 	close(): Promise<void>;
 }
@@ -143,6 +149,10 @@ export function createLiveDiscordBridge(
 	let currentTurn: TurnCapture | undefined;
 	let pollTimer: NodeJS.Timeout;
 	let bridgeRef: LiveDiscordBridge | undefined;
+	let relayDestination: string | undefined;
+	let relayLifetime = new AbortController();
+	let relaySend = Promise.resolve();
+	let localCapture: object | undefined;
 	let close: () => Promise<void>;
 	const reply: MessengerReply = async (message, signal) => {
 		if (closed || signal?.aborted) throw new Error(LIVE_UNAVAILABLE_MESSAGE);
@@ -156,6 +166,7 @@ export function createLiveDiscordBridge(
 			attachedSession.isBashRunning ||
 			attachedSession.isEvalRunning ||
 			attachedSession.hasPostPromptWork ||
+			localCapture ||
 			currentTurn
 		)
 			return LIVE_BUSY_MESSAGE;
@@ -245,6 +256,136 @@ export function createLiveDiscordBridge(
 			await adapter.send(message, text, sendSignal);
 		},
 	};
+	const setRelayDestination = (channelId: string | undefined): void => {
+		if (closed || !sameSession(ctx, attachedSession, sessionId, sessionFile))
+			throw new Error(LIVE_UNAVAILABLE_MESSAGE);
+		if (channelId !== undefined && !discordConfig.allowedChannelIds?.includes(channelId)) {
+			throw new Error("Discord relay destination must be an explicitly allowed channel ID");
+		}
+		relayLifetime.abort();
+		relayLifetime = new AbortController();
+		relayDestination = channelId;
+	};
+	const withLocalTurn = async <T>(
+		_text: string,
+		submit: (onPreparedUserMessage: (message: UserMessage) => void) => Promise<T>,
+	): Promise<T> => {
+		const destination = relayDestination;
+		if (!destination || closed || !sameSession(ctx, attachedSession, sessionId, sessionFile)) return submit(() => {});
+		if (
+			currentTurn ||
+			localCapture ||
+			attachedSession.isStreaming ||
+			attachedSession.isCompacting ||
+			attachedSession.isRetrying ||
+			attachedSession.isGeneratingHandoff ||
+			attachedSession.isBashRunning ||
+			attachedSession.isEvalRunning ||
+			attachedSession.hasPostPromptWork
+		) {
+			try {
+				ctx.showWarning("Discord relay skipped: another session operation is in progress.");
+			} catch {}
+			return submit(() => {});
+		}
+		const signal = AbortSignal.any([lifetime.signal, relayLifetime.signal]);
+		const capture = {};
+		localCapture = capture;
+		let promptSeen = false;
+		let preparedMessage: UserMessage | undefined;
+		let conflicted = false;
+		let response: AssistantMessage | undefined;
+		const unsubscribe = attachedSession.subscribe(event => {
+			if (event.type !== "message_end") return;
+			if (event.message.role === "user") {
+				if (!promptSeen && preparedMessage === event.message) promptSeen = true;
+				else conflicted = true;
+			} else if (isCompetingMessage(event.message)) {
+				conflicted = true;
+			} else if (promptSeen && event.message.role === "assistant") {
+				response = event.message;
+			}
+		});
+		let cleaned = false;
+		let submitting = true;
+		const cleanup = (): void => {
+			if (cleaned) return;
+			cleaned = true;
+			signal.removeEventListener("abort", cleanup);
+			unsubscribe();
+			if (!submitting && localCapture === capture) localCapture = undefined;
+		};
+		signal.addEventListener("abort", cleanup, { once: true });
+		if (signal.aborted) cleanup();
+		try {
+			const result = await submit(message => {
+				preparedMessage = message;
+			});
+			submitting = false;
+			if (cleaned && localCapture === capture) localCapture = undefined;
+			void (async () => {
+				try {
+					await awaitWithAbort(attachedSession.waitForIdle(), signal);
+					if (result === false || signal.aborted || !sameSession(ctx, attachedSession, sessionId, sessionFile))
+						return;
+					if (!promptSeen || conflicted || currentTurn) {
+						try {
+							ctx.showWarning(
+								"Discord relay skipped: could not safely identify this local turn or another turn intervened.",
+							);
+						} catch {}
+						return;
+					}
+					if (response?.stopReason !== "stop") {
+						try {
+							ctx.showWarning("Discord relay skipped: the local turn did not finish successfully.");
+						} catch {}
+						return;
+					}
+					const output = assistantMessageText(response);
+					cleanup();
+					if (!output.trim()) {
+						try {
+							ctx.showWarning("Discord relay skipped: the local response contains no text.");
+						} catch {}
+						return;
+					}
+					const message = {
+						platform: "discord" as const,
+						accountId: "",
+						channelId: destination,
+						senderId: "",
+						messageId: "",
+						text: "",
+						direct: false,
+						mentioned: false,
+					};
+					const send = relaySend.then(async () => {
+						if (signal.aborted || !sameSession(ctx, attachedSession, sessionId, sessionFile)) return;
+						await guardedAdapter.send(message, output, signal);
+					});
+					relaySend = send.catch(() => {});
+					await send;
+				} catch (error) {
+					if (!signal.aborted) {
+						try {
+							ctx.showWarning(
+								`Discord relay delivery failed: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						} catch {}
+					}
+				} finally {
+					cleanup();
+				}
+			})();
+			return result;
+		} catch (error) {
+			submitting = false;
+			cleanup();
+			if (localCapture === capture) localCapture = undefined;
+			throw error;
+		}
+	};
 	const gateway = gatewayFactory(scopedConfig, [guardedAdapter], reply);
 	close = async (): Promise<void> => {
 		if (closed) {
@@ -253,6 +394,8 @@ export function createLiveDiscordBridge(
 		}
 		closed = true;
 		clearInterval(pollTimer);
+		relayLifetime.abort();
+		relayDestination = undefined;
 		lifetime.abort();
 		const turn = currentTurn;
 		if (turn && sameSession(ctx, attachedSession, sessionId, sessionFile)) {
@@ -287,6 +430,9 @@ export function createLiveDiscordBridge(
 			})
 			.finally(() => {
 				closed = true;
+				relayLifetime.abort();
+				relayDestination = undefined;
+				lifetime.abort();
 				clearInterval(pollTimer);
 			});
 		return runPromise;
@@ -303,6 +449,11 @@ export function createLiveDiscordBridge(
 		get active() {
 			return !closed;
 		},
+		get relayDestination() {
+			return relayDestination;
+		},
+		setRelayDestination,
+		withLocalTurn,
 		run,
 		close,
 	};

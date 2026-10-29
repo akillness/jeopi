@@ -48,6 +48,9 @@ jeopi requires the **Message Content Intent** to read the text of incoming messa
 3. Under **Bot Permissions**, select the following minimal permissions (Administrator is **not** required):
    - **View Channels**
    - **Send Messages**
+   - **Create Public Threads**
+   - **Add Reactions**
+   - **Attach Files** (for exact response copies when whitespace requires a text attachment)
    - **Send Messages in Threads**
    - **Read Message History**
 4. Copy the generated URL at the bottom of the page.

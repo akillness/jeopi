@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { createDiscordAdapter, type DiscordClock } from "jeopi-cli/messenger/discord";
+import { createMessengerGateway, isMessengerMessageAllowed } from "jeopi-cli/messenger/gateway";
 import { createSlackAdapter } from "jeopi-cli/messenger/slack";
 import { createTelegramAdapter } from "jeopi-cli/messenger/telegram";
 import type {
@@ -339,7 +340,7 @@ describe("messenger outbound payloads", () => {
 					expect(String(body.message_thread_id)).toBe("789");
 					expect(body.parse_mode).toBeUndefined();
 				} else if (platform === "discord") {
-					expect(url.pathname).toEndWith("/channels/123/messages");
+					expect(url.pathname).toEndWith("/channels/789/messages");
 					expect(body.allowed_mentions).toMatchObject({ parse: [], replied_user: false });
 				} else {
 					expect(url.pathname).toBe("/api/chat.postMessage");
@@ -352,10 +353,253 @@ describe("messenger outbound payloads", () => {
 					});
 				}
 			}
-			if (platform === "discord")
-				expect(sent[0]?.body.message_reference).toMatchObject({ message_id: "456", fail_if_not_exists: false });
+			if (platform === "discord") expect(sent[0]?.body.message_reference).toBeUndefined();
 		});
 	}
+	it("Discord preserves whitespace and Unicode across messages after server-side trimming", async () => {
+		const cases = [
+			`${"a".repeat(1999)}\n${"b".repeat(1999)}\n${"c".repeat(14)}`,
+			`  시작\n${"한".repeat(1992)}\n\n${"🙂".repeat(1000)}\n  끝  `,
+			Array.from({ length: 11 }, (_, i) => `\n ${i}: ${"한🙂".repeat(665)} \n`).join(""),
+			`\t${" ".repeat(4001)}\n`,
+		];
+		for (const text of cases) {
+			const delivered: string[] = [];
+			interceptFetch(async request => {
+				if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
+					const form = await request.formData();
+					const file = form.get("files[0]");
+					expect(file).toBeInstanceOf(File);
+					expect(await (file as File).text()).toBe(text);
+					return Response.json({ id: "attachment" });
+				}
+				const content = String((await payload(request)).content);
+				expect(content.length).toBeLessThanOrEqual(2000);
+				expect(content.isWellFormed()).toBe(true);
+				delivered.push(content.trim());
+				return Response.json({ id: "sent" });
+			});
+			await createDiscordAdapter(config, env, transportDeps).send(message("discord"), text);
+			expect(delivered.length).toBeGreaterThan(1);
+			const readable = delivered.map(chunk => chunk.replace(/^\u200b|\u200b$/gu, ""));
+			expect(readable.join("")).toBe(text);
+		}
+	});
+	it("Discord attaches exact UTF-8 JSON when whitespace requires guards, including original zero-width spaces", async () => {
+		const value = { message: `가🙂\u200b${"x".repeat(2005)}\u200b` };
+		const text = ` \n${JSON.stringify(value)}\t `;
+		const chunks: string[] = [];
+		const attachments: Uint8Array[] = [];
+		interceptFetch(async request => {
+			expect(new URL(request.url).pathname).toEndWith("/channels/789/messages");
+			if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
+				const form = await request.formData();
+				const file = form.get("files[0]");
+				expect(file).toBeInstanceOf(File);
+				expect((file as File).name).toBe("response.txt");
+				const metadata = JSON.parse(String(form.get("payload_json")));
+				expect(metadata.allowed_mentions).toMatchObject({ parse: [], replied_user: false });
+				attachments.push(new Uint8Array(await (file as File).arrayBuffer()));
+			} else {
+				chunks.push(String((await payload(request)).content));
+			}
+			return Response.json({ id: "sent" });
+		});
+		await createDiscordAdapter(config, env, transportDeps).send(message("discord"), text);
+		expect(chunks.length).toBeGreaterThan(1);
+		for (const chunk of chunks) {
+			expect(chunk.length).toBeLessThanOrEqual(2000);
+			expect(chunk.isWellFormed()).toBe(true);
+		}
+		expect(attachments).toHaveLength(1);
+		expect(attachments[0]).toEqual(new TextEncoder().encode(text));
+		expect(JSON.parse(new TextDecoder().decode(attachments[0]))).toEqual(value);
+	});
+	it("Discord does not attach safely split text containing original zero-width spaces", async () => {
+		const text = `\u200b${"a".repeat(4000)}\u200b`;
+		const chunks: string[] = [];
+		interceptFetch(async request => {
+			expect(request.headers.get("content-type")).not.toContain("multipart/form-data");
+			chunks.push(String((await payload(request)).content));
+			return Response.json({ id: "sent" });
+		});
+		await createDiscordAdapter(config, env, transportDeps).send(message("discord"), text);
+		expect(chunks.join("")).toBe(text);
+		for (const chunk of chunks) expect(chunk.length).toBeLessThanOrEqual(2000);
+	});
+	it("Discord surfaces failure to deliver the exact attachment", async () => {
+		const text = ` ${"x".repeat(2001)} `;
+		let attachments = 0;
+		interceptFetch(request => {
+			if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
+				attachments++;
+				return new Response("failed", { status: 500 });
+			}
+			return Response.json({ id: "sent" });
+		});
+		await expect(createDiscordAdapter(config, env, transportDeps).send(message("discord"), text)).rejects.toThrow();
+		expect(attachments).toBe(1);
+	});
+	it("Discord retries a rate-limited exact attachment without changing its bytes", async () => {
+		const clock = controlledDiscordClock();
+		const text = ` \n${JSON.stringify({ value: `🙂\u200b${"x".repeat(2001)}` })}\t`;
+		const attempts: Uint8Array[] = [];
+		interceptFetch(async request => {
+			if (!request.headers.get("content-type")?.startsWith("multipart/form-data"))
+				return Response.json({ id: "sent" });
+			const file = (await request.formData()).get("files[0]");
+			if (!(file instanceof File)) throw new Error("Missing attachment");
+			attempts.push(new Uint8Array(await file.arrayBuffer()));
+			return attempts.length === 1
+				? Response.json({ retry_after: 2 }, { status: 429 })
+				: Response.json({ id: "sent" });
+		});
+		const delay = clock.nextDelay();
+		const sending = createDiscordAdapter(config, env, { ...transportDeps, clock: clock.clock }).send(
+			message("discord"),
+			text,
+		);
+		expect(await delay).toBe(2000);
+		clock.advance(2000);
+		await sending;
+		expect(attempts).toEqual([new TextEncoder().encode(text), new TextEncoder().encode(text)]);
+	});
+	it("Discord delivers an answer longer than eight messages in order without splitting Unicode", async () => {
+		const chunks: string[] = [];
+		interceptFetch(async request => {
+			const body = await payload(request);
+			chunks.push(String(body.content));
+			return Response.json({ id: `sent-${chunks.length}` });
+		});
+		const text = Array.from({ length: 10 }, (_, i) => `${i}:${"한".repeat(1996)}😀`).join("");
+		await createDiscordAdapter(config, env, transportDeps).send(message("discord"), text);
+		expect(chunks.length).toBeGreaterThan(8);
+		expect(chunks.join("")).toBe(text);
+		for (const chunk of chunks) {
+			expect(chunk.length).toBeLessThanOrEqual(2000);
+			expect(chunk.isWellFormed()).toBe(true);
+		}
+	});
+	it("retries only a rate-limited chunk and delivers the complete long answer in order", async () => {
+		const clock = controlledDiscordClock();
+		const attempts: string[] = [];
+		const delivered: string[] = [];
+		interceptFetch(async request => {
+			const content = String((await payload(request)).content);
+			attempts.push(content);
+			if (attempts.length === 4) return Response.json({ retry_after: 2 }, { status: 429 });
+			delivered.push(content);
+			return Response.json({ id: "sent" });
+		});
+		const text = Array.from({ length: 10 }, (_, i) => `${i}:${"한".repeat(1996)}😀`).join("");
+		const delay = clock.nextDelay();
+		const sending = createDiscordAdapter(config, env, { ...transportDeps, clock: clock.clock }).send(
+			message("discord"),
+			text,
+		);
+		expect(await delay).toBe(2000);
+		expect(delivered).toHaveLength(3);
+		clock.advance(2000);
+		await sending;
+		expect(delivered.length).toBeGreaterThan(8);
+		expect(delivered.join("")).toBe(text);
+		expect(attempts).toEqual([...delivered.slice(0, 3), delivered[3], ...delivered.slice(3)]);
+	});
+	it("cancels a rate-limited delivery before retrying or sending later chunks", async () => {
+		const clock = controlledDiscordClock();
+		const controller = new AbortController();
+		controllers.push(controller);
+		const attempts: string[] = [];
+		interceptFetch(async request => {
+			attempts.push(String((await payload(request)).content));
+			return Response.json({ retry_after: 2 }, { status: 429 });
+		});
+		const delay = clock.nextDelay();
+		const sending = createDiscordAdapter(config, env, { ...transportDeps, clock: clock.clock }).send(
+			message("discord"),
+			"a".repeat(5000),
+			controller.signal,
+		);
+		const result = sending.then(
+			() => undefined,
+			error => error,
+		);
+		expect(await delay).toBe(2000);
+		controller.abort();
+		clock.advance(2000);
+		expect(await result).toBeInstanceOf(Error);
+		expect(attempts).toEqual(["a".repeat(2000)]);
+	});
+});
+
+describe("Discord thread and progress behavior", () => {
+	it("creates a reply thread and delivers the answer there", async () => {
+		const posted: Array<{ path: string; content: unknown }> = [];
+		interceptFetch(async request => {
+			const path = new URL(request.url).pathname;
+			if (request.method === "GET") return Response.json({ id: "123", type: 0 });
+			const body = await payload(request);
+			if (path.endsWith("/threads")) return Response.json({ id: "thread-1" });
+			posted.push({ path, content: body.content });
+			return Response.json({ id: "reply" });
+		});
+		const adapter = createDiscordAdapter(config, env, transportDeps);
+		const incoming = message("discord");
+		delete incoming.threadId;
+		const destination = await adapter.prepare!(incoming);
+		await adapter.send(destination, "thread answer");
+		expect(posted).toEqual([{ path: "/api/v10/channels/thread-1/messages", content: "thread answer" }]);
+	});
+
+	it("does not run the agent or post publicly when thread creation is denied", async () => {
+		const requests: string[] = [];
+		interceptFetch(request => {
+			const path = decodeURIComponent(new URL(request.url).pathname);
+			requests.push(`${request.method} ${path}`);
+			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "GET") return Response.json({ type: 0 });
+			return Response.json({ error: "forbidden" }, { status: 403 });
+		});
+		const scoped = { ...config, allowedChannelIds: ["123"] };
+		const adapter = createDiscordAdapter(scoped, env, transportDeps);
+		let turns = 0;
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async () => {
+				turns++;
+				return "must not be posted";
+			},
+		);
+		const incoming = message("discord");
+		delete incoming.threadId;
+		await gateway.handle(incoming);
+		expect(turns).toBe(0);
+		expect(requests).toContain("POST /api/v10/channels/123/messages/456/threads");
+		expect(requests).toContain("PUT /api/v10/channels/123/messages/456/reactions/❌/@me");
+		expect(requests).not.toContain("POST /api/v10/channels/123/messages");
+	});
+
+	it("accepts real HTTP 204 responses for each progress transition", async () => {
+		const reactions: string[] = [];
+		interceptFetch(request => {
+			const path = decodeURIComponent(new URL(request.url).pathname);
+			reactions.push(`${request.method} ${path}`);
+			return new Response(null, { status: 204 });
+		});
+		const adapter = createDiscordAdapter(config, env, transportDeps);
+		await adapter.status!(message("discord"), "processing");
+		await adapter.status!(message("discord"), "success");
+		await adapter.status!(message("discord"), "failure");
+		const base = "/api/v10/channels/123/messages/456/reactions";
+		expect(reactions).toEqual([
+			`PUT ${base}/⏳/@me`,
+			`DELETE ${base}/⏳/@me`,
+			`PUT ${base}/✅/@me`,
+			`DELETE ${base}/⏳/@me`,
+			`PUT ${base}/❌/@me`,
+		]);
+	});
 });
 
 // Discord opcodes/payloads: docs.discord.com/developers/events/gateway-events.
@@ -369,6 +613,120 @@ describe("Discord Gateway transport", () => {
 		});
 		return socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
 	}
+
+	it.each([
+		["allowed parent", ["allowed-parent"]],
+		["allowed thread", ["existing-thread"]],
+		["unrestricted channels", undefined],
+	])("re-establishes sender-bound thread continuity after restart with %s", async (_name, allowedChannelIds) => {
+		interceptFetch(request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "GET" && path.endsWith("/channels/existing-thread"))
+				return Response.json({ id: "existing-thread", type: 11, parent_id: "allowed-parent" });
+			if (request.method === "POST" && path.endsWith("/messages")) return Response.json({ id: "reply" });
+			throw new Error("Unexpected Discord fixture endpoint");
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds };
+		const adapter = createDiscordAdapter(scoped, env, transportDeps);
+		const handled = mailbox<string>();
+		const turns: string[] = [];
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return "answer";
+			},
+		);
+		const { controller, run } = start(adapter, async incoming => {
+			await gateway.handle(incoming);
+			handled.push(incoming.messageId);
+		});
+		const socket = await fixture.opened;
+		let identify = await fixture.packets.next();
+		while (identify.op !== 2) identify = await fixture.packets.next();
+		socket.send(
+			JSON.stringify({
+				op: 0,
+				t: "READY",
+				s: 1,
+				d: { user: { id: "42" }, session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+			}),
+		);
+		const base = { channel_id: "existing-thread", guild_id: "guild", author: { id: "human" } };
+		const inputs = [
+			{ ...base, id: "before", content: "question", mentions: [] },
+			{ ...base, id: "mention", content: "<@42> question", mentions: [{ id: "42" }] },
+			{ ...base, id: "remention", content: "<@42> another", mentions: [{ id: "42" }] },
+			{ ...base, id: "followup", content: "continue", mentions: [] },
+			{ ...base, id: "intruder", author: { id: "intruder" }, content: "continue", mentions: [] },
+		];
+		for (const [index, data] of inputs.entries()) {
+			socket.send(JSON.stringify({ op: 0, t: "MESSAGE_CREATE", s: index + 2, d: data }));
+			expect(await handled.next()).toBe(data.id);
+		}
+		expect(turns).toEqual(["mention", "remention", "followup"]);
+		controller.abort();
+		await run;
+	});
+
+	it("authorizes explicit mentions in an existing thread only for its allowed parent and sender", async () => {
+		interceptFetch(request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (path.endsWith("/channels/existing-thread"))
+				return Response.json({ id: "existing-thread", type: 11, parent_id: "allowed-parent" });
+			throw new Error("Unexpected Discord fixture endpoint");
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const received: MessengerMessage[] = [];
+		const done = Promise.withResolvers<void>();
+		const scoped = { ...config, allowedChannelIds: ["allowed-parent"] };
+		const settings = { cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } };
+		const { controller, run } = start(createDiscordAdapter(scoped, env, transportDeps), async value => {
+			received.push(value);
+			if (value.messageId === "last") done.resolve();
+		});
+		const socket = await fixture.opened;
+		let identify = await fixture.packets.next();
+		while (identify.op !== 2) identify = await fixture.packets.next();
+		socket.send(
+			JSON.stringify({
+				op: 0,
+				t: "READY",
+				s: 1,
+				d: { user: { id: "42" }, session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+			}),
+		);
+		const base = {
+			channel_id: "existing-thread",
+			guild_id: "guild",
+			author: { id: "human" },
+			content: "<@42> question",
+			mentions: [{ id: "42" }],
+		};
+		for (const [index, data] of [
+			{ ...base, id: "allowed" },
+			{ ...base, id: "intruder", author: { id: "intruder" } },
+			{ ...base, id: "last", content: "question", mentions: [] },
+		].entries())
+			socket.send(JSON.stringify({ op: 0, t: "MESSAGE_CREATE", s: index + 2, d: data }));
+		await done.promise;
+		expect(
+			received.map(item => [item.messageId, item.parentChannelId, isMessengerMessageAllowed(item, settings)]),
+		).toEqual([
+			["allowed", "allowed-parent", true],
+			["intruder", undefined, false],
+			["last", undefined, false],
+		]);
+		controller.abort();
+		await run;
+	});
 
 	it("identifies for required message intents, filters nonhuman events, strips only own mentions and heartbeats latest sequence", async () => {
 		const fixture = discordNetwork();
@@ -583,6 +941,33 @@ describe("Slack Socket Mode transport", () => {
 		expect(String(error)).not.toContain(env.TEST_APP_TOKEN);
 		expect(requests).toBe(1);
 	});
+});
+
+it("Discord stops after a later chunk fails without dropping or reordering the delivered prefix", async () => {
+	const firstResponse = Promise.withResolvers<Response>();
+	const firstReceived = Promise.withResolvers<void>();
+	const chunks: string[] = [];
+	interceptFetch(async request => {
+		const body = await payload(request);
+		chunks.push(String(body.content));
+		if (chunks.length === 1) {
+			firstReceived.resolve();
+			return firstResponse.promise;
+		}
+		return Response.json({ error: "delivery denied" }, { status: 403 });
+	});
+	const text = `${"가".repeat(1999)}😀${"나".repeat(4000)}`;
+	const sending = createDiscordAdapter(config, env, transportDeps).send(message("discord"), text);
+	const result = sending.then(
+		() => undefined,
+		error => error,
+	);
+	await firstReceived.promise;
+	expect(chunks).toEqual(["가".repeat(1999)]);
+	firstResponse.resolve(Response.json({ id: "sent" }));
+	expect(await result).toBeInstanceOf(Error);
+	expect(chunks).toEqual(["가".repeat(1999), `😀${"나".repeat(1998)}`]);
+	expect(text.startsWith(chunks.join(""))).toBe(true);
 });
 
 describe("messenger send failures", () => {

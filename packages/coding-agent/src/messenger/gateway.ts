@@ -11,7 +11,7 @@ export function messengerConversationKey(message: MessengerMessage): string {
 	return JSON.stringify([
 		message.platform,
 		message.accountId,
-		message.channelId,
+		message.parentChannelId ?? message.channelId,
 		message.threadId ?? "",
 		message.senderId,
 	]);
@@ -28,8 +28,10 @@ export function isMessengerMessageAllowed(message: MessengerMessage, config: Mes
 			message.text.trim() &&
 			message.text.length <= MAX_MESSAGE_LENGTH &&
 			platform.allowedUserIds.includes(message.senderId) &&
-			(!platform.allowedChannelIds || platform.allowedChannelIds.includes(message.channelId)) &&
-			(message.direct || message.mentioned),
+			(!platform.allowedChannelIds ||
+				platform.allowedChannelIds.includes(message.channelId) ||
+				(Boolean(message.parentChannelId) && platform.allowedChannelIds.includes(message.parentChannelId!))) &&
+			(message.direct || message.mentioned || (message.platform === "discord" && Boolean(message.parentChannelId))),
 	);
 }
 
@@ -69,14 +71,26 @@ export function createMessengerGateway(
 			const pending = queue.shift();
 			if (!pending) break;
 			const { message, adapter, signal, resolve } = pending;
+			let failed = false;
+			const status = async (state: "processing" | "success" | "failure"): Promise<void> => {
+				try {
+					await adapter.status?.(message, state, signal);
+				} catch {
+					if (!signal.aborted) logger.warn("Messenger status update failed", { platform: message.platform });
+				}
+			};
 			try {
 				if (signal.aborted) continue;
+				await status("processing");
+				const destination = (await adapter.prepare?.(message, signal)) ?? message;
 				let text: string;
 				try {
-					text = await reply(message, signal);
+					text = await reply(destination, signal);
 				} catch (error) {
+					failed = true;
 					if (error instanceof MessengerFatalError) {
 						fatalError = error;
+						await status("failure");
 						lifetime.abort();
 						continue;
 					}
@@ -86,10 +100,14 @@ export function createMessengerGateway(
 				}
 				if (!signal.aborted && text.trim()) {
 					// A failed send may already have delivered a chunk: never retry the entire reply.
-					await adapter.send(message, text, signal);
+					await adapter.send(destination, text, signal);
 				}
+				if (!signal.aborted) await status(failed ? "failure" : "success");
 			} catch {
-				if (!signal.aborted) logger.warn("Messenger reply delivery failed", { platform: message.platform });
+				if (!signal.aborted) {
+					logger.warn("Messenger reply delivery failed", { platform: message.platform });
+					await status("failure");
+				}
 			} finally {
 				resolve();
 			}

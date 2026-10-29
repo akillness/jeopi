@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added explicitly opted-in local response relay with `/discord relay <allowed-channel-id|off>`; the destination resets when the bridge stops or the session changes.
+- Discord server-channel requests now use threads, report progress with reactions, and send long replies in ordered chunks with bounded rate-limit retries.
+
+### Changed
+
+- The interactive Discord bridge supports `/discord status` and uses the host session's tools and approval policy; see the [security guidance](./README.md#interactive-discord-bridge-and-local-relay).
+
 ## [16.6.11] - 2026-10-28
 
 ### Added

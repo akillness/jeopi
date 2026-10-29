@@ -71,8 +71,9 @@ jeopi messenger run --config /absolute/private/path/messenger.json
 
 1. Create an application with a bot user; store the **bot token**, not a user token or client secret, as `JEOPI_DISCORD_BOT_TOKEN`.
 2. In the Bot settings, enable the privileged **Message Content Intent** (obtain approval if Discord requires it for your app). The adapter requests `GUILD_MESSAGES`, `DIRECT_MESSAGES`, and `MESSAGE_CONTENT`; it does not request member or presence intents.
-3. Install/invite the bot into your server with the `bot` scope and **View Channels**, **Send Messages**, and **Read Message History** permissions in intended channels. For threads, also grant **Send Messages in Threads** and access to the thread. Administrator permission is not required.
-4. Enable Developer Mode in Discord's Advanced settings, then use **Copy User ID** for each authorized human and **Copy Channel ID** for each allowed channel/DM. A Discord thread is its own channel ID: allow that thread ID, not only its parent. Use exact numeric IDs as strings. Users must be able to DM the bot under their Discord privacy settings; guild messages must mention it.
+3. Install/invite the bot with the `bot` scope and **View Channels**, **Send Messages**, and **Read Message History**. For server-channel requests, also grant **Create Public Threads**, **Send Messages in Threads**, **Add Reactions**, and **Attach Files** in the intended channels; existing threads must be accessible to the bot. Attach Files is needed for exact copies when Discord would strip boundary whitespace. Administrator permission is not required.
+4. Enable Developer Mode in Discord's Advanced settings, then use **Copy User ID** for each authorized human and **Copy Channel ID** for each allowed channel/DM. Use exact numeric IDs as strings. Allowing a parent channel permits authorized requests in its threads; a thread ID can also be allowed directly. Users must be able to DM the bot under their Discord privacy settings.
+5. Mention the bot for a server-channel request: it creates a thread for that request. A request in an existing thread stays there; DMs remain direct. The original sender can continue without mentioning the bot in a bot-created thread while its in-memory mapping survives; restart or eviction loses that association. Explicitly mention the bot in other thread requests. Progress reactions are best-effort: ⏳ while processing, then ✅ or ❌.
 
 **Slack** ([Socket Mode setup](https://docs.slack.dev/apis/events-api/using-socket-mode/), [app settings](https://api.slack.com/apps)):
 
@@ -81,17 +82,39 @@ jeopi messenger run --config /absolute/private/path/messenger.json
 3. Enable Event Subscriptions and subscribe to bot events `message.im` and `app_mention`. Socket Mode needs no Request URL. Enable App Home's Messages tab and allow users to send messages to the app for DMs.
 4. Invite the bot to each allowed channel with `/invite @YourBot`. Copy each human's **Member ID** from their profile menu into `allowedUserIds`. Copy the channel ID from channel details, or the DM conversation ID from its Slack link (`D...`), into `allowedChannelIds`; use IDs, not display names. Channel requests must mention the bot and replies remain in their thread.
 
+### Interactive Discord bridge and local relay
+
+In an interactive jeopi session, start the bridge with the private configuration above (Discord must be configured):
+
+```text
+/discord live /absolute/private/path/messenger.json --allow-full-control
+/discord status
+/discord stop
+```
+
+**Full control is dangerous:** authorized Discord users prompt the active local session, with its active tools and approval policy, rather than the isolated headless gateway's `toolNames` restrictions. They may read or modify local data or execute commands according to that policy. This is not a sandbox; use a dedicated account and workspace, restrict both allowlists, and do not expose secrets. Other members who can view a destination can see messages posted there.
+
+Local responses are not relayed by default. To explicitly opt in, add the exact destination channel or thread ID to Discord's `allowedChannelIds`, then run:
+
+```text
+/discord relay <allowed-channel-id>
+/discord status
+/discord relay off
+```
+
+Relay sends the final assistant text from eligible successful, directly submitted idle local turns, including expanded prompts, not the local prompt. Queued, conflicting, aborted, or remote turns are not relayed; a turn may be skipped with a warning if it cannot be safely identified. Relay is disabled on stop, session change, or gateway exit and must be enabled again. Delivery can fail or be partial; it is not a durable outbox.
+
 ### Security boundaries and limits
 
-- Every configured platform requires a nonempty `allowedUserIds` list of exact IDs; wildcards are rejected. Optional `allowedChannelIds` further restricts channels **including DMs**; if supplied it must be nonempty. Omitting it permits that platform's allowed users in any reachable channel, still subject to the mention rule outside DMs.
-- Conversation history is isolated by platform, bot/workspace identity, channel, thread/topic where applicable, and **sender**, with `cwd` included in the persisted route. Discord threads use their channel ID. This is history separation, not access control over messages visible to other members of a group or over local files.
+- Every configured platform requires a nonempty `allowedUserIds` list of exact IDs; wildcards are rejected. Optional `allowedChannelIds` further restricts channels **including DMs**; if supplied it must be nonempty. Omitting it permits that platform's allowed users in any reachable channel, subject to the mention rules described above.
+- Headless gateway conversation history is isolated by platform, bot/workspace identity, channel, thread/topic where applicable, and **sender**, with `cwd` included in the persisted route. This is history separation, not access control over messages visible to other members of a group or over local files. The interactive bridge instead uses the active local session.
 - Keep configuration, workspace, and session storage under a dedicated private directory/account. Session directories/files are restricted to modes `0700`/`0600`; transcripts persist on disk and are not encrypted by this feature. Authorized prompts and enabled-tool results can reach your configured model provider and replies go back to the originating chat. Never use a sensitive personal workspace for remote prompts.
-- `toolNames` defaults to `[]`, so remote sessions have no tools. They do not load workspace context files, skills, rules, prompt templates, custom tools, extension discovery, MCP, or LSP. Slash-looking input, including `/new`, is ordinary user text; there is no remote session-management command surface.
-- **Dangerous opt-in:** the entire supported local-tool list is `"toolNames": ["read", "grep", "glob", "bash", "edit", "write"]`. Enable only the subset you deliberately authorize, never by default. Selected tools are allowed without per-call interactive approval: even read/search tools can disclose local data, and shell/write tools grant local execution/modification authority. `cwd` is not a filesystem jail. This is **not a sandbox**; isolate the OS account/container and its credentials before granting remote users tools.
+- For the headless gateway, `toolNames` defaults to `[]`, so remote sessions have no tools. They do not load workspace context files, skills, rules, prompt templates, custom tools, extension discovery, MCP, or LSP. Slash-looking input, including `/new`, is ordinary user text; there is no remote session-management command surface.
+- **Dangerous gateway opt-in:** the entire supported local-tool list is `"toolNames": ["read", "grep", "glob", "bash", "edit", "write"]`. Enable only the subset you deliberately authorize, never by default. Selected tools are allowed without per-call interactive approval: even read/search tools can disclose local data, and shell/write tools grant local execution/modification authority. `cwd` is not a filesystem jail. This is **not a sandbox**; isolate the OS account/container and its credentials before granting remote users tools.
 - Incoming text is limited to 32,000 UTF-16 units. Turns are serialized across platforms with at most 100 pending messages; excess messages are dropped. Deduplication and transport cursors are in memory, not a durable delivery queue. Reconnects retry transient failures, but fatal authentication/configuration errors stop the gateway; restart after correcting them. Do not assume exactly-once processing or recovery of every message after an outage.
-- Replies are split into provider-sized text chunks (Discord 2,000, Telegram 4,096, Slack 4,000 UTF-16 units). Slack spaces chunks; there is no general outbound rate-limit scheduler or durable retry/outbox. Failed sends are not automatically replayed and a multi-chunk reply can be partial. Check provider limits and connectivity before manually retrying a request that may already have run tools.
+- Replies are split into provider-sized text chunks (Discord 2,000, Telegram 4,096, Slack 4,000 UTF-16 units). Discord sends chunks sequentially and retries the current chunk on rate limits; Slack spaces chunks. Discord may add invisible U+200B characters around unavoidable whitespace boundaries to prevent Discord from stripping that whitespace. When it does, it also sends the original response as `response.txt` for exact UTF-8 copying; this requires attachment permission and is subject to Discord upload limits. There is no general outbound rate-limit scheduler or durable retry/outbox. Failed sends are not automatically replayed and a multi-chunk reply can be partial. Check provider limits and connectivity before manually retrying a request that may already have run tools.
 
-These are native jeopi transports, informed by Aside's bundled `~/.aside/u/0/skills/builtin/channel/SKILL.md` context/reply model and [Hermes Agent gateway architecture at `040b6df2c40b0f4f88f51e4c2062eafc4d7463c5`](https://github.com/NousResearch/hermes-agent/tree/040b6df2c40b0f4f88f51e4c2062eafc4d7463c5), **not full ports**. Aside's moderation/history/reaction tools and Hermes media support are not included. Attachments, image/audio/video processing, and media uploads are not supported by this text gateway.
+These are native jeopi transports, informed by Aside's bundled `~/.aside/u/0/skills/builtin/channel/SKILL.md` context/reply model and [Hermes Agent gateway architecture at `040b6df2c40b0f4f88f51e4c2062eafc4d7463c5`](https://github.com/NousResearch/hermes-agent/tree/040b6df2c40b0f4f88f51e4c2062eafc4d7463c5), **not full ports**. Aside's moderation/history/reaction tools and Hermes media support are not included. Incoming attachments, image/audio/video processing, and general media uploads are not supported; Discord's exact-text attachment is the exception described above.
 
 ### Detailed Guides and Agent Skill
 

@@ -903,7 +903,19 @@ export class InputController {
 				try {
 					await this.ctx.withLocalSubmission(
 						text,
-						() => this.ctx.session.prompt(text, { streamingBehavior: "steer", images }),
+						() => {
+							const submit = () => this.ctx.session.prompt(text, { streamingBehavior: "steer", images });
+							const bridge = this.ctx.liveDiscordBridge;
+							return bridge?.active
+								? bridge.withLocalTurn(text, onPreparedUserMessage =>
+										this.ctx.session.prompt(text, {
+											streamingBehavior: "steer",
+											images,
+											onPreparedUserMessage,
+										}),
+									)
+								: submit();
+						},
 						{
 							imageCount: images?.length ?? 0,
 						},
@@ -1229,9 +1241,19 @@ export class InputController {
 		// Not streaming — just submit normally
 		this.ctx.editor.clearDraft(text);
 		try {
-			await this.ctx.withLocalSubmission(text, () => this.ctx.session.prompt(text, { images }), {
-				imageCount: images?.length ?? 0,
-			});
+			await this.ctx.withLocalSubmission(
+				text,
+				() => {
+					const submit = () => this.ctx.session.prompt(text, { images });
+					const bridge = this.ctx.liveDiscordBridge;
+					return bridge?.active
+						? bridge.withLocalTurn(text, onPreparedUserMessage =>
+								this.ctx.session.prompt(text, { images, onPreparedUserMessage }),
+							)
+						: submit();
+				},
+				{ imageCount: images?.length ?? 0 },
+			);
 		} catch (error) {
 			restoreOnError(error);
 		}

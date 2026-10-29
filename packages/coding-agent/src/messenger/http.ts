@@ -65,6 +65,7 @@ export async function messengerFetchJson(
 			if (!response.bodyUsed) await response.body?.cancel();
 			throw new MessengerHttpError(response.status, retryAfterMs);
 		}
+		if (response.status === 204) return undefined;
 		return await response.json();
 	} catch (error) {
 		if (error instanceof MessengerHttpError) throw error;

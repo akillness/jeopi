@@ -8,6 +8,7 @@ export interface MessengerMessage {
 	messageId: string;
 	text: string;
 	threadId?: string;
+	parentChannelId?: string;
 	direct: boolean;
 	mentioned: boolean;
 }
@@ -16,6 +17,12 @@ export interface MessengerAdapter {
 	platform: MessengerPlatform;
 	start(onMessage: (message: MessengerMessage) => Promise<void>, signal: AbortSignal): Promise<void>;
 	send(message: MessengerMessage, text: string, signal?: AbortSignal): Promise<void>;
+	prepare?(message: MessengerMessage, signal?: AbortSignal): Promise<MessengerMessage>;
+	status?(
+		message: MessengerMessage,
+		status: "processing" | "success" | "failure",
+		signal?: AbortSignal,
+	): Promise<void>;
 }
 
 export interface MessengerPlatformConfig {
