@@ -972,12 +972,18 @@ export function buildMiseForceInstallArgs(expectedVersion: string): string[] {
 /**
  * Update via package manager.
  */
-async function updateViaBun(expectedVersion: string): Promise<void> {
+export async function updateViaBun(expectedVersion: string): Promise<void> {
 	console.log(chalk.dim("Updating via bun..."));
 	const args = buildBunInstallArgs(expectedVersion);
 	const result = await $`bun ${args}`.nothrow();
 	if (result.exitCode !== 0) {
-		throw new Error(`bun install failed with exit code ${result.exitCode}`);
+		const guidance =
+			/^error: empty dependency name \(in "dependencies"\)\r?\n\s+at .+[\\/]package\.json:\d+:\d+\s*$/m.test(
+				Bun.stripANSI(result.stderr.toString()),
+			)
+				? "\nBack up the package.json shown in Bun's diagnostic above, then remove only the empty-name entry from its dependencies and retry the update."
+				: "";
+		throw new Error(`bun install failed with exit code ${result.exitCode}${guidance}`);
 	}
 
 	await printVerification(expectedVersion);

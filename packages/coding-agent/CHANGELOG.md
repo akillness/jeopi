@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Explain how to recover when an empty dependency name in Bun's global manifest prevents updates.
+
 ## [16.6.12] - 2026-10-29
 
 ### Added

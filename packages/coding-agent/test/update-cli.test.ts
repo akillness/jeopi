@@ -125,6 +125,89 @@ describe("update-cli package manager commands", () => {
 	});
 });
 
+describe("update-cli bun install failures", () => {
+	async function runBunUpdate(dir: string, forceColor = false) {
+		const script = `import { updateViaBun } from ${JSON.stringify(new URL("../src/cli/update-cli.ts", import.meta.url).href)};
+			try { await updateViaBun("1.2.3"); } catch (error) { console.error("Update failed: " + error); process.exit(1); }`;
+		const proc = Bun.spawn([process.execPath, "-e", script], {
+			cwd: dir,
+			env: {
+				...process.env,
+				HOME: dir,
+				XDG_CONFIG_HOME: path.join(dir, "config"),
+				BUN_INSTALL_GLOBAL_DIR: path.join(dir, "global"),
+				BUN_INSTALL_BIN: path.join(dir, "bin"),
+				PATH: path.dirname(process.execPath),
+				FORCE_COLOR: forceColor ? "1" : "0",
+				NO_COLOR: forceColor ? "" : "1",
+			},
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stdout, stderr, exitCode] = await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+			proc.exited,
+		]);
+		return { output: stdout + stderr, exitCode };
+	}
+
+	it("preserves Bun's actual manifest diagnostic and recommends a narrow manual repair without changing it", async () => {
+		const dir = await fs.realpath(await makeTempDir());
+		const globalDir = path.join(dir, "global");
+		await fs.mkdir(globalDir);
+		const manifestPath = path.join(globalDir, "package.json");
+		const manifest = '{"dependencies":{"":".","keep":"1.0.0"}}\n';
+		await fs.writeFile(manifestPath, manifest);
+
+		const { output, exitCode } = await runBunUpdate(dir);
+		const plain = Bun.stripANSI(output);
+		expect(exitCode).toBe(1);
+		expect(plain).toContain('error: empty dependency name (in "dependencies")');
+		expect(plain).toContain(manifestPath);
+		expect(plain).toContain("bun install failed with exit code 1");
+		expect(plain.toLowerCase()).toContain("remove only the empty-name entry");
+		expect(await fs.readFile(manifestPath, "utf8")).toBe(manifest);
+		expect(plain.toLowerCase()).toContain("back up");
+	});
+
+	it("recognizes Bun's colored diagnostic without changing the manifest", async () => {
+		const dir = await fs.realpath(await makeTempDir());
+		const globalDir = path.join(dir, "global");
+		await fs.mkdir(globalDir);
+		const manifestPath = path.join(globalDir, "package.json");
+		const manifest = '{"dependencies":{"":"."}}\n';
+		await fs.writeFile(manifestPath, manifest);
+		const { output, exitCode } = await runBunUpdate(dir, true);
+		const plain = Bun.stripANSI(output);
+		expect(exitCode).toBe(1);
+		expect(output).toContain("\u001b[");
+		expect(plain).toContain('error: empty dependency name (in "dependencies")');
+		expect(plain).toContain(manifestPath);
+		expect(plain).toContain("bun install failed with exit code 1");
+		expect(plain.toLowerCase()).toContain("back up");
+		expect(plain.toLowerCase()).toContain("remove only the empty-name entry");
+		expect(await fs.readFile(manifestPath, "utf8")).toBe(manifest);
+	});
+
+	it("preserves unrelated Bun failures without suggesting manifest repair", async () => {
+		const dir = await makeTempDir();
+		const globalDir = path.join(dir, "global");
+		await fs.mkdir(globalDir);
+		const manifestPath = path.join(globalDir, "package.json");
+		const manifest = "{ invalid json";
+		await fs.writeFile(manifestPath, manifest);
+		const { output, exitCode } = await runBunUpdate(dir);
+		const plain = Bun.stripANSI(output);
+		expect(exitCode).toBe(1);
+		expect(plain).toContain("error:");
+		expect(plain).toContain("bun install failed with exit code 1");
+		expect(await fs.readFile(manifestPath, "utf8")).toBe(manifest);
+		expect(plain.toLowerCase()).not.toContain("back up");
+		expect(plain.toLowerCase()).not.toContain("empty dependency");
+	});
+});
+
 describe("update-cli bun install command", () => {
 	it("pins the official npm registry and bypasses the manifest cache so a stale mirror or snapshot cannot mask a freshly published version", () => {
 		// Regression: omp queries https://registry.npmjs.org/<pkg>/latest directly.
