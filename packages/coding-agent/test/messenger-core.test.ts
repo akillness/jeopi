@@ -295,6 +295,48 @@ describe("messenger dispatch", () => {
 		}
 	});
 
+	test("a stalled status update does not block replies or accumulate unbounded status work", async () => {
+		const release = deferred<void>();
+		const output: string[] = [];
+		let outstanding = 0;
+		let maximum = 0;
+		const adapter: MessengerAdapter = {
+			platform: "telegram",
+			async start() {},
+			async send(_incoming, text) {
+				output.push(text);
+			},
+			async status() {
+				outstanding++;
+				maximum = Math.max(maximum, outstanding);
+				try {
+					await release.promise;
+				} finally {
+					outstanding--;
+				}
+			},
+		};
+		const gateway = createMessengerGateway(config(), [adapter], async incoming => `Answer ${incoming.messageId}`);
+		const requests: Promise<void>[] = [];
+		const enqueueBatch = (start: number) => {
+			for (let index = start; index < start + 100; index++) {
+				requests.push(gateway.handle(message({ messageId: `status-${index}` })));
+			}
+		};
+		enqueueBatch(0);
+		try {
+			await new Promise<void>(resolve => setImmediate(resolve));
+			expect(output).toEqual(Array.from({ length: 100 }, (_, index) => `Answer status-${index}`));
+			enqueueBatch(100);
+			await new Promise<void>(resolve => setImmediate(resolve));
+			expect(output).toEqual(Array.from({ length: 200 }, (_, index) => `Answer status-${index}`));
+			expect(maximum).toBeLessThanOrEqual(100);
+		} finally {
+			release.resolve();
+			await Promise.all(requests);
+		}
+	});
+
 	test("a failed outbound send is not retried and cannot poison the next turn", async () => {
 		const output: string[] = [];
 		let failedAttempts = 0;

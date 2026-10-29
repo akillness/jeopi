@@ -5,6 +5,8 @@ import { MessengerFatalError } from "./types";
 const MAX_MESSAGE_LENGTH = 32_000;
 const MAX_QUEUED_MESSAGES = 100;
 const MAX_SEEN_MESSAGES = 10_000;
+const STATUS_TIMEOUT_MS = 1000;
+const MAX_STATUS_IN_FLIGHT = 8;
 
 /** Include the sender even in shared threads: remote histories must not cross users. */
 export function messengerConversationKey(message: MessengerMessage): string {
@@ -65,6 +67,7 @@ export function createMessengerGateway(
 	let workerActive = false;
 	let running = false;
 	let fatalError: MessengerFatalError | undefined;
+	let statusInFlight = 0;
 
 	async function drain(): Promise<void> {
 		while (queue.length > 0) {
@@ -72,16 +75,40 @@ export function createMessengerGateway(
 			if (!pending) break;
 			const { message, adapter, signal, resolve } = pending;
 			let failed = false;
-			const status = async (state: "processing" | "success" | "failure"): Promise<void> => {
-				try {
-					await adapter.status?.(message, state, signal);
-				} catch {
-					if (!signal.aborted) logger.warn("Messenger status update failed", { platform: message.platform });
-				}
+			let statusChain = Promise.resolve();
+			const status = (state: "processing" | "success" | "failure"): void => {
+				if (!adapter.status) return;
+				statusChain = statusChain.then(async () => {
+					if (signal.aborted || statusInFlight >= MAX_STATUS_IN_FLIGHT) return;
+					const timeout = new AbortController();
+					const statusSignal = AbortSignal.any([signal, timeout.signal]);
+					const stopped = Promise.withResolvers<void>();
+					const onAbort = (): void => stopped.resolve();
+					statusSignal.addEventListener("abort", onAbort, { once: true });
+					statusInFlight++;
+					const operation = Promise.resolve().then(() => adapter.status!(message, state, statusSignal));
+					void operation.then(
+						() => {
+							statusInFlight--;
+						},
+						() => {
+							statusInFlight--;
+						},
+					);
+					const timer = setTimeout(() => timeout.abort(), STATUS_TIMEOUT_MS);
+					try {
+						await Promise.race([operation, stopped.promise]);
+					} catch {
+						if (!signal.aborted) logger.warn("Messenger status update failed", { platform: message.platform });
+					} finally {
+						clearTimeout(timer);
+						statusSignal.removeEventListener("abort", onAbort);
+					}
+				});
 			};
 			try {
 				if (signal.aborted) continue;
-				await status("processing");
+				status("processing");
 				const destination = (await adapter.prepare?.(message, signal)) ?? message;
 				let text: string;
 				try {
@@ -90,7 +117,7 @@ export function createMessengerGateway(
 					failed = true;
 					if (error instanceof MessengerFatalError) {
 						fatalError = error;
-						await status("failure");
+						status("failure");
 						lifetime.abort();
 						continue;
 					}
@@ -102,11 +129,11 @@ export function createMessengerGateway(
 					// A failed send may already have delivered a chunk: never retry the entire reply.
 					await adapter.send(destination, text, signal);
 				}
-				if (!signal.aborted) await status(failed ? "failure" : "success");
+				if (!signal.aborted) status(failed ? "failure" : "success");
 			} catch {
 				if (!signal.aborted) {
 					logger.warn("Messenger reply delivery failed", { platform: message.platform });
-					await status("failure");
+					status("failure");
 				}
 			} finally {
 				resolve();

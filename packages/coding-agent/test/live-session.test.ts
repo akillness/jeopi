@@ -667,6 +667,117 @@ describe("live Discord bridge", () => {
 		expect(delivered).toEqual([]);
 	});
 
+	test.each(["transport failure", "external cancellation"] as const)(
+		"%s aborts the active remote turn without delivering its answer",
+		async cause => {
+			const fixture = sessionFixture();
+			const started = Promise.withResolvers<void>();
+			const release = Promise.withResolvers<void>();
+			const transportFailure = Promise.withResolvers<void>();
+			const controller = new AbortController();
+			const delivered: string[] = [];
+			fixture.setPromptImpl(async text => {
+				started.resolve();
+				await release.promise;
+				fixture.emitTurn(text);
+				return true;
+			});
+			fixture.setAbortImpl(async () => release.resolve());
+			const adapter: MessengerAdapter = {
+				platform: "discord",
+				async start(_onMessage, signal) {
+					if (signal.aborted) return;
+					await Promise.race([
+						transportFailure.promise.then(() => {
+							throw new Error("transport failed");
+						}),
+						new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true })),
+					]);
+				},
+				async send(_message, text) {
+					delivered.push(text);
+				},
+			};
+			const bridge = createLiveDiscordBridge(
+				fixture.ctx,
+				config(),
+				{
+					env: { TEST_DISCORD_TOKEN: "fixture-token" },
+					createAdapter: () => adapter,
+					pollIntervalMs: 60_000,
+				},
+				{ acknowledgeFullControl: true },
+			);
+			bridges.push(bridge);
+			const running = bridge.run(controller.signal).then(
+				() => "stopped",
+				() => "failed",
+			);
+			const pending = bridge.gateway.handle(message({ messageId: "interrupted" }));
+			try {
+				await started.promise;
+				if (cause === "transport failure") transportFailure.resolve();
+				else controller.abort();
+				expect(await running).toBe(cause === "transport failure" ? "failed" : "stopped");
+				await pending;
+				expect(fixture.aborts).toBe(1);
+				expect(delivered).toEqual([]);
+			} finally {
+				release.resolve();
+				controller.abort();
+				await bridge.close();
+			}
+		},
+	);
+
+	test.each(["transport failure", "external cancellation"] as const)("%s never aborts a local turn", async cause => {
+		const fixture = sessionFixture();
+		const transportFailure = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<boolean>();
+		const controller = new AbortController();
+		const adapter: MessengerAdapter = {
+			platform: "discord",
+			async start(_onMessage, signal) {
+				if (signal.aborted) return;
+				await Promise.race([
+					transportFailure.promise.then(() => {
+						throw new Error("transport failed");
+					}),
+					new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true })),
+				]);
+			},
+			async send() {},
+		};
+		const bridge = createLiveDiscordBridge(
+			fixture.ctx,
+			config(),
+			{
+				env: { TEST_DISCORD_TOKEN: "fixture-token" },
+				createAdapter: () => adapter,
+				pollIntervalMs: 60_000,
+			},
+			{ acknowledgeFullControl: true },
+		);
+		bridges.push(bridge);
+		const running = bridge.run(controller.signal).then(
+			() => "stopped",
+			() => "failed",
+		);
+		const local = bridge.withLocalTurn("local", () => release.promise);
+		try {
+			if (cause === "transport failure") transportFailure.resolve();
+			else controller.abort();
+			expect(await running).toBe(cause === "transport failure" ? "failed" : "stopped");
+			expect(fixture.aborts).toBe(0);
+			release.resolve(true);
+			expect(await local).toBe(true);
+		} finally {
+			release.resolve(true);
+			controller.abort();
+			await bridge.close();
+		}
+	});
+
 	test("rejects stale-session traffic, avoids cross-session leakage, and stops after close", async () => {
 		const fixture = sessionFixture();
 		const { bridge, delivered } = bridgeFixture(fixture);

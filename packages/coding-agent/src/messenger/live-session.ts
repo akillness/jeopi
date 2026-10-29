@@ -154,6 +154,7 @@ export function createLiveDiscordBridge(
 	let relaySend = Promise.resolve();
 	let localCapture: object | undefined;
 	let close: () => Promise<void>;
+	let revoke: () => Promise<void>;
 	const reply: MessengerReply = async (message, signal) => {
 		if (closed || signal?.aborted) throw new Error(LIVE_UNAVAILABLE_MESSAGE);
 		if (!sameSession(ctx, attachedSession, sessionId, sessionFile)) throw new Error(LIVE_UNAVAILABLE_MESSAGE);
@@ -184,6 +185,10 @@ export function createLiveDiscordBridge(
 			ctx.showStatus(`Discord request from ${message.senderId}`);
 		} catch {}
 		const operationSignal = signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal;
+		const onAbort = (): void => {
+			void revoke();
+		};
+		operationSignal.addEventListener("abort", onAbort, { once: true });
 		const unsubscribe = attachedSession.subscribe(event => {
 			if (event.type !== "message_end") return;
 			if (event.message.role === "user") {
@@ -233,6 +238,7 @@ export function createLiveDiscordBridge(
 			if (!response.trim()) throw new Error("Live Discord response unavailable");
 			return response;
 		} finally {
+			operationSignal.removeEventListener("abort", onAbort);
 			unsubscribe();
 			if (currentTurn === capture) currentTurn = undefined;
 		}
@@ -387,37 +393,48 @@ export function createLiveDiscordBridge(
 		}
 	};
 	const gateway = gatewayFactory(scopedConfig, [guardedAdapter], reply);
-	close = async (): Promise<void> => {
-		if (closed) {
-			await runPromise?.catch(() => {});
-			return;
-		}
+	let revokePromise: Promise<void> | undefined;
+	revoke = (): Promise<void> => {
+		if (revokePromise) return revokePromise;
+		const completion = Promise.withResolvers<void>();
+		revokePromise = completion.promise;
+		const turn = currentTurn;
 		closed = true;
 		clearInterval(pollTimer);
 		relayLifetime.abort();
 		relayDestination = undefined;
 		lifetime.abort();
-		const turn = currentTurn;
-		if (turn && sameSession(ctx, attachedSession, sessionId, sessionFile)) {
-			if (turn.dispatched && !turn.hostSettled && !turn.conflicted) {
-				try {
-					await awaitHostAbort(attachedSession.abort({ reason: "Discord live bridge revoked" }));
-				} catch {
+		void (async () => {
+			if (turn && sameSession(ctx, attachedSession, sessionId, sessionFile)) {
+				if (turn.dispatched && !turn.hostSettled && !turn.conflicted) {
 					try {
-						ctx.showWarning("Discord live turn could not be interrupted; press Esc to interrupt it.");
+						await awaitHostAbort(attachedSession.abort({ reason: "Discord live bridge revoked" }));
+					} catch {
+						try {
+							ctx.showWarning("Discord live turn could not be interrupted; press Esc to interrupt it.");
+						} catch {}
+					}
+				} else if (!turn.hostSettled) {
+					try {
+						ctx.showWarning("A Discord-initiated turn is still running; press Esc to interrupt.");
 					} catch {}
 				}
-			} else if (!turn.hostSettled) {
-				try {
-					ctx.showWarning("A Discord-initiated turn is still running; press Esc to interrupt.");
-				} catch {}
 			}
-		}
+		})().then(completion.resolve, completion.reject);
+		return revokePromise;
+	};
+	close = async (): Promise<void> => {
+		await revoke();
 		await runPromise?.catch(() => {});
 	};
 
 	const run = (signal?: AbortSignal): Promise<void> => {
 		if (runPromise) return runPromise;
+		const onAbort = (): void => {
+			void revoke();
+		};
+		signal?.addEventListener("abort", onAbort, { once: true });
+		if (signal?.aborted) onAbort();
 		const effectiveSignal = signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal;
 		runPromise = gateway
 			.run(effectiveSignal)
@@ -428,12 +445,9 @@ export function createLiveDiscordBridge(
 					ctx.showStatus("Discord live bridge detached: session changed");
 				}
 			})
-			.finally(() => {
-				closed = true;
-				relayLifetime.abort();
-				relayDestination = undefined;
-				lifetime.abort();
-				clearInterval(pollTimer);
+			.finally(async () => {
+				signal?.removeEventListener("abort", onAbort);
+				await revoke();
 			});
 		return runPromise;
 	};

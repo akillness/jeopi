@@ -553,9 +553,11 @@ describe("Discord thread and progress behavior", () => {
 
 	it("does not run the agent or post publicly when thread creation is denied", async () => {
 		const requests: string[] = [];
+		const failureReaction = Promise.withResolvers<void>();
 		interceptFetch(request => {
 			const path = decodeURIComponent(new URL(request.url).pathname);
 			requests.push(`${request.method} ${path}`);
+			if (path.endsWith("/reactions/❌/@me") && request.method === "PUT") failureReaction.resolve();
 			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
 			if (request.method === "GET") return Response.json({ type: 0 });
 			return Response.json({ error: "forbidden" }, { status: 403 });
@@ -574,11 +576,12 @@ describe("Discord thread and progress behavior", () => {
 		const incoming = message("discord");
 		delete incoming.threadId;
 		await gateway.handle(incoming);
+		await failureReaction.promise;
 		expect(turns).toBe(0);
 		expect(requests).toContain("POST /api/v10/channels/123/messages/456/threads");
 		expect(requests).toContain("PUT /api/v10/channels/123/messages/456/reactions/❌/@me");
 		expect(requests).not.toContain("POST /api/v10/channels/123/messages");
-	});
+	}, 2000);
 
 	it("accepts real HTTP 204 responses for each progress transition", async () => {
 		const reactions: string[] = [];
