@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `jeopi messenger run` gives every conversation (a Discord request thread or DM, a Telegram chat or topic, a Slack thread) its own jeopi session process, so separate conversations are answered concurrently; idle processes exit after 10 minutes and resume from their persisted session; see [session processes](../../docs/messenger.md#session-processes).
+
+### Changed
+
+- Messenger session processes start without the configured platform token environment variables (not OS isolation: enabled tools can still read files the OS user can). A session that fails to start now answers with an error and is retried on the next message instead of stopping the gateway.
+
 ## [16.6.13] - 2026-10-30
 
 ### Added

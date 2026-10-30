@@ -63,6 +63,9 @@ async function runSmokeTest(): Promise<void> {
 	const { smokeTestTtsWorker } = await import("./tts/tts-client");
 	const { smokeTestMnemopiEmbedWorker } = await import("./mnemopi/embed-client");
 	const { smokeTestJsEvalWorker } = await import("./eval/js/context-manager");
+	// Dynamic like its siblings: `session-pool` imports `jeopi-utils`, whose env module loads `.env` at import
+	// time and must not run before profile bootstrap (see the note above `showHelp`).
+	const { smokeTestMessengerSessionWorker } = await import("./messenger/session-pool");
 	await smokeTestSyncWorker();
 
 	const statsServer = await startServer(0);
@@ -82,6 +85,7 @@ async function runSmokeTest(): Promise<void> {
 	await smokeTestJsEvalWorker();
 	await smokeTestTtsWorker();
 	await smokeTestMnemopiEmbedWorker();
+	await smokeTestMessengerSessionWorker();
 	process.stdout.write("smoke-test: ok\n");
 }
 
@@ -92,6 +96,8 @@ const JS_EVAL_WORKER_ARG = "__omp_worker_js_eval";
 const STT_WORKER_ARG = "__omp_worker_stt";
 const TTS_WORKER_ARG = "__omp_worker_tts";
 const MNEMOPI_EMBED_WORKER_ARG = "__omp_worker_mnemopi_embed";
+/** Must match `MESSENGER_SESSION_WORKER_ARG` in `messenger/session-pool.ts`, which this entry cannot import early. */
+const MESSENGER_SESSION_WORKER_ARG = "__omp_worker_messenger_session";
 
 async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	if (arg === TINY_WORKER_ARG) {
@@ -150,6 +156,13 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	if (arg === MNEMOPI_EMBED_WORKER_ARG) {
 		const { startMnemopiEmbedWorker } = await import("./mnemopi/embed-worker");
 		await runIpcSubprocessWorker(startMnemopiEmbedWorker);
+		return true;
+	}
+	if (arg === MESSENGER_SESSION_WORKER_ARG) {
+		// Dynamic: the session process loads the agent SDK only after profile bootstrap and worker dispatch;
+		// a static import would load it into every CLI start and every other worker kind.
+		const { startMessengerSessionWorker } = await import("./messenger/session-worker");
+		await runIpcSubprocessWorker(startMessengerSessionWorker);
 		return true;
 	}
 	return false;

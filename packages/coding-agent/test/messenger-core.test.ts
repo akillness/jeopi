@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createMessengerActivityTracker } from "../src/messenger/activity";
 import { loadMessengerConfig, parseMessengerConfig, validateMessengerEnvironment } from "../src/messenger/config";
-import { createMessengerGateway, isMessengerMessageAllowed, messengerConversationKey } from "../src/messenger/gateway";
+import {
+	createMessengerGateway,
+	isMessengerMessageAllowed,
+	type MessengerGatewayOptions,
+	messengerConversationKey,
+} from "../src/messenger/gateway";
 import { MessengerHttpError, messengerFetchJson, splitMessengerText } from "../src/messenger/http";
 import type {
 	MessengerActivityReporter,
@@ -62,7 +67,14 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
-function harness(reply: MessengerReply, settings = config()) {
+/** Drain pending microtasks; `setImmediate` is not faked, so it runs even under fake timers. */
+function flush(): Promise<void> {
+	const { promise, resolve } = Promise.withResolvers<void>();
+	setImmediate(resolve);
+	return promise;
+}
+
+function harness(reply: MessengerReply, settings = config(), options: MessengerGatewayOptions = {}) {
 	const delivered: Array<{ message: MessengerMessage; text: string }> = [];
 	const adapters: MessengerAdapter[] = (["telegram", "discord", "slack"] as const).map(platform => ({
 		platform,
@@ -71,7 +83,7 @@ function harness(reply: MessengerReply, settings = config()) {
 			delivered.push({ message: incoming, text });
 		},
 	}));
-	return { gateway: createMessengerGateway(settings, adapters, reply), delivered };
+	return { gateway: createMessengerGateway(settings, adapters, reply, options), delivered };
 }
 
 describe("messenger configuration security", () => {
@@ -549,6 +561,232 @@ describe("messenger dispatch", () => {
 	});
 });
 
+/** Discord-shaped gateway: `prepare` opens a reply thread for a top-level server message. */
+function threadingGateway(
+	reply: MessengerReply,
+	options: {
+		concurrency: number;
+		threadFor: (incoming: MessengerMessage) => string;
+		send?: (incoming: MessengerMessage) => Promise<void>;
+	},
+) {
+	const settings = config();
+	settings.platforms = { discord: { ...settings.platforms.telegram! } };
+	const delivered: string[] = [];
+	const adapter: MessengerAdapter = {
+		platform: "discord",
+		async start() {},
+		async prepare(incoming) {
+			return incoming.threadId ? incoming : { ...incoming, threadId: options.threadFor(incoming) };
+		},
+		async send(incoming, text) {
+			await options.send?.(incoming);
+			delivered.push(text);
+		},
+	};
+	return {
+		gateway: createMessengerGateway(settings, [adapter], reply, { concurrency: options.concurrency }),
+		delivered,
+	};
+}
+
+function topLevel(messageId: string): MessengerMessage {
+	return message({ platform: "discord", direct: false, mentioned: true, messageId });
+}
+
+describe("messenger concurrent dispatch", () => {
+	test("runs different conversations at the same time when concurrency allows", async () => {
+		const release = deferred<void>();
+		const entered: string[] = [];
+		const { gateway, delivered } = harness(
+			async incoming => {
+				entered.push(incoming.messageId);
+				await release.promise;
+				return `Answer ${incoming.messageId}`;
+			},
+			config(),
+			{ concurrency: 2 },
+		);
+		const requests = [
+			gateway.handle(message({ messageId: "alice-turn" })),
+			gateway.handle(message({ senderId: "bob", messageId: "bob-turn" })),
+		];
+		await flush();
+		expect(entered).toEqual(["alice-turn", "bob-turn"]);
+		release.resolve();
+		await Promise.all(requests);
+		expect(delivered.map(item => item.text).sort()).toEqual(["Answer alice-turn", "Answer bob-turn"]);
+	});
+
+	test("never overlaps turns of one conversation and keeps their arrival order", async () => {
+		const release = deferred<void>();
+		const entered: string[] = [];
+		let active = 0;
+		let maximum = 0;
+		const { gateway, delivered } = harness(
+			async incoming => {
+				active++;
+				maximum = Math.max(maximum, active);
+				entered.push(incoming.messageId);
+				await release.promise;
+				active--;
+				return `Answer ${incoming.messageId}`;
+			},
+			config(),
+			{ concurrency: 4 },
+		);
+		const requests = ["first", "second", "third"].map(messageId => gateway.handle(message({ messageId })));
+		await flush();
+		expect(entered).toEqual(["first"]);
+		release.resolve();
+		await Promise.all(requests);
+		expect(maximum).toBe(1);
+		expect(entered).toEqual(["first", "second", "third"]);
+		expect(delivered.map(item => item.text)).toEqual(["Answer first", "Answer second", "Answer third"]);
+	});
+
+	test("a busy conversation's queued turn does not block a later conversation and still runs after it", async () => {
+		const releaseFirst = deferred<void>();
+		const entered: string[] = [];
+		const { gateway, delivered } = harness(
+			async incoming => {
+				entered.push(incoming.messageId);
+				if (incoming.messageId === "alice-1") await releaseFirst.promise;
+				return `Answer ${incoming.messageId}`;
+			},
+			config(),
+			{ concurrency: 2 },
+		);
+		const first = gateway.handle(message({ messageId: "alice-1" }));
+		const queued = gateway.handle(message({ messageId: "alice-2" }));
+		const other = gateway.handle(message({ senderId: "bob", messageId: "bob-1" }));
+		await flush();
+		expect(entered).toEqual(["alice-1", "bob-1"]);
+		expect(delivered.map(item => item.text)).toEqual(["Answer bob-1"]);
+		releaseFirst.resolve();
+		await Promise.all([first, queued, other]);
+		expect(entered).toEqual(["alice-1", "bob-1", "alice-2"]);
+		expect(delivered.map(item => item.text)).toEqual(["Answer bob-1", "Answer alice-1", "Answer alice-2"]);
+	});
+
+	test("two top-level server requests from one sender open their own threads and run at the same time", async () => {
+		const release = deferred<void>();
+		const entered: MessengerMessage[] = [];
+		const { gateway, delivered } = threadingGateway(
+			async incoming => {
+				entered.push(incoming);
+				await release.promise;
+				return `Answer ${incoming.messageId}`;
+			},
+			{ concurrency: 2, threadFor: incoming => `thread-${incoming.messageId}` },
+		);
+		const requests = [gateway.handle(topLevel("first")), gateway.handle(topLevel("second"))];
+		await flush();
+		expect(entered.map(item => [item.messageId, item.threadId])).toEqual([
+			["first", "thread-first"],
+			["second", "thread-second"],
+		]);
+		release.resolve();
+		await Promise.all(requests);
+		expect(delivered.sort()).toEqual(["Answer first", "Answer second"]);
+	});
+
+	test("a follow-up in a newly opened thread is answered only after the first reply is delivered", async () => {
+		const sending = deferred<void>();
+		const releaseSend = deferred<void>();
+		const replied: string[] = [];
+		const { gateway, delivered } = threadingGateway(
+			async incoming => {
+				replied.push(incoming.messageId);
+				return `Answer ${incoming.messageId}`;
+			},
+			{
+				concurrency: 4,
+				threadFor: () => "t1",
+				async send(incoming) {
+					if (incoming.messageId !== "first") return;
+					sending.resolve();
+					await releaseSend.promise;
+				},
+			},
+		);
+		const first = gateway.handle(topLevel("first"));
+		await sending.promise;
+		// Shaped as Discord delivers a message posted inside the thread the first request opened.
+		const followUp = gateway.handle(
+			message({
+				platform: "discord",
+				direct: false,
+				mentioned: false,
+				channelId: "t1",
+				threadId: "t1",
+				parentChannelId: "room",
+				messageId: "follow-up",
+			}),
+		);
+		await flush();
+		expect(replied).toEqual(["first"]);
+		releaseSend.resolve();
+		await Promise.all([first, followUp]);
+		expect(replied).toEqual(["first", "follow-up"]);
+		expect(delivered).toEqual(["Answer first", "Answer follow-up"]);
+	});
+
+	test("run shutdown aborts every in-flight turn and settles only after all of them finish, sending nothing", async () => {
+		const ready = deferred<(incoming: MessengerMessage) => Promise<void>>();
+		const stopped = deferred<void>();
+		const bothEntered = deferred<void>();
+		const finish = deferred<void>();
+		const controller = new AbortController();
+		const entered: string[] = [];
+		const aborted: string[] = [];
+		const output: string[] = [];
+		const adapter: MessengerAdapter = {
+			platform: "telegram",
+			async start(onMessage, signal) {
+				signal.addEventListener("abort", () => stopped.resolve(), { once: true });
+				ready.resolve(onMessage);
+				await stopped.promise;
+			},
+			async send(_incoming, text) {
+				output.push(text);
+			},
+		};
+		const gateway = createMessengerGateway(
+			config(),
+			[adapter],
+			async (incoming, signal) => {
+				entered.push(incoming.messageId);
+				if (entered.length === 2) bothEntered.resolve();
+				const abortedTurn = Promise.withResolvers<void>();
+				signal.addEventListener("abort", () => abortedTurn.resolve(), { once: true });
+				await abortedTurn.promise;
+				aborted.push(incoming.messageId);
+				await finish.promise;
+				return "Cancelled answer must not escape";
+			},
+			{ concurrency: 2 },
+		);
+		let settled = false;
+		const running = gateway.run(controller.signal).finally(() => {
+			settled = true;
+		});
+		const emit = await ready.promise;
+		const requests = [
+			emit(message({ messageId: "alice-turn" })),
+			emit(message({ senderId: "bob", messageId: "bob-turn" })),
+		];
+		await bothEntered.promise;
+		controller.abort();
+		await flush();
+		expect([...aborted].sort()).toEqual(["alice-turn", "bob-turn"]);
+		expect(settled).toBe(false);
+		finish.resolve();
+		await Promise.all([running, ...requests]);
+		expect(output).toEqual([]);
+	});
+});
+
 describe("messenger activity line", () => {
 	afterEach(() => {
 		vi.useRealTimers();
@@ -559,9 +797,6 @@ describe("messenger activity line", () => {
 		intervalMs?: number;
 		activity?: (text: string | undefined) => Promise<void> | void;
 	}
-
-	/** Drain pending microtasks; `setImmediate` is not faked, so it runs even under fake timers. */
-	const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 
 	function activityHarness(reply: MessengerReply, options: ActivityOptions = {}) {
 		const calls: Array<string | undefined> = [];

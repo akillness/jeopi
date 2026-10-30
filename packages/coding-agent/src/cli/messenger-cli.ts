@@ -1,6 +1,10 @@
 import { loadMessengerConfig, validateMessengerEnvironment } from "../messenger/config";
-import type { MessengerSessionBridge } from "../messenger/session";
-import { type MessengerAdapter, type MessengerConfig, MessengerFatalError } from "../messenger/types";
+import { createDiscordAdapter } from "../messenger/discord";
+import { createMessengerGateway } from "../messenger/gateway";
+import { createMessengerSessionPool, type MessengerSessionPool } from "../messenger/session-pool";
+import { createSlackAdapter } from "../messenger/slack";
+import { createTelegramAdapter } from "../messenger/telegram";
+import type { MessengerAdapter, MessengerConfig } from "../messenger/types";
 
 export const MESSENGER_ACTIONS = ["check", "run"] as const;
 export type MessengerAction = (typeof MESSENGER_ACTIONS)[number];
@@ -9,7 +13,13 @@ export interface MessengerCommandArgs {
 	flags: { config: string };
 }
 
-/** Check is deliberately local-only: it never imports the SDK or starts a transport. */
+/** Conversations answered at once; each conversation runs in its own session process. */
+const MESSENGER_CONCURRENCY = 4;
+
+/**
+ * Check is deliberately local-only: it never starts a transport. The gateway process itself never loads the
+ * SDK; every conversation's AgentSession lives in its own session process.
+ */
 export async function runMessengerCommand(cmd: MessengerCommandArgs): Promise<void> {
 	if (!MESSENGER_ACTIONS.includes(cmd.action)) throw new Error("Unknown messenger action");
 	if (!cmd.flags.config) throw new Error("Messenger requires --config <file>");
@@ -38,35 +48,23 @@ export async function runMessengerCommand(cmd: MessengerCommandArgs): Promise<vo
 	const stop = (): void => controller.abort();
 	process.once("SIGINT", stop);
 	process.once("SIGTERM", stop);
-	let bridge: MessengerSessionBridge | undefined;
+	let pool: MessengerSessionPool | undefined;
 	let failure: Error | undefined;
 	try {
-		const [{ createMessengerSessionBridge }, { createMessengerGateway }, telegram, discord, slack] =
-			await Promise.all([
-				import("../messenger/session"),
-				import("../messenger/gateway"),
-				import("../messenger/telegram"),
-				import("../messenger/discord"),
-				import("../messenger/slack"),
-			]);
-		if (controller.signal.aborted) return;
-		bridge = createMessengerSessionBridge(config);
+		pool = createMessengerSessionPool(config);
 		const adapters: MessengerAdapter[] = [];
-		if (config.platforms.telegram) adapters.push(telegram.createTelegramAdapter(config.platforms.telegram));
-		if (config.platforms.discord) adapters.push(discord.createDiscordAdapter(config.platforms.discord));
-		if (config.platforms.slack) adapters.push(slack.createSlackAdapter(config.platforms.slack));
-		const gateway = createMessengerGateway(config, adapters, bridge.reply);
+		if (config.platforms.telegram) adapters.push(createTelegramAdapter(config.platforms.telegram));
+		if (config.platforms.discord) adapters.push(createDiscordAdapter(config.platforms.discord));
+		if (config.platforms.slack) adapters.push(createSlackAdapter(config.platforms.slack));
+		const gateway = createMessengerGateway(config, adapters, pool.reply, { concurrency: MESSENGER_CONCURRENCY });
 		process.stdout.write(`Starting messenger: ${platforms.join(", ")}. Press Ctrl+C to stop.\n`);
 		await gateway.run(controller.signal);
-	} catch (error) {
-		failure =
-			error instanceof MessengerFatalError
-				? error
-				: new Error("Messenger gateway failed; check local configuration and provider access");
+	} catch {
+		failure = new Error("Messenger gateway failed; check local configuration and provider access");
 	} finally {
 		controller.abort();
 		try {
-			await bridge?.close();
+			await pool?.close();
 		} catch {
 			failure ??= new Error("Messenger session shutdown failed");
 		} finally {

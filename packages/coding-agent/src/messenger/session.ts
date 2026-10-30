@@ -12,7 +12,7 @@ import { USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
 import { createMessengerActivityTracker } from "./activity";
 import { messengerArtifactPrompt } from "./artifacts";
-import { messengerConversationKey } from "./gateway";
+import { messengerSessionRoute } from "./gateway";
 import { type MessengerConfig, MessengerFatalError, type MessengerReply } from "./types";
 
 const SUPPORTED_TOOLS: Record<string, true> = {
@@ -146,9 +146,7 @@ export function createMessengerSessionBridge(
 			if (!directory.isDirectory() || directory.isSymbolicLink())
 				throw new Error("Invalid messenger session directory");
 			await fs.chmod(sessionDir, 0o700);
-			const route = new Bun.CryptoHasher("sha256")
-				.update(JSON.stringify([cwd, messengerConversationKey(message)]))
-				.digest("hex");
+			const route = messengerSessionRoute(cwd, message);
 			// Deterministic filenames are the route map; missing files are created atomically by SessionManager.
 			const file = path.join(sessionDir, `${route}.jsonl`);
 			const stat = await fs.lstat(file).catch((error: unknown) => {

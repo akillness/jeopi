@@ -1,12 +1,12 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commands, resolveCliArgv } from "jeopi-cli/cli-commands";
-import * as sdk from "jeopi-cli/sdk";
 import { runMessengerCommand } from "../src/cli/messenger-cli";
+import * as sessionPool from "../src/messenger/session-pool";
 import * as telegram from "../src/messenger/telegram";
-import { type MessengerAdapter, MessengerFatalError } from "../src/messenger/types";
+import type { MessengerAdapter, MessengerReply } from "../src/messenger/types";
 
 const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
@@ -67,12 +67,22 @@ describe("messenger CLI local safety", () => {
 		expect(check.network).not.toHaveBeenCalled();
 	});
 
-	test.each(["SDK initialization", "transport"] as const)(
-		"preserves safe fatal diagnostics but redacts unknown %s errors",
+	test.each(["session", "transport"] as const)(
+		"a %s failure surfaces only generic errors and still closes the session pool once",
 		async failure => {
 			const check = await fixture();
-			const createSession = spyOn(sdk, "createAgentSession").mockRejectedValue(new Error("PRIVATE_PROVIDER_DETAIL"));
-			cleanups.push(() => createSession.mockRestore());
+			let errors = "";
+			const stderr = spyOn(process.stderr, "write").mockImplementation(chunk => {
+				errors += String(chunk);
+				return true;
+			});
+			cleanups.push(() => stderr.mockRestore());
+			const reply = mock<MessengerReply>(async () => {
+				throw new Error("PRIVATE_SESSION_DETAIL");
+			});
+			const close = mock(async () => {});
+			const createPool = spyOn(sessionPool, "createMessengerSessionPool").mockReturnValue({ reply, close });
+			cleanups.push(() => createPool.mockRestore());
 			const deliveries: string[] = [];
 			const adapter: MessengerAdapter = {
 				platform: "telegram",
@@ -98,18 +108,22 @@ describe("messenger CLI local safety", () => {
 			const error = await runMessengerCommand({ action: "run", flags: { config: check.config } }).catch(
 				(error: unknown) => error,
 			);
-			if (failure === "SDK initialization") {
-				expect(error).toBeInstanceOf(MessengerFatalError);
-				expect(String(error)).toContain("restart required");
-				expect(createSession).toHaveBeenCalledTimes(1);
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toBe(
+				"Messenger gateway failed; check local configuration and provider access",
+			);
+			if (failure === "session") {
+				expect(reply).toHaveBeenCalledTimes(1);
+				expect(deliveries).toEqual(["The request could not be completed. Please try again."]);
 			} else {
-				expect(error).toBeInstanceOf(Error);
-				expect(String(error)).toContain("Messenger gateway failed; check local configuration and provider access");
-				expect(createSession).not.toHaveBeenCalled();
+				expect(reply).not.toHaveBeenCalled();
+				expect(deliveries).toEqual([]);
 			}
-			expect(String(error)).not.toContain("PRIVATE_");
-			expect(check.output()).not.toContain("PRIVATE_");
-			expect(deliveries).toEqual([]);
+			expect(close).toHaveBeenCalledTimes(1);
+			for (const output of [String(error), check.output(), errors, ...deliveries]) {
+				expect(output).not.toContain("PRIVATE_");
+				expect(output).not.toContain("not-a-real-token-DO-NOT-PRINT");
+			}
 			expect(check.network).not.toHaveBeenCalled();
 		},
 	);

@@ -9,6 +9,7 @@ It is designed for personal assistants, team developer bots, and remote coding c
 - **Zero Inbound Ingress**: Discord Gateway and Slack Socket Mode connect via outbound WebSockets (`wss://`). Telegram connects via outbound HTTPS long polling. No public IP, webhook endpoints, cloud relays, or tunnel tools (like ngrok or cloudflared) are required.
 - **Strict Identity Allowlists**: Every platform requires an exact list of authorized human IDs (`allowedUserIds`). Wildcards and empty allowlists are strictly rejected at validation.
 - **Multi-Tenant History Isolation**: Session histories are isolated on disk by `[platform, accountId, channelId, threadId, senderId]` and `cwd`. Even in shared channels or group chats, two users never share or leak session transcripts.
+- **One Session Process per Conversation**: Every conversation runs in its own jeopi session process, so separate threads and DMs are answered concurrently and never share a live agent.
 - **Fail-Closed Tool Sandboxing**: By default, `toolNames` is empty (`[]`). Remote bots operate in pure conversational text mode without filesystem or command-execution authority. Tools (`read`, `grep`, `glob`, `bash`, `edit`, `write`) must be explicitly opted into.
 - **Local Dry-Run Verification**: `jeopi messenger check` verifies configuration syntax, schema, and environment variable presence completely offline without making external network calls.
 
@@ -28,17 +29,27 @@ It is designed for personal assistants, team developer bots, and remote coding c
  └──────────────────────┘                              └────────────┬────────────┘
                                                                     │
                                        ┌────────────────────────────┴────────────────────────────┐
-                                       │                  Session Bridge Router                  │
+                                       │                   Session Process Pool                  │
                                        │   Route Key: [platform, account, channel, thread, user] │
-                                       └────────────────────────────┬────────────────────────────┘
-                                                                    │
-                                       ┌────────────────────────────▼────────────────────────────┐
-                                       │                   Headless AgentSession                 │
-                                       │  - Isolated Settings & Working Tree (cwd)               │
-                                       │  - Constrained Active Tools (toolNames whitelist)       │
-                                       │  - Private Transcripts (0700 dir / 0600 files)          │
-                                       └─────────────────────────────────────────────────────────┘
+                                       │   One process per route · 4 answered at once · max 8    │
+                                       └───────────┬─────────────────┬─────────────────┬─────────┘
+                                                   │ IPC             │ IPC             │ IPC
+                                       ┌───────────▼───┐   ┌─────────▼─────┐   ┌───────▼───────┐
+                                       │ jeopi session │   │ jeopi session │   │ jeopi session │
+                                       │   process A   │   │   process B   │   │   process C   │
+                                       └───────────────┘   └───────────────┘   └───────────────┘
+                                         Each: headless AgentSession, isolated settings and cwd,
+                                         toolNames whitelist, private transcript (0700 dir / 0600 files)
 ```
+
+### Session Processes
+
+- **Start**: The first message of a conversation (for Discord: a new request thread or DM) starts a dedicated jeopi session process for it. Later messages in that conversation reuse it.
+- **Concurrency**: Up to 4 conversations are answered at the same time. Turns of one conversation always run in order, one at a time.
+- **Idle exit**: A session process idle for 10 minutes exits after flushing its transcript. The next message starts a fresh process that resumes the persisted session.
+- **Capacity**: At most 8 session processes are resident; a new conversation first retires the least recently used idle one, or waits for a free slot.
+- **Failure handling**: A failed, cancelled, or crashed turn answers with an error and retires its process; the next message resumes the conversation in a fresh process. A session that cannot start does not stop the gateway.
+- **Credentials**: Session processes inherit the gateway environment without the configured platform token variables. This is not OS isolation: enabled tools such as `bash` or `read` run as the same OS user and can still read token files and anything else that user can access. Each process uses the configured model/provider authentication.
 
 ### Transport Mechanisms
 
@@ -139,6 +150,7 @@ Configuration files should be placed in a secure, private directory outside publ
 3. **Session Transcript Separation**:
    - Session keys combine `[platform, accountId, channelId, threadId, senderId]` and the workspace `cwd`.
    - Separate human users always receive independent agent sessions, even when interacting within the same shared group or thread.
+   - Each conversation's agent runs in its own session process; processes never share in-memory state.
 4. **Dangerous Tool Permissions Warning**:
    - `toolNames` defaults to `[]` (no tools). Remote sessions do not load workspace context files, skills, custom tools, extensions, MCP, or LSP.
    - If `"bash"`, `"edit"`, or `"write"` are enabled, authorized remote users have execution and write authority on the local machine under the OS user running `jeopi`.

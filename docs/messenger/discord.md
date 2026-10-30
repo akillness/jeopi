@@ -8,6 +8,7 @@ This guide covers setting up, authorizing, and running a Discord bot with `jeopi
 - **Network Requirement**: Outbound WebSocket and HTTPS access to `discord.com`. No public IP, webhook endpoints, or open ports required.
 - **Message Types**: Direct Messages (DMs) and Server/Guild Channel messages where the bot is mentioned (`<@bot_id>`).
 - **Threads**: Supported directly. Discord treats threads as distinct channel Snowflake IDs.
+- **Sessions**: With `jeopi messenger run`, every new request thread and every DM gets its own jeopi session process, so separate conversations are answered concurrently; see [session processes](../messenger.md#session-processes). The `/discord live` bridge instead uses the active local session.
 - **Progress**: Best-effort reactions on the request (⏳ while processing, then ✅ or ❌) plus one in-place status line in the reply thread or DM, such as `⏳ Step 3 · Running the test suite`. The line is edited at most every 2 seconds and deleted once the request finishes; it is sent without notifications or link previews. It shows each tool call's short declared intent (or the tool name), not raw tool arguments or output, but an intent can still name files or tasks; anyone who can view that thread or DM can see it.
 
 ---
