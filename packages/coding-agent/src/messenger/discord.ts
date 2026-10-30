@@ -6,8 +6,8 @@ import type { MessengerAdapter, MessengerMessage, MessengerPlatformConfig, Messe
 // Protocol: https://docs.discord.com/developers/events/gateway
 // Close codes: https://docs.discord.com/developers/topics/opcodes-and-status-codes
 // REST messages: https://docs.discord.com/developers/resources/message#create-message
-const API = "https://discord.com/api/v10";
-const INTENTS = (1 << 9) | (1 << 12) | (1 << 15);
+export const DISCORD_API = "https://discord.com/api/v10";
+export const DISCORD_GATEWAY_INTENTS = (1 << 9) | (1 << 12) | (1 << 15);
 const PERMANENT_CLOSE_CODES = new Set([4004, 4010, 4011, 4012, 4013, 4014]);
 
 // Discord strips boundary whitespace. Invisible guards preserve it in message content;
@@ -82,7 +82,7 @@ interface DiscordSession {
 	sequence: number | null;
 }
 
-function gatewayUrl(value: unknown): string {
+export function discordGatewayUrl(value: unknown): string {
 	let url: URL;
 	try {
 		if (typeof value !== "string") throw new Error();
@@ -267,7 +267,7 @@ function connectGateway(
 			} else {
 				send(2, {
 					token,
-					intents: INTENTS,
+					intents: DISCORD_GATEWAY_INTENTS,
 					properties: { os: process.platform, browser: "jeopi", device: "jeopi" },
 				});
 			}
@@ -287,7 +287,7 @@ function connectGateway(
 					return;
 				}
 				try {
-					session.url = gatewayUrl(packet.d.resume_gateway_url);
+					session.url = discordGatewayUrl(packet.d.resume_gateway_url);
 				} catch {
 					finish(new DiscordConfigurationError("Discord returned an untrusted resume Gateway URL"));
 					return;
@@ -351,7 +351,12 @@ export function createDiscordAdapter(
 				let retryDelay = delay;
 				try {
 					if (!accountId) {
-						const user = await messengerFetchJson(`${API}/users/@me`, { headers: headers() }, signal, deps.fetch);
+						const user = await messengerFetchJson(
+							`${DISCORD_API}/users/@me`,
+							{ headers: headers() },
+							signal,
+							deps.fetch,
+						);
 						if (signal.aborted) return;
 						if (!isRecord(user) || typeof user.id !== "string" || !user.id || user.bot !== true) {
 							throw new DiscordConfigurationError("Discord credentials must identify a bot account");
@@ -360,7 +365,7 @@ export function createDiscordAdapter(
 					}
 					if (!initialUrl) {
 						const gateway = await messengerFetchJson(
-							`${API}/gateway/bot`,
+							`${DISCORD_API}/gateway/bot`,
 							{ headers: headers() },
 							signal,
 							deps.fetch,
@@ -370,7 +375,7 @@ export function createDiscordAdapter(
 						if (isRecord(gateway.session_start_limit) && gateway.session_start_limit.remaining === 0) {
 							throw new DiscordConfigurationError("Discord Gateway session start limit is exhausted");
 						}
-						initialUrl = gatewayUrl(gateway.url);
+						initialUrl = discordGatewayUrl(gateway.url);
 					}
 					const deliver = async (message: MessengerMessage): Promise<void> => {
 						const thread = createdThreads.get(message.channelId);
@@ -389,7 +394,7 @@ export function createDiscordAdapter(
 						) {
 							try {
 								const channel = await messengerFetchJson(
-									`${API}/channels/${encodeURIComponent(message.channelId)}`,
+									`${DISCORD_API}/channels/${encodeURIComponent(message.channelId)}`,
 									{ headers: headers() },
 									signal,
 									deps.fetch,
@@ -459,7 +464,7 @@ export function createDiscordAdapter(
 				return message;
 			}
 			const channel = await messengerFetchJson(
-				`${API}/channels/${encodeURIComponent(message.channelId)}`,
+				`${DISCORD_API}/channels/${encodeURIComponent(message.channelId)}`,
 				{ headers: headers() },
 				signal,
 				deps.fetch,
@@ -474,7 +479,7 @@ export function createDiscordAdapter(
 			}
 			if (channel.type !== 0 && channel.type !== 5) throw new Error("Discord channel cannot host a reply thread");
 			const thread = await messengerFetchJson(
-				`${API}/channels/${encodeURIComponent(message.channelId)}/messages/${encodeURIComponent(message.messageId)}/threads`,
+				`${DISCORD_API}/channels/${encodeURIComponent(message.channelId)}/messages/${encodeURIComponent(message.messageId)}/threads`,
 				{ method: "POST", headers: headers(), body: JSON.stringify({ name: `Request ${message.messageId}` }) },
 				signal,
 				deps.fetch,
@@ -485,7 +490,7 @@ export function createDiscordAdapter(
 			return { ...message, threadId: thread.id };
 		},
 		async status(message, state, signal) {
-			const base = `${API}/channels/${encodeURIComponent(message.channelId)}/messages/${encodeURIComponent(message.messageId)}/reactions`;
+			const base = `${DISCORD_API}/channels/${encodeURIComponent(message.channelId)}/messages/${encodeURIComponent(message.messageId)}/reactions`;
 			const processing = encodeURIComponent("⏳");
 			if (state !== "processing") {
 				try {
@@ -510,7 +515,7 @@ export function createDiscordAdapter(
 		async activity(message, text, signal) {
 			const channelId = message.threadId ?? message.channelId;
 			const key = JSON.stringify([channelId, message.messageId]);
-			const messages = `${API}/channels/${encodeURIComponent(channelId)}/messages`;
+			const messages = `${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages`;
 			const statusId = activityMessages.get(key);
 			if (text === undefined) {
 				if (!statusId) return;
@@ -571,7 +576,7 @@ export function createDiscordAdapter(
 					files = result.files;
 				} catch {
 					await messengerFetchJson(
-						`${API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
+						`${DISCORD_API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
 						{
 							method: "POST",
 							headers: headers(),
@@ -614,7 +619,7 @@ export function createDiscordAdapter(
 							});
 						}
 						await messengerFetchJson(
-							`${API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
+							`${DISCORD_API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
 							{
 								method: "POST",
 								headers: requestHeaders,
@@ -655,7 +660,7 @@ export function createDiscordAdapter(
 				for (let attempt = 0; ; attempt++) {
 					try {
 						await messengerFetchJson(
-							`${API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
+							`${DISCORD_API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
 							{ method: "POST", headers: requestHeaders, body: form },
 							signal,
 							deps.fetch,
@@ -668,7 +673,7 @@ export function createDiscordAdapter(
 						}
 						if (!signal?.aborted) {
 							await messengerFetchJson(
-								`${API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
+								`${DISCORD_API}/channels/${encodeURIComponent(message.threadId ?? message.channelId)}/messages`,
 								{
 									method: "POST",
 									headers: headers(),

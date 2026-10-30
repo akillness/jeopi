@@ -12,6 +12,7 @@ Operate and manage `jeopi messenger` — a headless, bidirectional text gateway 
 - User wants to interact with jeopi remotely via Discord, Telegram, or Slack.
 - Creating or editing `messenger.json` configuration files.
 - Setting up bot credentials (`JEOPI_DISCORD_BOT_TOKEN`, `JEOPI_TELEGRAM_BOT_TOKEN`, `JEOPI_SLACK_BOT_TOKEN`, `JEOPI_SLACK_APP_TOKEN`).
+- Setting up a Discord bot end to end (`jeopi messenger setup --config <file> [--service]`).
 - Running dry-run validation (`jeopi messenger check --config <file>`).
 - Running the live messenger gateway daemon (`jeopi messenger run --config <file>`).
 - Troubleshooting bot connection failures, missing message intents, permission errors, or allowlist drops.
@@ -31,11 +32,11 @@ Before generating configurations, identify which chat platforms the user wants t
    - Active webhooks must be cleared using `deleteWebhook` before starting long polling.
    - Privacy Mode on BotFather determines if plain `@mentions` work or addressed commands (`/ask@YourBot`) are needed.
 
-2. **Discord**:
-   - Requires Bot Token from the [Discord Developer Portal](https://discord.com/developers/applications) (`JEOPI_DISCORD_BOT_TOKEN`).
-   - **Critical Requirement**: **Message Content Intent** must be enabled under Bot -> Privileged Gateway Intents (or gateway crashes with close code `4014`).
-   - Bot invite needs `bot` scope with permissions: View Channels, Send Messages, Read Message History, Send Messages in Threads.
-   - Requires Developer Mode enabled in Discord to copy exact Snowflake IDs for `allowedUserIds` and `allowedChannelIds`.
+2. **Discord** — prefer the guided command over hand-written configuration:
+   - The user creates the application and bot in the [Discord Developer Portal](https://discord.com/developers/applications) and copies the Bot Token (**Bot → Reset Token**). Ask them to export it as `JEOPI_DISCORD_BOT_TOKEN` in their own shell or paste it into the hidden prompt; never ask for it in chat.
+   - Then run `jeopi messenger setup --config <private dir>/messenger.json --service` in their terminal. It verifies the token, enables **Message Content Intent** through the API (verified or 100+ server apps must use the portal toggle; the error names the link), allowlists the application owner, prints the invite link and waits for the join, picks a request channel the bot can work in (`--channel <id>` when several qualify), allows the owner's DM, writes `messenger.json`, `discord-token` (0600) and `run-discord.sh`, confirms a Gateway session, installs a launchd/systemd user service, and sends a test DM.
+   - Pass `--tools` only when the user explicitly wants remote tool access (default none); `--artifacts` enables file exchange; `--no-dm` skips the DM. Rerunning repairs the same profile.
+   - Manual path: invite with `bot` scope and View Channels, Send Messages, Create Public Threads, Add Reactions, Attach Files, Send Messages in Threads, Read Message History; copy Snowflake IDs with Developer Mode. **Message Content Intent** must be on (or the gateway closes with `4014`).
    - Mentions are required in server channels (`<@bot_id>`); DMs do not require mentions.
 
 3. **Slack**:
@@ -77,6 +78,8 @@ Construct a private `messenger.json` outside the public repository tree:
   }
 }
 ```
+
+For Discord, `jeopi messenger setup` writes this file; edit it by hand only for other platforms or settings the command does not cover.
 
 #### Security Boundaries for Agents:
 - **Never embed raw tokens in `messenger.json`**: Store only the *name* of the environment variable (e.g. `"tokenEnv": "JEOPI_DISCORD_BOT_TOKEN"`).

@@ -538,7 +538,7 @@ Full reference: [docs/sdk.md](docs/sdk.md).
 
 ### Messenger — chat via Telegram, Discord, and Slack
 
-`jeopi messenger check|run --config <file>`
+`jeopi messenger setup|check|run --config <file>`
 
 Connect authorized Discord, Telegram, and Slack bots directly to headless agent sessions for bidirectional **text** conversations. Discord Gateway and Slack Socket Mode connect over outbound WebSockets; Telegram connects via outbound HTTPS long polling. No public IP, webhook endpoints, cloud relays, or tunnel tools (like ngrok) are required.
 
@@ -572,6 +572,8 @@ Connect authorized Discord, Telegram, and Slack bots directly to headless agent 
 jeopi messenger check --config /path/to/messenger.json
 jeopi messenger run --config /path/to/messenger.json
 ```
+
+For Discord, `jeopi messenger setup --config <file> --service` does the rest after you create the bot: it enables the Message Content Intent, allowlists the application owner, invites the bot, picks a channel, verifies the Gateway, and installs a login service; see the [Discord quick setup](docs/messenger/discord.md#quick-setup-jeopi-messenger-setup).
 
 - **Telegram**: Outbound HTTPS long polling via BotFather token. Supports forum topics in supergroups (`message_thread_id`).
 - **Discord**: Outbound WebSocket Gateway v10. Requires privileged **Message Content Intent**; supports threads and channel mentions.

@@ -19,6 +19,8 @@ Package-specific references:
 
 ### Configuration and CLI
 
+For Discord, create the application and bot in the Developer Portal, then run `jeopi messenger setup --config /absolute/private/path/messenger.json --service`. It verifies the token, enables the Message Content Intent, allowlists the application owner, prints the invite link, picks a request channel, writes this configuration with a token file and run script, confirms a Gateway session, and installs a login service; see the [Discord quick setup](../../docs/messenger/discord.md#quick-setup-jeopi-messenger-setup). The manual configuration below covers every platform.
+
 Save this as `messenger.json` in a private directory outside your repository. Replace every placeholder ID, and remove platform blocks you do not use (at least one is required):
 
 ```json

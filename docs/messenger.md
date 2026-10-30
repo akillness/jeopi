@@ -162,6 +162,10 @@ Configuration files should be placed in a secure, private directory outside publ
 
 ## Operating the Gateway
 
+### 0. Guided Discord setup (`setup`)
+
+`jeopi messenger setup --config <file> [--service]` turns a Discord bot token into a verified profile: it enables the Message Content Intent, allowlists the application owner, prints the invite link, picks a request channel the bot can work in, writes the configuration and a run script, confirms a Gateway session, and optionally installs a login service. See the [Discord quick setup](./messenger/discord.md#quick-setup-jeopi-messenger-setup). It is the only `messenger` action that contacts Discord without running the gateway.
+
 ### 1. Offline Dry-Run Validation (`check`)
 
 Validates file syntax, allowlists, path formats, and ensures referenced environment variables exist and are non-empty:

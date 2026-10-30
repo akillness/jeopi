@@ -13,6 +13,33 @@ This guide covers setting up, authorizing, and running a Discord bot with `jeopi
 
 ---
 
+## Quick setup (`jeopi messenger setup`)
+
+Create the application and bot in the [Developer Portal](https://discord.com/developers/applications) (**New Application**, then **Bot → Reset Token**). Everything after that is one command:
+
+```sh
+jeopi messenger setup --config ~/.jeopi/discord/messenger.json --service
+```
+
+The command:
+
+1. Reads the bot token from `JEOPI_DISCORD_BOT_TOKEN`, then from `discord-token` next to the configuration, then from a hidden terminal prompt. Discord must accept it as a **bot** token before it is saved to `discord-token` (mode `0600`).
+2. Enables the **Message Content Intent** through the API when it is off. Verified applications and apps in 100 or more servers cannot do that with a bot token; setup then stops with the portal link.
+3. Allows the application owner (or the accepted members of the owning team) as `allowedUserIds`; `--user <id>` (repeatable) overrides this.
+4. Prints an invite link that requests exactly the permissions from Step 3. In a terminal it waits up to 5 minutes for the bot to join; without one it exits with the link, and a rerun continues from the saved token.
+5. Picks the request channel: the only text or announcement channel where the bot has every required permission, a numbered choice when several do, or `--channel <id>` (repeatable; threads are checked against their parent). An explicitly named channel that lacks a permission is refused with the missing permission named.
+6. Opens the owner's DM channel and allows it too (`--no-dm` skips this).
+7. Writes `messenger.json` (`0600`), `workspace/`, `sessions/`, and `run-discord.sh` (`0700`). The script reads `discord-token` at launch and refuses a token file other users can read, so the token never appears in the configuration, the script, or a service definition.
+8. Identifies with the Discord Gateway using the gateway's intents and fails on a rejected token (`4004`) or refused intents (`4014`) before reporting success.
+9. With `--service`, installs and starts a login service (launchd on macOS, `systemd --user` on Linux) that restarts the gateway after a crash and logs to `gateway.log` next to the configuration. Without it, start the gateway with `run-discord.sh`.
+10. Sends the owner a test DM.
+
+Remote chats get no tools unless you pass `--tools read,grep,...`; `--artifacts` enables the [file workflow](#discord-file-workflow) in `./artifacts`. Rerunning repairs the same profile: other platforms, `cwd`, `toolNames`, and saved allowlists are kept unless a flag replaces them, and `--service` replaces the existing job. Stop any other gateway for the same bot before using `--service`; two gateways answer every message twice.
+
+Steps 1–6 below are the manual equivalent.
+
+---
+
 ## Step 1: Create a Discord Application and Bot
 
 1. Navigate to the [Discord Developer Portal](https://discord.com/developers/applications).
