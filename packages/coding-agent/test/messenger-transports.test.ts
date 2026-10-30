@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { createDiscordAdapter, type DiscordClock } from "jeopi-cli/messenger/discord";
 import { createMessengerGateway, isMessengerMessageAllowed } from "jeopi-cli/messenger/gateway";
+import { MessengerHttpError } from "jeopi-cli/messenger/http";
 import { createSlackAdapter } from "jeopi-cli/messenger/slack";
 import { createTelegramAdapter } from "jeopi-cli/messenger/telegram";
 import type {
@@ -602,6 +603,153 @@ describe("Discord thread and progress behavior", () => {
 			`DELETE ${base}/⏳/@me`,
 			`PUT ${base}/❌/@me`,
 		]);
+	});
+});
+
+describe("Discord activity line", () => {
+	interface WireRequest {
+		method: string;
+		path: string;
+		body?: unknown;
+	}
+
+	async function record(requests: WireRequest[], request: Request): Promise<WireRequest> {
+		const entry: WireRequest = { method: request.method, path: decodeURIComponent(new URL(request.url).pathname) };
+		const text = await request.text();
+		if (text) entry.body = JSON.parse(text);
+		requests.push(entry);
+		return entry;
+	}
+
+	it("posts a silent status line in the thread, edits it in place without mentions, then deletes it once", async () => {
+		const requests: WireRequest[] = [];
+		interceptFetch(async request => {
+			const entry = await record(requests, request);
+			if (entry.method === "POST") return Response.json({ id: "status-1" });
+			if (entry.method === "PATCH") return Response.json({ id: "status-1" });
+			return new Response(null, { status: 204 });
+		});
+		const adapter = createDiscordAdapter(config, env, transportDeps);
+		const incoming = message("discord");
+		await adapter.activity!(incoming, "Step 1 · Reading @everyone");
+		await adapter.activity!(incoming, "Step 2 · Editing");
+		await adapter.activity!(incoming, undefined);
+		// The line is forgotten after a successful delete: a second removal makes no request.
+		await adapter.activity!(incoming, undefined);
+		expect(requests).toEqual([
+			{
+				method: "POST",
+				path: "/api/v10/channels/789/messages",
+				body: { content: "⏳ Step 1 · Reading @everyone", allowed_mentions: { parse: [] }, flags: 4100 },
+			},
+			{
+				method: "PATCH",
+				path: "/api/v10/channels/789/messages/status-1",
+				body: { content: "⏳ Step 2 · Editing", allowed_mentions: { parse: [] } },
+			},
+			{ method: "DELETE", path: "/api/v10/channels/789/messages/status-1" },
+		]);
+	});
+
+	it("re-posts in the channel when the tracked line was deleted, and a missing line on removal resolves", async () => {
+		const requests: WireRequest[] = [];
+		let posts = 0;
+		interceptFetch(async request => {
+			const entry = await record(requests, request);
+			if (entry.method === "POST") return Response.json({ id: `status-${++posts}` });
+			return Response.json({ message: "Unknown Message" }, { status: 404 });
+		});
+		const adapter = createDiscordAdapter(config, env, transportDeps);
+		const incoming = message("discord");
+		delete incoming.threadId;
+		await adapter.activity!(incoming, "first");
+		await adapter.activity!(incoming, "second");
+		await adapter.activity!(incoming, undefined);
+		await adapter.activity!(incoming, undefined);
+		expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+			"POST /api/v10/channels/123/messages",
+			"PATCH /api/v10/channels/123/messages/status-1",
+			"POST /api/v10/channels/123/messages",
+			"DELETE /api/v10/channels/123/messages/status-2",
+		]);
+		expect(requests[2]!.body).toEqual({
+			content: "⏳ second",
+			allowed_mentions: { parse: [] },
+			flags: 4100,
+		});
+	});
+
+	it.each([
+		["rate limit", () => Response.json({ retry_after: 0.25 }, { status: 429 }), 429, 250],
+		["server failure", () => new Response(null, { status: 503 }), 503, undefined],
+	] as const)(
+		"keeps the line after a %s on removal so a retry deletes it",
+		async (_name, failure, status, retryAfterMs) => {
+			const requests: WireRequest[] = [];
+			let deletes = 0;
+			interceptFetch(async request => {
+				const entry = await record(requests, request);
+				if (entry.method === "POST") return Response.json({ id: "status-1" });
+				return ++deletes === 1 ? failure() : new Response(null, { status: 204 });
+			});
+			const adapter = createDiscordAdapter(config, env, transportDeps);
+			const incoming = message("discord");
+			await adapter.activity!(incoming, "Working");
+			const error = await adapter.activity!(incoming, undefined).then(
+				() => undefined,
+				(reason: unknown) => reason,
+			);
+			expect(error).toBeInstanceOf(MessengerHttpError);
+			const httpError = error as MessengerHttpError;
+			expect([httpError.status, httpError.retryAfterMs]).toStrictEqual([status, retryAfterMs]);
+			await adapter.activity!(incoming, undefined);
+			await adapter.activity!(incoming, undefined);
+			expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+				"POST /api/v10/channels/789/messages",
+				"DELETE /api/v10/channels/789/messages/status-1",
+				"DELETE /api/v10/channels/789/messages/status-1",
+			]);
+		},
+	);
+
+	it("the gateway retries a rate-limited status deletion through the real Discord adapter", async () => {
+		const requests: string[] = [];
+		let deletes = 0;
+		interceptFetch(async request => {
+			const path = decodeURIComponent(new URL(request.url).pathname);
+			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "POST") {
+				const body = await payload(request);
+				requests.push(`POST ${path} ${String(body.content)}`);
+				return Response.json({ id: body.flags === undefined ? "reply-1" : "status-1" });
+			}
+			requests.push(`${request.method} ${path}`);
+			if (request.method === "DELETE" && ++deletes === 1) {
+				return Response.json({ retry_after: 0.01 }, { status: 429 });
+			}
+			return new Response(null, { status: 204 });
+		});
+		const adapter = createDiscordAdapter(config, env, transportDeps);
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: config } },
+			[adapter],
+			async (_incoming, _signal, report) => {
+				report?.("Working");
+				return "final answer";
+			},
+			{ activityIntervalMs: 0 },
+		);
+		await gateway.handle(message("discord"));
+		// Removal runs alongside reply delivery, so the contract fixes the request set rather than its order;
+		// deleting `status-1` twice proves the rate-limited removal was retried against the posted line.
+		expect(requests.toSorted()).toEqual(
+			[
+				"POST /api/v10/channels/789/messages ⏳ Working",
+				"POST /api/v10/channels/789/messages final answer",
+				"DELETE /api/v10/channels/789/messages/status-1",
+				"DELETE /api/v10/channels/789/messages/status-1",
+			].toSorted(),
+		);
 	});
 });
 

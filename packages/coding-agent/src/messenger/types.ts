@@ -14,6 +14,9 @@ export interface MessengerMessage {
 	attachments?: { url: string; filename: string; size: number }[];
 }
 
+/** Report a short, human-readable description of the work in progress. */
+export type MessengerActivityReporter = (text: string) => void;
+
 export interface MessengerAdapter {
 	platform: MessengerPlatform;
 	start(onMessage: (message: MessengerMessage) => Promise<void>, signal: AbortSignal): Promise<void>;
@@ -24,6 +27,11 @@ export interface MessengerAdapter {
 		status: "processing" | "success" | "failure",
 		signal?: AbortSignal,
 	): Promise<void>;
+	/**
+	 * Show `text` (one sanitized line) as the request's single in-progress status, editing it in place on
+	 * later calls; `undefined` removes it. The gateway serializes and throttles calls per request.
+	 */
+	activity?(message: MessengerMessage, text: string | undefined, signal?: AbortSignal): Promise<void>;
 }
 
 export interface MessengerPlatformConfig {
@@ -47,7 +55,11 @@ export interface MessengerTransportDeps {
 	WebSocket?: typeof WebSocket;
 }
 
-export type MessengerReply = (message: MessengerMessage, signal: AbortSignal) => Promise<string>;
+export type MessengerReply = (
+	message: MessengerMessage,
+	signal: AbortSignal,
+	onActivity?: MessengerActivityReporter,
+) => Promise<string>;
 /** A partially initialized SDK must not be retried inside a live gateway. */
 export class MessengerFatalError extends Error {
 	constructor() {

@@ -10,6 +10,7 @@ import type { AgentSession } from "../session/agent-session";
 import type { AuthStorage } from "../session/auth-storage";
 import { USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
+import { createMessengerActivityTracker } from "./activity";
 import { messengerArtifactPrompt } from "./artifacts";
 import { messengerConversationKey } from "./gateway";
 import { type MessengerConfig, MessengerFatalError, type MessengerReply } from "./types";
@@ -123,12 +124,13 @@ export function createMessengerSessionBridge(
 		activeRoute = route;
 	}
 
-	const reply: MessengerReply = async (message, signal) => {
+	const reply: MessengerReply = async (message, signal, onActivity) => {
 		if (closed || signal.aborted) throw new Error("Messenger session is closed");
 		if (activeTurn) throw new Error("Messenger turns must be serialized");
 		const finished = Promise.withResolvers<void>();
 		activeTurn = finished.promise;
 		let aborting: Promise<void> | undefined;
+		let unsubscribe: (() => void) | undefined;
 		const onAbort = (): void => {
 			if (session && !aborting) {
 				aborting = session.abort({ reason: USER_INTERRUPT_LABEL });
@@ -182,6 +184,8 @@ export function createMessengerSessionBridge(
 				const guidance = await messengerArtifactPrompt(artifactRoot, message, signal);
 				if (guidance) prompt += `\n\n${guidance}`;
 			}
+			// Turns are serialized, so every event until idle belongs to this request.
+			if (onActivity) unsubscribe = current.subscribe(createMessengerActivityTracker(onActivity));
 			const dispatched = await current.prompt(prompt, { expandPromptTemplates: false });
 			await current.waitForIdle();
 			await current.sessionManager.flush();
@@ -197,6 +201,7 @@ export function createMessengerSessionBridge(
 			if (!text.trim()) throw new Error("Messenger response is empty");
 			return text;
 		} finally {
+			unsubscribe?.();
 			signal.removeEventListener("abort", onAbort);
 			await aborting?.catch(() => {});
 			activeTurn = undefined;

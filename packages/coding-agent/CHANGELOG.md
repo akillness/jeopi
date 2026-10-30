@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Discord requests in the messenger gateway and `/discord live` show one in-place status line with the current step (the tool call's declared intent or tool name), edited at most every 2 seconds and deleted when the request finishes; see [Discord progress](../../docs/messenger/discord.md#overview).
+
 ### Fixed
 
 - Explain how to recover when an empty dependency name in Bun's global manifest prevents updates.

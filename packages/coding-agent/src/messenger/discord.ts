@@ -14,6 +14,8 @@ const PERMANENT_CLOSE_CODES = new Set([4004, 4010, 4011, 4012, 4013, 4014]);
 // they are part of the delivered text, and consume one UTF-16 unit each.
 const DISCORD_WHITESPACE = /^[\s\u0085\u001c-\u001f]$/u;
 const DISCORD_BOUNDARY_GUARD = "\u200b";
+// SUPPRESS_EMBEDS | SUPPRESS_NOTIFICATIONS: a status line never unfurls links or pings on creation.
+const DISCORD_ACTIVITY_FLAGS = (1 << 2) | (1 << 12);
 
 function splitDiscordText(text: string): { chunks: string[]; needsAttachment: boolean } {
 	const chunks: string[] = [];
@@ -333,6 +335,7 @@ export function createDiscordAdapter(
 			if (oldest !== undefined) createdThreads.delete(oldest);
 		}
 	};
+	const activityMessages = new Map<string, string>();
 	const headers = (): Record<string, string> => {
 		if (!token) throw new DiscordConfigurationError("Discord bot token is missing");
 		return { Authorization: `Bot ${token}`, "Content-Type": "application/json" };
@@ -503,6 +506,61 @@ export function createDiscordAdapter(
 				signal,
 				deps.fetch,
 			);
+		},
+		async activity(message, text, signal) {
+			const channelId = message.threadId ?? message.channelId;
+			const key = JSON.stringify([channelId, message.messageId]);
+			const messages = `${API}/channels/${encodeURIComponent(channelId)}/messages`;
+			const statusId = activityMessages.get(key);
+			if (text === undefined) {
+				if (!statusId) return;
+				try {
+					await messengerFetchJson(
+						`${messages}/${encodeURIComponent(statusId)}`,
+						{ method: "DELETE", headers: headers() },
+						signal,
+						deps.fetch,
+					);
+				} catch (error) {
+					// Keep the ID so the caller can retry; a missing message is already removed.
+					if (!(error instanceof MessengerHttpError && error.status === 404)) throw error;
+				}
+				activityMessages.delete(key);
+				return;
+			}
+			const content = `⏳ ${text}`;
+			if (statusId) {
+				try {
+					// Edits re-parse mentions with default allowances unless allowed_mentions is repeated.
+					await messengerFetchJson(
+						`${messages}/${encodeURIComponent(statusId)}`,
+						{
+							method: "PATCH",
+							headers: headers(),
+							body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
+						},
+						signal,
+						deps.fetch,
+					);
+					return;
+				} catch (error) {
+					if (!(error instanceof MessengerHttpError && error.status === 404)) throw error;
+					activityMessages.delete(key);
+				}
+			}
+			const created = await messengerFetchJson(
+				messages,
+				{
+					method: "POST",
+					headers: headers(),
+					body: JSON.stringify({ content, allowed_mentions: { parse: [] }, flags: DISCORD_ACTIVITY_FLAGS }),
+				},
+				signal,
+				deps.fetch,
+			);
+			if (!isRecord(created) || typeof created.id !== "string" || !created.id)
+				throw new Error("Discord activity message returned no ID");
+			activityMessages.set(key, created.id);
 		},
 		async send(message, text, signal) {
 			let files: { name: string; data: Uint8Array }[] = [];

@@ -413,4 +413,32 @@ describe("messenger persistent session boundary", () => {
 		);
 		expect(fixture.executed).toEqual(enabled);
 	});
+
+	test("reports each tool step of the turn to onActivity and stops reporting once the reply resolves", async () => {
+		const fixture = await harness(
+			(_model, context) => {
+				if (context.messages.at(-1)?.role === "toolResult") return complete("final answer");
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					const message = createAssistantMessage("");
+					message.content = [{ type: "toolCall" as const, id: "read-call", name: "read", arguments: {} }];
+					message.stopReason = "toolUse";
+					stream.push({ type: "done", reason: "toolUse", message });
+				});
+				return stream;
+			},
+			["read"],
+		);
+		const bridge = fixture.bridge();
+		const lines: string[] = [];
+		const result = await bridge.reply(incoming("Read the config"), signal(), line => {
+			lines.push(line);
+		});
+		expect(result).toBe("final answer");
+		expect(lines).toEqual(["Step 1 · Using read"]);
+		// The next turn runs the same tool loop: a leaked subscription would keep reporting into this collector.
+		expect(await bridge.reply(incoming("Read it again"), signal())).toBe("final answer");
+		expect(fixture.executed).toEqual(["read", "read"]);
+		expect(lines).toEqual(["Step 1 · Using read"]);
+	});
 });

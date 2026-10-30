@@ -195,7 +195,11 @@ function sessionFixture(): SessionFixture {
 	};
 }
 
-function bridgeFixture(fixture: SessionFixture, sendImpl?: (message: MessengerMessage, text: string) => Promise<void>) {
+function bridgeFixture(
+	fixture: SessionFixture,
+	sendImpl?: (message: MessengerMessage, text: string) => Promise<void>,
+	activity?: Array<string | undefined>,
+) {
 	const delivered: Array<{ message: MessengerMessage; text: string }> = [];
 	const adapter: MessengerAdapter = {
 		platform: "discord",
@@ -207,6 +211,11 @@ function bridgeFixture(fixture: SessionFixture, sendImpl?: (message: MessengerMe
 			if (sendImpl) await sendImpl(incoming, text);
 			delivered.push({ message: incoming, text });
 		},
+		...(activity && {
+			async activity(_incoming: MessengerMessage, text: string | undefined) {
+				activity.push(text);
+			},
+		}),
 	};
 	const bridge = createLiveDiscordBridge(
 		fixture.ctx,
@@ -810,6 +819,112 @@ describe("live Discord bridge", () => {
 			"[Discord:new-session sender:authorized-user channel:authorized-channel] fresh prompt",
 		]);
 		expect(delivered).toHaveLength(1);
+	});
+
+	function userEnd(text: string) {
+		return { type: "message_end", message: { role: "user", content: [{ type: "text", text }] } };
+	}
+
+	function toolStart(intent: string) {
+		return { type: "tool_execution_start", toolCallId: intent, toolName: "read", args: { path: "/secret" }, intent };
+	}
+
+	test("shows only this Discord turn's tool steps and retires the line after delivering the reply", async () => {
+		const fixture = sessionFixture();
+		fixture.setPromptImpl(async text => {
+			fixture.prompts.push(text);
+			// Host work before this turn's prompt event is not part of the Discord request.
+			fixture.emitEvent(toolStart("Host work"));
+			fixture.emitEvent(userEnd(text));
+			fixture.emitEvent(toolStart("Reading the config"));
+			fixture.emitEvent({
+				type: "message_end",
+				message: { role: "assistant", content: [{ type: "text", text: "live answer" }], stopReason: "stop" },
+			});
+			return true;
+		});
+		const activity: Array<string | undefined> = [];
+		const { bridge, delivered } = bridgeFixture(fixture, undefined, activity);
+
+		await bridge.gateway.handle(message({ messageId: "activity" }));
+
+		expect(activity).toStrictEqual(["Step 1 · Reading the config", undefined]);
+		expect(delivered.map(item => item.text)).toEqual(["live answer"]);
+	});
+
+	test("shows no activity once a competing message interrupts the Discord turn", async () => {
+		const fixture = sessionFixture();
+		fixture.setPromptImpl(async text => {
+			fixture.emitEvent(userEnd(text));
+			fixture.emitEvent(userEnd("local interjection"));
+			fixture.emitEvent(toolStart("Local tool"));
+			fixture.emitEvent({
+				type: "message_end",
+				message: { role: "assistant", content: [{ type: "text", text: "local answer" }], stopReason: "stop" },
+			});
+			return true;
+		});
+		const activity: Array<string | undefined> = [];
+		const { bridge, delivered } = bridgeFixture(fixture, undefined, activity);
+
+		await bridge.gateway.handle(message({ messageId: "competing" }));
+
+		expect(activity).toStrictEqual([]);
+		expect(delivered.map(item => item.text)).toEqual(["The request could not be completed. Please try again."]);
+	});
+
+	test("closing mid-turn still retires a shown line through the closed bridge", async () => {
+		const fixture = sessionFixture();
+		const started = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		fixture.setPromptImpl(async text => {
+			fixture.prompts.push(text);
+			fixture.emitEvent(userEnd(text));
+			fixture.emitEvent(toolStart("Running tests"));
+			started.resolve();
+			await release.promise;
+			return true;
+		});
+		fixture.setAbortImpl(async () => release.resolve());
+		const activity: Array<string | undefined> = [];
+		const { bridge, delivered } = bridgeFixture(fixture, undefined, activity);
+
+		const pending = bridge.gateway.handle(message({ messageId: "close-mid-turn" }));
+		await started.promise;
+		await bridge.close();
+		await pending;
+
+		expect(activity).toStrictEqual(["Step 1 · Running tests", undefined]);
+		expect(delivered).toEqual([]);
+	});
+
+	test("drops new activity text after the session changes but still forwards removal", async () => {
+		const fixture = sessionFixture();
+		const started = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		fixture.setPromptImpl(async text => {
+			fixture.prompts.push(text);
+			fixture.emitEvent(userEnd(text));
+			started.resolve();
+			await release.promise;
+			fixture.emitEvent(toolStart("Stale session step"));
+			fixture.emitEvent({
+				type: "message_end",
+				message: { role: "assistant", content: [{ type: "text", text: "stale answer" }], stopReason: "stop" },
+			});
+			return true;
+		});
+		const activity: Array<string | undefined> = [];
+		const { bridge, delivered } = bridgeFixture(fixture, undefined, activity);
+
+		const pending = bridge.gateway.handle(message({ messageId: "switch-activity" }));
+		await started.promise;
+		fixture.manager.sessionId = "session-2";
+		release.resolve();
+		await pending;
+
+		expect(activity).toStrictEqual([undefined]);
+		expect(delivered).toEqual([]);
 	});
 });
 

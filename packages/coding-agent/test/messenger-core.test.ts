@@ -1,11 +1,18 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test, vi } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createMessengerActivityTracker } from "../src/messenger/activity";
 import { loadMessengerConfig, parseMessengerConfig, validateMessengerEnvironment } from "../src/messenger/config";
 import { createMessengerGateway, isMessengerMessageAllowed, messengerConversationKey } from "../src/messenger/gateway";
 import { MessengerHttpError, messengerFetchJson, splitMessengerText } from "../src/messenger/http";
-import type { MessengerAdapter, MessengerConfig, MessengerMessage, MessengerReply } from "../src/messenger/types";
+import type {
+	MessengerActivityReporter,
+	MessengerAdapter,
+	MessengerConfig,
+	MessengerMessage,
+	MessengerReply,
+} from "../src/messenger/types";
 import { MessengerFatalError } from "../src/messenger/types";
 
 const temporaryDirectories: string[] = [];
@@ -539,6 +546,266 @@ describe("messenger dispatch", () => {
 		expect(activeAborted).toBe(true);
 		expect(turns).toEqual(["active"]);
 		expect(delivered).toEqual([]);
+	});
+});
+
+describe("messenger activity line", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	interface ActivityOptions {
+		intervalMs?: number;
+		activity?: (text: string | undefined) => Promise<void> | void;
+	}
+
+	/** Drain pending microtasks; `setImmediate` is not faked, so it runs even under fake timers. */
+	const flush = () => new Promise<void>(resolve => setImmediate(resolve));
+
+	function activityHarness(reply: MessengerReply, options: ActivityOptions = {}) {
+		const calls: Array<string | undefined> = [];
+		const signals: Array<AbortSignal | undefined> = [];
+		const delivered: string[] = [];
+		const waiters: Array<{ count: number; resolve: () => void }> = [];
+		const adapter: MessengerAdapter = {
+			platform: "telegram",
+			async start() {},
+			async send(_incoming, text) {
+				delivered.push(text);
+			},
+			async activity(_incoming, text, signal) {
+				calls.push(text);
+				signals.push(signal);
+				for (const waiter of waiters.splice(0)) {
+					if (calls.length >= waiter.count) waiter.resolve();
+					else waiters.push(waiter);
+				}
+				await options.activity?.(text);
+			},
+		};
+		const reached = (count: number): Promise<void> => {
+			if (calls.length >= count) return Promise.resolve();
+			const { promise, resolve } = Promise.withResolvers<void>();
+			waiters.push({ count, resolve });
+			return promise;
+		};
+		const gateway = createMessengerGateway(config(), [adapter], reply, {
+			activityIntervalMs: options.intervalMs ?? 0,
+		});
+		return { gateway, calls, signals, delivered, reached };
+	}
+
+	test("shows the first line at once, then only the latest line per interval, and retires it after the reply", async () => {
+		vi.useFakeTimers();
+		const reporter = deferred<MessengerActivityReporter>();
+		const finish = deferred<string>();
+		const fixture = activityHarness(
+			async (_incoming, _signal, report) => {
+				reporter.resolve(report!);
+				return finish.promise;
+			},
+			{ intervalMs: 1_000 },
+		);
+		const handled = fixture.gateway.handle(message());
+		const report = await reporter.promise;
+		report("one");
+		await flush();
+		expect(fixture.calls).toStrictEqual(["one"]);
+		report("two");
+		report("three");
+		await flush();
+		vi.advanceTimersByTime(999);
+		await flush();
+		expect(fixture.calls).toStrictEqual(["one"]);
+		vi.advanceTimersByTime(1);
+		await flush();
+		expect(fixture.calls).toStrictEqual(["one", "three"]);
+		// Identical to the line already shown: a full interval later it is still not re-sent.
+		report("three");
+		await flush();
+		vi.advanceTimersByTime(1_000);
+		await flush();
+		expect(fixture.calls).toStrictEqual(["one", "three"]);
+		finish.resolve("answer");
+		await handled;
+		expect(fixture.calls).toStrictEqual(["one", "three", undefined]);
+		expect(fixture.delivered).toEqual(["answer"]);
+	});
+
+	test.each([
+		["folds newlines, tabs and control characters", "Reading\n\tthe\u0000config\r\n", "Reading the config"],
+		["drops invisible format characters", "pay\u200Bload\u202Egnp.exe", "payloadgnp.exe"],
+		["folds Unicode separators", "a\u00A0\u2028b", "a b"],
+		["keeps a 120-unit line intact", "y".repeat(120), "y".repeat(120)],
+		["truncates a longer line to 120 units", "x".repeat(200), `${"x".repeat(119)}…`],
+		["never splits a surrogate pair at the cut", `${"a".repeat(118)}😀${"b".repeat(10)}`, `${"a".repeat(118)}…`],
+		["trims whitespace before the ellipsis", `${"a".repeat(118)} ${"b".repeat(10)}`, `${"a".repeat(118)}…`],
+		["ignores a line without visible text", " \n\t\u200B ", undefined],
+	] satisfies Array<[string, string, string | undefined]>)(
+		"activity sanitization %s",
+		async (_name, input, expected) => {
+			const fixture = activityHarness(async (_incoming, _signal, report) => {
+				report!(input);
+				return "answer";
+			});
+			await fixture.gateway.handle(message());
+			expect(fixture.calls).toStrictEqual(expected === undefined ? [] : [expected, undefined]);
+		},
+	);
+
+	test("a failed turn retires its line, sends only the generic error, and ignores later reports", async () => {
+		let lateReport: MessengerActivityReporter | undefined;
+		const fixture = activityHarness(async (_incoming, _signal, report) => {
+			lateReport = report;
+			report!("Step 1 · Reading");
+			await fixture.reached(1);
+			throw new Error("fixture-secret-tool-output");
+		});
+		await fixture.gateway.handle(message());
+		lateReport!("Step 2 · Too late");
+		await flush();
+		expect(fixture.calls).toStrictEqual(["Step 1 · Reading", undefined]);
+		expect(fixture.delivered).toEqual(["The request could not be completed. Please try again."]);
+	});
+
+	test("an aborted turn still retires its line through an unaborted call and sends nothing", async () => {
+		const controller = new AbortController();
+		const fixture = activityHarness(async (_incoming, _signal, report) => {
+			report!("Working");
+			await fixture.reached(1);
+			controller.abort();
+			report!("After abort");
+			return "Cancelled answer must not escape";
+		});
+		await fixture.gateway.handle(message(), controller.signal);
+		expect(fixture.calls).toStrictEqual(["Working", undefined]);
+		expect(fixture.signals.at(-1)?.aborted).toBe(false);
+		expect(fixture.delivered).toEqual([]);
+	});
+
+	test("a stalled activity edit never delays reply delivery, and the request settles only after removal", async () => {
+		vi.useFakeTimers();
+		const update = deferred<void>();
+		const removal = deferred<void>();
+		const fixture = activityHarness(
+			async (_incoming, _signal, report) => {
+				report!("Working");
+				await fixture.reached(1);
+				return "answer";
+			},
+			{ activity: text => (text === undefined ? removal.promise : update.promise) },
+		);
+		let settled = false;
+		const handled = fixture.gateway.handle(message()).then(() => {
+			settled = true;
+		});
+		await fixture.reached(1);
+		await flush();
+		// The clock never moves, so the 3s activity timeout cannot have released the pending edit.
+		expect(fixture.delivered).toEqual(["answer"]);
+		expect(fixture.calls).toStrictEqual(["Working"]);
+		update.resolve();
+		await fixture.reached(2);
+		await flush();
+		expect(settled).toBe(false);
+		removal.resolve();
+		await handled;
+		expect(fixture.calls).toStrictEqual(["Working", undefined]);
+	});
+
+	test("a rate-limited edit keeps its line pending and retries it after the advised delay without a newer line", async () => {
+		vi.useFakeTimers();
+		const finish = deferred<string>();
+		let edits = 0;
+		const fixture = activityHarness(
+			async (_incoming, _signal, report) => {
+				report!("Working");
+				return finish.promise;
+			},
+			{
+				activity: text => {
+					if (text !== undefined && ++edits === 1) throw new MessengerHttpError(429, 250);
+				},
+			},
+		);
+		const handled = fixture.gateway.handle(message());
+		await fixture.reached(1);
+		await flush();
+		vi.advanceTimersByTime(249);
+		await flush();
+		expect(fixture.calls).toStrictEqual(["Working"]);
+		vi.advanceTimersByTime(1);
+		await flush();
+		expect(fixture.calls).toStrictEqual(["Working", "Working"]);
+		finish.resolve("answer");
+		await handled;
+		expect(fixture.calls).toStrictEqual(["Working", "Working", undefined]);
+		expect(fixture.delivered).toEqual(["answer"]);
+	});
+
+	test.each([
+		["is retried once after the advised rate-limit delay", () => new MessengerHttpError(429, 30), [[30]], 2],
+		["is retried once a second after any other failure", () => new Error("fixture network failure"), [[1_000]], 2],
+		["is abandoned when the advised delay exceeds the bound", () => new MessengerHttpError(429, 5_000), [], 1],
+	] satisfies Array<[string, () => Error, Array<[number]>, number]>)(
+		"a failed removal %s",
+		async (_name, failure, waits, removals) => {
+			const sleep = vi.spyOn(Bun, "sleep").mockImplementation(async () => {});
+			const fixture = activityHarness(
+				async (_incoming, _signal, report) => {
+					report!("Working");
+					await fixture.reached(1);
+					return "answer";
+				},
+				{
+					activity: text => {
+						if (text === undefined) throw failure();
+					},
+				},
+			);
+			await fixture.gateway.handle(message());
+			expect(fixture.calls).toStrictEqual(["Working", ...Array<undefined>(removals).fill(undefined)]);
+			expect(sleep.mock.calls).toEqual(waits);
+			expect(fixture.delivered).toEqual(["answer"]);
+		},
+	);
+});
+
+describe("messenger activity tracker", () => {
+	test("maps tool, compaction and retry events to numbered lines without arguments, results or errors", () => {
+		const lines: string[] = [];
+		const track = createMessengerActivityTracker(line => {
+			lines.push(line);
+		});
+		track({
+			type: "tool_execution_start",
+			toolCallId: "call-1",
+			toolName: "read",
+			args: { path: "/fixture/secret-key" },
+			intent: "Reading the config",
+		});
+		track({ type: "tool_execution_end", toolCallId: "call-1", toolName: "read", result: "fixture-secret-result" });
+		track({
+			type: "tool_execution_start",
+			toolCallId: "call-2",
+			toolName: "bash",
+			args: { command: "cat fixture-secret-file" },
+		});
+		track({ type: "auto_compaction_start", reason: "threshold", action: "context-full" });
+		track({
+			type: "auto_retry_start",
+			attempt: 2,
+			maxAttempts: 3,
+			delayMs: 0,
+			errorMessage: "fixture-provider-secret",
+		});
+		expect(lines).toEqual([
+			"Step 1 · Reading the config",
+			"Step 2 · Using bash",
+			"Compacting context",
+			"Retrying after a provider error (2/3)",
+		]);
 	});
 });
 

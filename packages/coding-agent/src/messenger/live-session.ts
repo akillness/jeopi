@@ -1,5 +1,6 @@
 import type { AssistantMessage, UserMessage } from "jeopi-ai";
 import type { InteractiveModeContext } from "../modes/types";
+import { createMessengerActivityTracker } from "./activity";
 import { messengerArtifactPrompt } from "./artifacts";
 import { loadMessengerConfig, validateMessengerEnvironment } from "./config";
 import { createDiscordAdapter, type DiscordTransportDeps } from "./discord";
@@ -156,7 +157,7 @@ export function createLiveDiscordBridge(
 	let localCapture: object | undefined;
 	let close: () => Promise<void>;
 	let revoke: () => Promise<void>;
-	const reply: MessengerReply = async (message, signal) => {
+	const reply: MessengerReply = async (message, signal, onActivity) => {
 		if (closed || signal?.aborted) throw new Error(LIVE_UNAVAILABLE_MESSAGE);
 		if (!sameSession(ctx, attachedSession, sessionId, sessionFile)) throw new Error(LIVE_UNAVAILABLE_MESSAGE);
 		if (!isMessengerMessageAllowed(message, scopedConfig)) throw new Error(LIVE_UNAVAILABLE_MESSAGE);
@@ -190,8 +191,13 @@ export function createLiveDiscordBridge(
 			void revoke();
 		};
 		operationSignal.addEventListener("abort", onAbort, { once: true });
+		const track = onActivity && createMessengerActivityTracker(onActivity);
 		const unsubscribe = attachedSession.subscribe(event => {
-			if (event.type !== "message_end") return;
+			if (event.type !== "message_end") {
+				// Report only this Discord turn: its prompt event precedes the turn's tool and retry events.
+				if (capture.promptSeen && !capture.conflicted) track?.(event);
+				return;
+			}
 			if (event.message.role === "user") {
 				const text = userMessageText(event.message);
 				if (!capture.promptSeen && text === capture.promptText) {
@@ -265,6 +271,7 @@ export function createLiveDiscordBridge(
 	const adapterFactory = dependencies.createAdapter ?? createDiscordAdapter;
 	const gatewayFactory = dependencies.createGateway ?? createMessengerGateway;
 	const adapter = adapterFactory(discordConfig, dependencies.env, dependencies.transport);
+	const activity = adapter.activity;
 	const guardedAdapter: MessengerAdapter = {
 		...adapter,
 		send: async (message, text, signal) => {
@@ -277,6 +284,13 @@ export function createLiveDiscordBridge(
 			}
 			await adapter.send(message, text, sendSignal);
 		},
+		// New status text requires the attached session; removal must still retire a shown line after close.
+		activity:
+			activity &&
+			(async (message, text, signal) => {
+				if (text !== undefined && (closed || !sameSession(ctx, attachedSession, sessionId, sessionFile))) return;
+				await activity.call(adapter, message, text, signal);
+			}),
 	};
 	const setRelayDestination = (channelId: string | undefined): void => {
 		if (closed || !sameSession(ctx, attachedSession, sessionId, sessionFile))
