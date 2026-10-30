@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.14] - 2026-10-30
+
 ### Added
 
 - `jeopi messenger run` gives every conversation (a Discord request thread or DM, a Telegram chat or topic, a Slack thread) its own jeopi session process, so separate conversations are answered concurrently; idle processes exit after 10 minutes and resume from their persisted session; see [session processes](../../docs/messenger.md#session-processes).
