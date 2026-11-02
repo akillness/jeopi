@@ -278,6 +278,7 @@ export function createMessengerGateway(
 		let tail: Promise<void> | undefined;
 		let conversation = "";
 		let statusChain = Promise.resolve();
+		let processingStarted = false;
 		const status = (state: "processing" | "success" | "failure"): void => {
 			if (!adapter.status) return;
 			statusChain = statusChain.then(async () => {
@@ -288,7 +289,10 @@ export function createMessengerGateway(
 				const onAbort = (): void => stopped.resolve();
 				statusSignal.addEventListener("abort", onAbort, { once: true });
 				statusInFlight++;
-				const operation = Promise.resolve().then(() => adapter.status!(message, state, statusSignal));
+				const operation = Promise.resolve().then(() => {
+					if (state === "processing") processingStarted = true;
+					return adapter.status!(message, state, statusSignal);
+				});
 				void operation.then(
 					() => {
 						statusInFlight--;
@@ -352,6 +356,21 @@ export function createMessengerGateway(
 			}
 		} finally {
 			await activity.close();
+			if (signal.aborted && processingStarted && adapter.clearStatus && statusInFlight < MAX_STATUS_IN_FLIGHT) {
+				statusInFlight++;
+				const operation = Promise.resolve().then(() =>
+					adapter.clearStatus!(message, AbortSignal.timeout(STATUS_TIMEOUT_MS)),
+				);
+				void operation.then(
+					() => statusInFlight--,
+					() => statusInFlight--,
+				);
+				try {
+					await Promise.race([operation, Bun.sleep(STATUS_TIMEOUT_MS)]);
+				} catch {
+					logger.warn("Messenger cancelled status removal failed", { platform: message.platform });
+				}
+			}
 			release();
 			if (tail && conversationTails.get(conversation) === tail) conversationTails.delete(conversation);
 			resolve();

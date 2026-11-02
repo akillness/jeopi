@@ -641,6 +641,15 @@ export function createDiscordAdapter(
 				}
 			}
 		},
+		async clearStatus(message, signal) {
+			const base = `${DISCORD_API}/channels/${encodeURIComponent(message.channelId)}/messages/${encodeURIComponent(message.messageId)}/reactions`;
+			await messengerFetchJson(
+				`${base}/${encodeURIComponent("⏳")}/@me`,
+				{ method: "DELETE", headers: headers() },
+				signal,
+				deps.fetch,
+			);
+		},
 		releaseActivity(message) {
 			activityMessages.delete(JSON.stringify([message.threadId ?? message.channelId, message.messageId]));
 		},

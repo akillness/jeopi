@@ -7,6 +7,7 @@
 - Messenger session capacity now waits for process exit, and Discord activity cleanup releases retained state after failed removals and late cancellations.
 - Discord follow-ups wait for the original request even when thread creation is still in progress.
 - Discord removes a late processing reaction when its request was cancelled before the reaction completed.
+- Cancelled Discord requests also remove their processing reaction when it was added before cancellation.
 
 ## [16.6.15] - 2026-11-02
 

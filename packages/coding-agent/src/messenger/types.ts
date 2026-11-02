@@ -27,6 +27,8 @@ export interface MessengerAdapter {
 		status: "processing" | "success" | "failure",
 		signal?: AbortSignal,
 	): Promise<void>;
+	/** Remove an in-progress status after cancellation without adding a terminal status. */
+	clearStatus?(message: MessengerMessage, signal?: AbortSignal): Promise<void>;
 	/**
 	 * Show `text` (one sanitized line) as the request's single in-progress status, editing it in place on
 	 * later calls; `undefined` removes it. The gateway serializes and throttles calls per request.
