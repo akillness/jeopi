@@ -1,7 +1,7 @@
 <h1 align="center">jeopi</h1>
 
 <p align="center">
-  <img src="assets/character.gif" alt="animated jeopi hooded doll mascot with split cyan and magenta pants, watched by a curious jeo-code crayfish" width="320">
+  <img src="assets/jeopi-hero.png" alt="jeopi's stitched hooded doll mascot with cyan and magenta pants and a red crayfish companion" width="960">
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
   Fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> by <a href="https://github.com/can1357">@can1357</a> (itself a fork of <a href="https://github.com/badlogic/pi-mono">Pi</a> by <a href="https://github.com/mariozechner">@mariozechner</a>), fused with the spec-first working philosophy of <a href="https://github.com/akillness/jeo-code">jeo-code</a>.
 </p>
 
-jeopi keeps everything that makes oh-my-pi the most capable agent surface that ships — **40+** providers, **32** built-in tools, **14** LSP ops, **28** DAP ops, **~55k** lines of Rust core — and changes *how it works*: requirements are crystallized before planning, plans are critic-gated before execution, and completion claims are backed by artifacts.
+jeopi combines the oh-my-pi coding-agent engine with jeo-code's spec-first workflow. It provides an interactive terminal, model and provider integrations, built-in tools, subagents, and configurable verification gates.
 
 ## jeopi vs omp — what actually changed
 
@@ -34,7 +34,7 @@ jeopi keeps everything that makes oh-my-pi the most capable agent surface that s
 | **Planning** | plan agent | plan agent + **blocking `critic` gate**: `okay` / `iterate` / `reject` verdict, schema-enforced — and **runtime-enforced**: after a non-okay verdict the `task` tool refuses to spawn execution agents and `write`/`edit` lock the working tree until a fresh `okay` (or a new user message) |
 | **Review** | `reviewer` (patch bugs) | `reviewer` + **`architect`**: severity-rated structural verdict that is invalid without an `inspected[]` evidence list |
 | **Failure** | retry | **failure-lesson loop** — capture what the failure proved, change the next attempt, split stuck subgoals; no apology loops. Runtime 3-strike counter closes the critic-iterate loop before it can spin |
-| **"Done"** | tests pass | **artifact gate + independent grader** — a criterion with no command + observed result is reported `unresolved`, never implied met. `goal({op:"complete"})` runs two checks in sequence, both **runtime-enforced**, neither skippable by the same agent that did the work: (1) a deterministic evidence gate — rejected unless a test/build/typecheck/lint run succeeded after the last file mutation; (2) a `goal-verifier` sub-agent — fresh context, no exposure to the maker's transcript/thinking, re-inspects the diff and re-runs the claimed verification independently, verdicts `okay`/`iterate`/`reject`. Either gate bounces once with a corrective message before an unchanged retry passes (docs-only / verifier-false-positive escape hatch); any new mutation or verification evidence re-arms both |
+| **"Done"** | tests pass | Goal mode checks for recent verification evidence and can invoke an independent `goal-verifier`. These checks have a bounce-once escape hatch; independent verification is controlled by `goal.verifyCompletion`. Report unsupported criteria as unresolved. |
 | **Pipeline** | ad-hoc | **`/jeo`**: interview → frozen seed → plan → critic gate → bounded execution → artifact-gated verification |
 | **Identity** | `omp` | `jeopi` binary; config directory renamed `~/.omp` → `~/.jeopi` (`jeopi config migrate-legacy` moves existing auth/sessions/settings over) |
 
@@ -46,7 +46,7 @@ Real gates, no theater. The rest of this README is the engine both share.
 
 ```sh
 bun install -g jeopi-cli
-jeopi --version # jeopi/16.x
+jeopi --version
 ```
 
 **npm**
@@ -55,6 +55,12 @@ jeopi --version # jeopi/16.x
 npm install -g jeopi-cli
 ```
 
+### First session
+
+Run `jeopi` in your project directory, then use `/login` to authenticate with a supported provider or configure its API key. Use `/model` to select a model and describe the work you want done. For a single non-interactive prompt, run `jeopi -p "explain this project"`.
+
+For provider configuration and local models, see [docs/providers.md](docs/providers.md) and [docs/local-models.md](docs/local-models.md).
+
 **From source**
 
 ```sh
@@ -62,7 +68,7 @@ git clone https://github.com/akillness/jeopi.git && cd jeopi
 bun run setup   # installs deps, builds natives, links the global `jeopi` command
 ```
 
-macOS · Linux · Windows · bun ≥ 1.3.14. Upgrading from `omp`? Run `jeopi config migrate-legacy` once to move `~/.omp` to `~/.jeopi` — then `/login` once, keep it forever. jeopi is published as unscoped npm packages — CLI: `jeopi-cli` (binary command: `jeopi`), libraries: `jeopi-*` — fully independent of the `@oh-my-pi` scope, while legacy `@oh-my-pi/pi-*` plugin imports keep resolving through the built-in compat shim.
+The native addon supports macOS, Linux, and Windows on the architectures listed below; source builds require Bun 1.3.14 or newer and a Rust toolchain. Upgrading from `omp`? Run `jeopi config migrate-legacy` to migrate `~/.omp` to `~/.jeopi`. The CLI package is `jeopi-cli` (command: `jeopi`); workspace libraries use `jeopi-*` names. A compatibility shim supports legacy `@oh-my-pi/pi-*` plugin imports.
 
 ## The spec-first spine
 
@@ -83,7 +89,7 @@ The jeo-code pipeline, rebuilt on jeopi's native subagents. One command drives i
       │            per-criterion verification.
       ▼
   critic gate      read-only `critic` agent; schema-enforced verdict
-      │            okay / iterate / reject. No okay → no execution. Ever.
+      │            okay / iterate / reject. A non-okay verdict blocks execution
       │            Hard gate: the RUNTIME blocks execution spawns and
       │            working-tree writes until the verdict is okay.
       ▼
@@ -121,7 +127,7 @@ The same discipline is welded into the standing agents:
 
 ### Skills: jeo-skills works out of the box
 
-[jeo-skills](https://github.com/akillness/jeo-skills) (146 skills — `deep-research`, `god-tibo-imagen`, `perfectpixel`, `ooo`, …) installs into jeopi with zero extra linking: jeopi natively discovers `~/.agents/skills/` plus the `.claude` / `.codex` / `.config/opencode` skill dirs, at both user and project scope.
+[jeo-skills](https://github.com/akillness/jeo-skills) can be installed into the shared agent skill directory, which jeopi discovers alongside its native skill roots and supported third-party locations. See [docs/skills.md](docs/skills.md) for discovery details.
 
 ```sh
 # global install — jeopi picks these up automatically
@@ -149,23 +155,9 @@ eval "$(jeopi completions bash)"
 jeopi completions fish > ~/.config/fish/completions/jeopi.fish
 ```
 
-## Every tool, _benchmaxxed_.
+## Tools for coding and research
 
-Edits that land on the first attempt. Reads that summarize files instead of dumping their content. Searches that return instantly. Pick any model — jeopi will get it right.
-
-| model            | metric       | what                                                                  |
-| ---------------- | ------------ | --------------------------------------------------------------------- |
-| Grok Code Fast 1 | 6.7% → 68.3% | Tenfold lift the moment the edit format stops eating the model alive. |
-| Gemini 3 Flash   | +5 pp        | Over str_replace — beats Google's own best attempt at the format.     |
-| Grok 4 Fast      | −61% tokens  | Output collapses once the retry loop on bad diffs disappears.         |
-| MiniMax          | 2.1×         | Pass rate more than doubles. Same weights, same prompt.               |
-
-- `read` : summarized snippets · ideal defaults · selector hit rate
-- `search` : fastest in the west
-- `lsp` : everything your IDE knows, the agent knows
-- `prompts` : adjusted relentlessly for each model
-
-[Read the full post ↗](https://blog.can.ac/2026/02/12/the-harness-problem/)
+jeopi includes file and structural editing, code search, language-server and debugger integration, persistent Python and JavaScript execution, and optional web and browser tools. Availability depends on configuration and installed dependencies. See the [tool reference](docs/tools/) for details.
 
 ## The Pi _you love_, with **batteries included**.
 
@@ -173,7 +165,7 @@ Originally built on [Mario Zechner](https://github.com/mariozechner)'s wonderful
 
 ### 01 · Code execution w/ tool-calling
 
-Most harnesses give the agent a Python sandbox and call it done. Ours runs persistent Python and a Bun worker, and either kernel can call back into the agent's own tools — read, search, task — over a loopback bridge. The agent loads a CSV with tool.read from inside Python, charts it from JavaScript, and never leaves the cell.
+The `eval` tool runs persistent Python and JavaScript kernels, with access to supported agent tools through a shared prelude.
 
 ![jeopi TUI: a single eval session with `[1/2] pandas describe` (Python) printing a real DataFrame.describe() table, followed by `[2/2] top scorer` (JavaScript) running a reduce. Footer: 'Both kernels ran in one session.'](https://omp.sh/captures/eval.webp)
 
@@ -201,7 +193,7 @@ _[Watch the capture ↗](https://omp.sh/clips/ttsr.mp4)_
 
 ### 05 · First-class subagents
 
-Split a job across workers and get typed results back. task fans out into isolated worktrees, each worker runs its own tool surface, and the final yield is a schema-validated object the parent reads directly. No prose to parse, no merge conflicts between siblings, no orphaned edits.
+Split a job across subagents and receive structured results. The `task` tool supports parallel work and optional workspace isolation; agents can coordinate through `irc`.
 
 ![jeopi TUI showing `task` spawning two subagents `ComponentsExports` and `RoutesExports`, the constraints block requiring an IRC DM between peers, the per-subagent status cards with cost and duration, and a final Findings section listing both exports plus an honest 'IRC coordination note' about a one-sided handshake.](https://omp.sh/clips/irc-poster.webp)
 
@@ -225,7 +217,7 @@ _[Watch the capture ↗](https://omp.sh/clips/collab.mp4)_
 
 ### 08 · Read a pdf on arxiv, why not?
 
-web_search chains eighteen ranked providers and hands whatever URLs it finds straight to read. Arxiv PDFs, GitHub pages, Stack Overflow threads come back as structured markdown with anchors intact — the same tool surface you use on local files. Cite, follow, quote, never lose where you came from.
+`web_search` can use configured search providers, while `read` retrieves supported URLs and documents as structured content. See the [web search reference](docs/tools/web_search.md) for provider configuration.
 
 ![jeopi TUI: web_search returns 10 ranked Perplexity sources for inference-time compute scaling, the agent picks an arxiv paper, calls read https://arxiv.org/pdf/2604.10739v1, and summarizes the paper's headline result with real numbers.](https://omp.sh/clips/web-poster.webp)
 
@@ -241,7 +233,7 @@ Get a clear verdict on whether the change ships, with every issue ranked P0 thro
 
 ### 11 · Hashline: edit by content hash
 
-Perfect edits, fewer tokens. The model points at anchors instead of retyping the lines it wants to change, so whitespace battles and string-not-found loops just stop happening. Edit a stale file and the anchors diverge — we reject the patch before it corrupts anything. Grok 4 Fast spends 61% fewer output tokens on the same work.
+Hashline patches reference content-hash anchors rather than retyping matching lines. Stale anchors are rejected so a changed file can be read again before retrying.
 
 ### 12 · GitHub is just another filesystem
 
@@ -265,7 +257,7 @@ jeopi reads the working tree through git_overview, git_file_diff, and git_hunk, 
 
 ### 17 · Read PRs. _Walk skills._ Pull JSON out of subagents.
 
-Twelve internal schemes — `pr://`, `issue://`, `agent://`, `skill://`, `rule://`, and the rest — resolve transparently inside every FS-shaped tool the agent already calls. `read pr://1428` returns the same shape as `read src/foo.ts`. `search` walks a diff like a directory. `agent://<id>/findings.0.path` pulls a field out of a subagent's output by path.
+Internal schemes such as `pr://`, `issue://`, `agent://`, `skill://`, and `rule://` provide access to resources through supported filesystem-shaped tools. For example, `read pr://1428` reads a pull request and `agent://<id>/findings.0.path` selects a field from an agent result.
 
 ![jeopi TUI reading pr://can1357/oh-my-pi/1063 and then /diff/1, showing hunk headers, added lines, and a [MODIFIED] (+12 -0) summary.](https://omp.sh/captures/pr.webp)
 
@@ -287,13 +279,13 @@ _[Watch the capture ↗](https://omp.sh/clips/codemod.mp4)_
 
 ### 20 · Drives a _real browser_. _Or your Slack?_
 
-Stealth's on by default, so pages see a normal user instead of a headless bot. The same API drives any Electron app in place — point it at Slack and the agent reads your DMs the way it reads the web.
+The browser tool drives Chromium tabs and can connect to an existing CDP endpoint or launch a compatible Electron application. Browser access is subject to the permissions and configuration of the environment.
 
 ![jeopi TUI driving the browser tool against DuckDuckGo](https://omp.sh/captures/browser.webp)
 
 ## Whatever the task needs, _it's already in the box_.
 
-32 tools live in the same namespace as `read` and `bash`. Pin the active set with `--tools read,edit,bash,…` and the rest stay hidden but indexed — `search_tool_bm25` pulls them back in mid-session when `tools.discoveryMode` says so.
+Built-in tools are configurable with `--tools`. When tool discovery is enabled, `search_tool_bm25` can activate tools from the hidden index during a session.
 
 **Files & search**
 
@@ -302,8 +294,8 @@ Stealth's on by default, so pages see a normal user instead of a headless bot. T
 - `edit` — hashline patches with content-hash anchors and stale-anchor recovery.
 - `ast_edit` — structural rewrites previewed before apply, via ast-grep.
 - `ast_grep` — structural code queries over 50+ tree-sitter grammars.
-- `search` — regex over files, globs, and internal URLs.
-- `find` — glob-based path lookup; reach for `search` when you need content matches.
+- `grep` — regex search over files and paths.
+- `glob` — glob-based path lookup.
 
 **Runtime**
 
@@ -435,43 +427,15 @@ Vuln lookups answer with vendor data, not blog summaries.
 
 [`web_search` reference ↗](docs/tools/web_search.md)
 
-## Roughly **~55,000** lines of Rust, doing the work other harnesses shell out for.
+## Native components
 
-Four crates, one platform-tagged N-API addon. Search, shell, AST, highlight, PTY, image decode, BPE counting — all in-process on the libuv pool. No fork/exec on the hot path.
+The `jeopi-natives` N-API addon provides native implementations for features including search, shell execution, AST operations, and terminal support. Its Rust components include `pi-natives`, `pi-shell`, `pi-ast`, and `pi-iso`; see [the native architecture](docs/natives-architecture.md) and [build runbook](docs/natives-build-release-debugging.md).
 
-- Crates: `pi-natives`, `pi-shell`, `pi-ast`, `pi-iso`
-- Platforms: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`
+Platform packages target `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `win32-x64`.
 
-The table below is a per-module breakdown that intentionally omits glue and tests.
+## Entry points: interactive, one-shot, SDK, RPC, ACP, and Messenger
 
-| Module     | What it does                                                                         | Powered by                                |  ~LoC |
-| ---------- | ------------------------------------------------------------------------------------ | ----------------------------------------- | ----: |
-| shell      | Embedded bash · persistent sessions · timeout/abort · custom builtins                | brush-shell (vendored)                    | 3,700 |
-| grep       | Regex search · parallel/sequential · glob & type filters · fuzzy find                | grep-regex · grep-searcher                | 1,900 |
-| keys       | Kitty keyboard protocol with xterm fallback · PHF perfect-hash lookup                | phf                                       | 1,490 |
-| text       | ANSI-aware width · truncation · column slicing · SGR-preserving wrap                 | unicode-width · segmentation              | 1,450 |
-| summary    | Tree-sitter structural source summaries with elision controls                        | tree-sitter · ast-grep-core               | 1,040 |
-| ast        | ast-grep pattern matching and structural rewrites                                    | ast-grep-core                             | 1,000 |
-| fs_cache   | Mtime-keyed file cache shared by read · grep · lsp                                   | in-tree                                   |   840 |
-| highlight  | Syntax highlighting · 11 semantic categories · 30+ aliases                           | syntect                                   |   470 |
-| pty        | Native PTY allocation for sudo · ssh interactive prompts                             | portable-pty                              |   455 |
-| glob       | Discovery with glob · type filters · mtime sort · gitignore respect                  | ignore · globset                          |   410 |
-| workspace  | Workspace walker with gitignore + AGENTS.md discovery in one pass                    | ignore                                    |   385 |
-| appearance | Mode 2031 + native macOS dark/light via CoreFoundation FFI                           | core-foundation                           |   270 |
-| power      | macOS power-assertion API for idle/system/display-sleep prevention                   | IOKit FFI                                 |   270 |
-| task       | Blocking work on libuv thread pool · cancellation · timeout · profiling              | tokio · napi                              |   260 |
-| fd         | Filesystem walker for find-tool replacement                                          | ignore                                    |   250 |
-| iso        | Workspace isolation shim · apfs · btrfs · zfs · reflink · overlayfs · projfs · rcopy | pi-iso (PAL)                              |   245 |
-| prof       | Circular buffer profiler with folded-stack and SVG flamegraph output                 | inferno                                   |   240 |
-| ps         | Cross-platform process-tree kill and descendant listing                              | libc · libproc · CreateToolhelp32Snapshot |   195 |
-| clipboard  | Text copy and image read from system clipboard · no xclip/pbcopy                     | arboard                                   |    80 |
-| tokens     | O200k / Cl100k BPE token counting · both tables embedded                             | tiktoken-rs                               |    65 |
-| sixel      | Terminal image rendering · decode PNG · JPEG · WebP · GIF · resize · SIXEL encode    | icy_sixel · image                         |    55 |
-| html       | HTML to Markdown with optional content cleaning                                      | html-to-markdown-rs                       |    50 |
-
-## Five entry points: _interactive_, _one-shot_, RPC, ACP, and _Messenger_.
-
-Same engine, five wrappers. `jeopi` runs the TUI. `jeopi -p` answers a single prompt and exits. The Node SDK embeds the session in your process. `jeopi --mode rpc` and `jeopi acp` hand the wheel to another program over stdio. `jeopi messenger` connects Discord, Telegram, and Slack bots to headless sessions.
+`jeopi` runs the TUI. `jeopi -p` answers a single prompt and exits. The SDK embeds the session in your process. `jeopi --mode rpc` and `jeopi acp` expose the agent to other programs over stdio. `jeopi messenger` connects Discord, Telegram, and Slack bots to headless sessions.
 
 ### Interactive — when in doubt, the agent asks
 
@@ -578,9 +542,9 @@ For Discord, `jeopi messenger setup --config <file> --service` does the rest aft
 - **Telegram**: Outbound HTTPS long polling via BotFather token. Supports forum topics in supergroups (`message_thread_id`).
 - **Discord**: Outbound WebSocket Gateway v10. Requires privileged **Message Content Intent**; supports threads and channel mentions.
 - **Slack**: Outbound WebSocket Socket Mode via App Token (`xapp-...`) and Bot Token (`xoxb-...`). Automatically threads channel replies.
-- **Strict Allowlists**: Every platform enforces exact string user IDs (`allowedUserIds`). Unauthorized users are ignored silently.
-- **Session Isolation**: Session transcripts are isolated by `[platform, accountId, channelId, threadId, senderId]` and `cwd`.
-- **Tool Sandboxing**: Defaults to `toolNames: []` (pure text chat). Tools (`read`, `grep`, `glob`, `bash`, `edit`, `write`) are strict opt-in.
+- **Allowlists**: Each platform requires exact `allowedUserIds`; optional channel allowlists further restrict where the bot responds.
+- **Session isolation**: Conversation histories are keyed by platform, account, channel, thread, sender, and working directory.
+- **Tool access**: `toolNames` defaults to `[]` (text chat). Tools must be explicitly enabled. This is not OS isolation: enabled tools run as the same OS user and can access resources available to that user.
 
 Detailed documentation:
 - [Messenger Gateway Architecture and Configuration Reference](docs/messenger.md)
@@ -630,7 +594,7 @@ From **oh-my-pi** (and Pi before it):
 From **jeo-code**:
 
 - Interviews before plans; plans before execution; gates between every handoff
-- Real gates, no theater — a critic verdict is persisted and *required*, not decorative
+- A non-okay critic verdict blocks execution until a fresh okay or a new user message clears the gate
 - Honest verification: the suite runs once as a global signal; per-criterion passes are never fabricated
 - Failure is information: extract the lesson, change the next attempt, split stuck subgoals
 
@@ -647,7 +611,7 @@ bun setup
 bun dev
 ```
 
-`bun setup` installs Bun workspaces and builds `jeopi-natives`. Re-run `bun run build:native` after changing Rust crates or `packages/natives`.
+`bun setup` installs workspace dependencies, builds `jeopi-natives`, and links the `jeopi` command. Re-run `bun run build:native` after changing Rust crates or `packages/natives`.
 
 For a non-interactive smoke check:
 
