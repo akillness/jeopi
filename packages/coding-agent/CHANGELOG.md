@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- New messenger sessions use the configured default model, while resumed sessions retain their previous model.
 - Messenger session capacity now waits for process exit, and Discord activity cleanup releases retained state after failed removals and late cancellations.
 - Discord follow-ups wait for the original request even when thread creation is still in progress.
 - Discord removes a late processing reaction when its request was cancelled before the reaction completed.
