@@ -141,24 +141,27 @@ function createActivityReporter(
 			closing ??= (async () => {
 				closed = true;
 				wake?.();
-				await pump;
-				if (!shown) return;
-				for (let attempt = 0; ; attempt++) {
-					try {
-						await update(undefined);
-						return;
-					} catch (error) {
-						const wait =
-							error instanceof MessengerHttpError && error.status === 429
-								? (error.retryAfterMs ?? 1_000)
-								: 1_000;
-						// One bounded retry: removal holds the request queue.
-						if (attempt > 0 || wait > ACTIVITY_TIMEOUT_MS) {
-							logger.warn("Messenger activity removal failed", { platform: destination.platform });
+				try {
+					await pump;
+					if (!shown) return;
+					for (let attempt = 0; ; attempt++) {
+						try {
+							await update(undefined);
 							return;
+						} catch (error) {
+							const wait =
+								error instanceof MessengerHttpError && error.status === 429
+									? (error.retryAfterMs ?? 1_000)
+									: 1_000;
+							if (attempt > 0 || wait > ACTIVITY_TIMEOUT_MS) {
+								logger.warn("Messenger activity removal failed", { platform: destination.platform });
+								return;
+							}
+							await Bun.sleep(wait);
 						}
-						await Bun.sleep(wait);
 					}
+				} finally {
+					adapter.releaseActivity?.(destination);
 				}
 			})();
 			return closing;

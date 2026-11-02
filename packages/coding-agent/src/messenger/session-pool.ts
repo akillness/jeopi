@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { logger } from "jeopi-utils";
 import {
 	createWorkerHandle,
 	createWorkerSubprocess,
@@ -106,6 +107,7 @@ interface Lane {
 	/** Turns queued or running; idle retirement waits for zero. */
 	turns: number;
 	live?: LiveSession;
+	retiring?: Promise<void>;
 	idle?: NodeJS.Timeout;
 	/** Already chosen to free a slot, so concurrent starts pick different victims. */
 	evicting?: boolean;
@@ -152,27 +154,52 @@ export function createMessengerSessionPool(
 	};
 
 	/** Let the process flush and dispose its session, then kill it; the session file stays for resumption. */
-	const retire = async (lane: Lane): Promise<void> => {
+	const retire = (lane: Lane): Promise<void> => {
+		if (lane.retiring) return lane.retiring;
 		const live = lane.live;
-		if (!live) return;
+		if (!live) return Promise.resolve();
 		lane.live = undefined;
-		const id = String(++nextId);
-		const acknowledged = Promise.withResolvers<void>();
-		const unsubscribe = live.process.onMessage(event => {
-			if (event.type === "closed" && event.id === id) acknowledged.resolve();
-		});
-		const timer = setTimeout(acknowledged.resolve, SESSION_CLOSE_TIMEOUT_MS);
-		try {
-			live.process.send({ type: "close", id });
-			await Promise.race([acknowledged.promise, live.process.exited]);
-		} catch {
-			// The process is already gone; killing it below is still safe.
-		} finally {
-			clearTimeout(timer);
-			unsubscribe();
+		const retirement = (async () => {
+			const id = String(++nextId);
+			const acknowledged = Promise.withResolvers<void>();
+			const unsubscribe = live.process.onMessage(event => {
+				if (event.type === "closed" && event.id === id) acknowledged.resolve();
+			});
+			const timer = setTimeout(acknowledged.resolve, SESSION_CLOSE_TIMEOUT_MS);
+			try {
+				live.process.send({ type: "close", id });
+				await Promise.race([acknowledged.promise, live.process.exited]);
+			} catch {
+				// Still try to terminate a process with a broken IPC channel.
+			} finally {
+				clearTimeout(timer);
+				unsubscribe();
+			}
 			live.process.kill();
-			release(live);
-		}
+			const timeout = Promise.withResolvers<void>();
+			const exitTimer = setTimeout(
+				() => timeout.reject(new Error("Messenger session process did not exit")),
+				SESSION_CLOSE_TIMEOUT_MS,
+			);
+			try {
+				await Promise.race([
+					live.process.exited.then(
+						() => {},
+						() => {},
+					),
+					timeout.promise,
+				]);
+			} finally {
+				clearTimeout(exitTimer);
+			}
+		})();
+		lane.retiring = retirement;
+		const clearRetirement = (): void => {
+			if (lane.retiring === retirement) lane.retiring = undefined;
+		};
+		void live.process.exited.then(clearRetirement, clearRetirement);
+		void retirement.catch(() => {});
+		return retirement;
 	};
 
 	const retireIfIdle = async (lane: Lane): Promise<void> => {
@@ -261,6 +288,7 @@ export function createMessengerSessionPool(
 			result.reject(new Error("Messenger request aborted"));
 		};
 		try {
+			if (lane.retiring) await lane.retiring;
 			live ??= await start(lane, signal);
 			const current = live;
 			current.failTurn = result.reject;
@@ -271,7 +299,7 @@ export function createMessengerSessionPool(
 				else if (event.type === "failed") result.reject(new Error("Messenger session turn failed"));
 			});
 			signal.addEventListener("abort", onAbort, { once: true });
-			if (signal.aborted) onAbort();
+			if (signal.aborted) throw new Error("Messenger request aborted");
 			try {
 				current.process.send({ type: "turn", id, message });
 			} catch (error) {
@@ -309,7 +337,11 @@ export function createMessengerSessionPool(
 		} finally {
 			current.turns--;
 			if (current.turns === 0 && !closed) {
-				current.idle = setTimeout(() => void enqueue(current, () => retireIfIdle(current)), idleMs);
+				current.idle = setTimeout(() => {
+					void enqueue(current, () => retireIfIdle(current)).catch(() =>
+						logger.warn("Messenger session retirement failed"),
+					);
+				}, idleMs);
 				current.idle.unref?.();
 				capacityChanged();
 			}
@@ -323,7 +355,9 @@ export function createMessengerSessionPool(
 			const all = [...lanes.values()];
 			lanes.clear();
 			for (const lane of all) clearTimeout(lane.idle);
-			await Promise.allSettled(all.map(retire));
+			const results = await Promise.allSettled(all.map(retire));
+			const failure = results.find(result => result.status === "rejected");
+			if (failure?.status === "rejected") throw failure.reason;
 		})();
 		return closing;
 	};

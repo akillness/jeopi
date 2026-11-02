@@ -32,6 +32,8 @@ export interface MessengerAdapter {
 	 * later calls; `undefined` removes it. The gateway serializes and throttles calls per request.
 	 */
 	activity?(message: MessengerMessage, text: string | undefined, signal?: AbortSignal): Promise<void>;
+	/** Forget request-local cosmetic activity state after the gateway finishes cleanup retries. */
+	releaseActivity?(message: MessengerMessage): void;
 }
 
 export interface MessengerPlatformConfig {

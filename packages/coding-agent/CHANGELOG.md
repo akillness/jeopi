@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Messenger session capacity now waits for process exit, and Discord activity cleanup releases retained state after failed removals and late cancellations.
+
 ## [16.6.15] - 2026-11-02
 
 ### Added

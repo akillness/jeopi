@@ -619,6 +619,9 @@ export function createDiscordAdapter(
 				deps.fetch,
 			);
 		},
+		releaseActivity(message) {
+			activityMessages.delete(JSON.stringify([message.threadId ?? message.channelId, message.messageId]));
+		},
 		async activity(message, text, signal) {
 			const channelId = message.threadId ?? message.channelId;
 			const key = JSON.stringify([channelId, message.messageId]);
@@ -672,6 +675,19 @@ export function createDiscordAdapter(
 			);
 			if (!isRecord(created) || typeof created.id !== "string" || !created.id)
 				throw new Error("Discord activity message returned no ID");
+			if (signal?.aborted) {
+				try {
+					await messengerFetchJson(
+						`${messages}/${encodeURIComponent(created.id)}`,
+						{ method: "DELETE", headers: headers() },
+						AbortSignal.timeout(3_000),
+						deps.fetch,
+					);
+				} catch {
+					logger.warn("Discord late activity removal failed");
+				}
+				return;
+			}
 			activityMessages.set(key, created.id);
 		},
 		async send(message, text, signal) {
