@@ -66,7 +66,7 @@ It is designed for personal assistants, team developer bots, and remote coding c
    - Opens an outbound WebSocket connection (`wss://gateway.discord.gg`).
    - Requests Gateway Intents: `GUILD_MESSAGES (512)`, `DIRECT_MESSAGES (4096)`, and `MESSAGE_CONTENT (32768)`.
    - Automatically negotiates heartbeats (Opcode 1 / Opcode 10) and handles Gateway Resumes (Opcode 6).
-   - In servers/guilds, the bot must be mentioned (`<@bot_id>`). Mentions are stripped before passing text to the agent.
+   - A direct bot mention or a reply to a bot-authored message invokes the bot. Authorized users can continue without mentions only in threads created by or explicitly addressed to this bot, including after a restart. Unrelated threads are ignored; user and channel allowlists still apply.
    - Threads are treated as their own distinct channels using Discord's thread channel Snowflake ID.
    - Outbound replies are split into chunks of up to 2,000 characters.
 

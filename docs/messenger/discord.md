@@ -6,8 +6,8 @@ This guide covers setting up, authorizing, and running a Discord bot with `jeopi
 
 - **Protocol**: Discord Gateway v10 via outbound WebSocket (`wss://gateway.discord.gg`).
 - **Network Requirement**: Outbound WebSocket and HTTPS access to `discord.com`. No public IP, webhook endpoints, or open ports required.
-- **Message Types**: Direct Messages (DMs) and Server/Guild Channel messages where the bot is mentioned (`<@bot_id>`).
-- **Threads**: Supported directly. Discord treats threads as distinct channel Snowflake IDs.
+- **Message Types**: Direct messages, server-channel messages mentioning the bot or replying to a bot-authored message, and messages in threads where this bot was invoked. User and channel allowlists apply in every case.
+- **Threads**: Authorized users can continue without a mention in threads created by the bot or where an authorized user explicitly mentioned or directly replied to it, including after a gateway restart. Unrelated and other bots' threads are ignored unless this bot is invoked there.
 - **Sessions**: With `jeopi messenger run`, every new request thread and every DM gets its own jeopi session process, so separate conversations are answered concurrently; see [session processes](../messenger.md#session-processes). The `/discord live` bridge instead uses the active local session.
 - **Progress**: Best-effort reactions on the request (⏳ while processing, then ✅ or ❌) plus one in-place status line in the reply thread or DM, such as `⏳ Step 3 · Running the test suite`. The line is edited at most every 2 seconds and deleted once the request finishes; it is sent without notifications or link previews. It shows each tool call's short declared intent (or the tool name), not raw tool arguments or output, but an intent can still name files or tasks; anyone who can view that thread or DM can see it.
 
@@ -176,7 +176,7 @@ The gateway uses the configured model/provider authentication, and the live brid
 | Gateway crashes with `Discord authentication failed (Gateway 4004)` | Invalid Bot Token | Ensure `JEOPI_DISCORD_BOT_TOKEN` holds the Bot Token from the Bot tab (not Client Secret). |
 | Gateway crashes with `Discord message intents are invalid or not enabled (Gateway 4014)` | Privileged Message Content Intent is disabled | Go to Developer Portal -> Bot -> Privileged Gateway Intents -> Enable **Message Content Intent**. |
 | Bot joins server but does not see messages in a channel | Missing channel permissions | Ensure the bot's role has "View Channel", "Send Messages", and "Read Message History" in that channel. |
-| Bot receives messages in DM but not in server channel | Bot was not mentioned in server message | Guild messages require an explicit mention (`@BotName`). Mentions are stripped automatically before prompt execution. |
+| Bot receives messages in DM but not in server channel | Message did not mention or reply to the bot | Outside threads, mention the bot or directly reply to a bot-authored message. Mentions are stripped automatically before prompt execution. |
 | Message from user receives no response | User ID not in `allowedUserIds` | Copy the 17-19 digit Snowflake user ID with Developer Mode and verify it matches `allowedUserIds`. |
 
 

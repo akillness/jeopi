@@ -765,18 +765,351 @@ describe("Discord Gateway transport", () => {
 		return socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
 	}
 
-	it.each([
-		["allowed parent", ["allowed-parent"]],
-		["allowed thread", ["existing-thread"]],
-		["unrestricted channels", undefined],
-	])("re-establishes sender-bound thread continuity after restart with %s", async (_name, allowedChannelIds) => {
+	it("dispatches only addressed top-level messages while preserving DM and created-thread continuation", async () => {
+		const effects: string[] = [];
 		interceptFetch(request => {
 			const path = new URL(request.url).pathname;
 			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
 			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (path.includes("/reactions/")) {
+				effects.push(`${request.method} ${path}`);
+				return new Response(null, { status: 204 });
+			}
+			if (request.method === "GET" && path.endsWith("/channels/allowed-parent")) return Response.json({ type: 0 });
+			if (request.method === "GET" && path.endsWith("/channels/forbidden"))
+				return Response.json({ id: "forbidden", type: 0 });
+			if (request.method === "GET" && path.endsWith("/channels/allowed-parent/messages/fetched-answer"))
+				return Response.json({ id: "fetched-answer", author: { id: "42", bot: true } });
+			if (request.method === "GET" && path.includes("/messages/")) return new Response(null, { status: 404 });
+			if (request.method === "POST" && path.endsWith("/threads")) {
+				effects.push(`thread ${path}`);
+				return Response.json({ id: `thread-${path.split("/").at(-2)}` });
+			}
+			if (request.method === "POST" && path.endsWith("/messages")) {
+				effects.push(`reply ${path}`);
+				return Response.json({ id: "sent" });
+			}
+			throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds: ["allowed-parent", "dm"] };
+		const adapter = createDiscordAdapter(scoped, env, transportDeps);
+		const turns: string[] = [];
+		const completed = mailbox<string>();
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return `answer ${incoming.messageId}`;
+			},
+		);
+		const { controller, run } = start(adapter, async incoming => {
+			await gateway.handle(incoming);
+			completed.push(incoming.messageId);
+		});
+		const socket = await fixture.opened;
+		let identify = await fixture.packets.next();
+		while (identify.op !== 2) identify = await fixture.packets.next();
+		socket.send(
+			JSON.stringify({
+				op: 0,
+				t: "READY",
+				s: 1,
+				d: { session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+			}),
+		);
+		const base = {
+			channel_id: "allowed-parent",
+			guild_id: "guild",
+			author: { id: "human" },
+			content: "question",
+			mentions: [],
+		};
+		const send = (data: Record<string, unknown>, sequence: number) =>
+			socket.send(JSON.stringify({ op: 0, t: "MESSAGE_CREATE", s: sequence, d: data }));
+		send({ ...base, id: "mention", content: "<@42> ask <@99>", mentions: [{ id: "42" }, { id: "99" }] }, 2);
+		expect(await completed.next()).toBe("mention");
+		send({ ...base, id: "followup", channel_id: "thread-mention", content: "continue" }, 3);
+		expect(await completed.next()).toBe("followup");
+		for (const [index, data] of [
+			{
+				...base,
+				id: "reply-bot",
+				type: 19,
+				message_reference: { message_id: "bot-answer", channel_id: "allowed-parent" },
+				referenced_message: { id: "bot-answer", author: { id: "42", bot: true } },
+			},
+			{
+				...base,
+				id: "reply-fetched-bot",
+				type: 19,
+				message_reference: { message_id: "fetched-answer", channel_id: "allowed-parent" },
+			},
+			{
+				...base,
+				id: "reply-other",
+				type: 19,
+				message_reference: { message_id: "other-answer", channel_id: "allowed-parent" },
+				referenced_message: { id: "other-answer", author: { id: "99", bot: true } },
+			},
+			{
+				...base,
+				id: "reply-mismatch",
+				type: 19,
+				message_reference: { message_id: "other-answer", channel_id: "allowed-parent" },
+				referenced_message: { id: "bot-answer", author: { id: "42", bot: true } },
+			},
+			{
+				...base,
+				id: "reply-unresolved",
+				type: 19,
+				message_reference: { message_id: "missing", channel_id: "allowed-parent" },
+			},
+			{ ...base, id: "plain" },
+			{ ...base, id: "other-mention", content: "<@99> ask", mentions: [{ id: "99" }] },
+			{ ...base, id: "intruder", author: { id: "intruder" }, mentions: [{ id: "42" }] },
+			{ ...base, id: "forbidden", channel_id: "forbidden", mentions: [{ id: "42" }] },
+			{ ...base, id: "dm", channel_id: "dm", guild_id: undefined },
+		].entries()) {
+			send(data, index + 4);
+			expect(await completed.next()).toBe(data.id);
+		}
+		expect(turns).toEqual(["mention", "followup", "reply-bot", "reply-fetched-bot", "dm"]);
+		for (const id of [
+			"reply-other",
+			"reply-mismatch",
+			"reply-unresolved",
+			"plain",
+			"other-mention",
+			"intruder",
+			"forbidden",
+		]) {
+			expect(effects.some(effect => effect.includes(`/messages/${id}/`))).toBe(false);
+		}
+		expect(effects).toContain("thread /api/v10/channels/allowed-parent/messages/reply-bot/threads");
+		expect(effects).toContain("thread /api/v10/channels/allowed-parent/messages/reply-fetched-bot/threads");
+		controller.abort();
+		await run;
+	});
+
+	it("ignores unrelated thread history containing incidental bot output after restart", async () => {
+		interceptFetch(request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (path.endsWith("/channels/participated"))
+				return Response.json({ id: "participated", type: 11, parent_id: "allowed-parent", owner_id: "99" });
+			if (request.method === "GET" && path.endsWith("/channels/participated/messages"))
+				return Response.json([{ id: "100", author: { id: "42", bot: true }, mentions: [] }]);
 			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "POST" && path.endsWith("/messages")) return Response.json({ id: "sent" });
+			throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds: ["allowed-parent", "dm"] };
+		const adapter = createDiscordAdapter(scoped, env, transportDeps);
+		const turns: string[] = [];
+		const completed = mailbox<string>();
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return "answer";
+			},
+		);
+		const { controller, run } = start(adapter, async incoming => {
+			await gateway.handle(incoming);
+			completed.push(incoming.messageId);
+		});
+		const socket = await fixture.opened;
+		let identify = await fixture.packets.next();
+		while (identify.op !== 2) identify = await fixture.packets.next();
+		socket.send(
+			JSON.stringify({
+				op: 0,
+				t: "READY",
+				s: 1,
+				d: { session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+			}),
+		);
+		const base = { author: { id: "human" }, content: "continue", mentions: [] };
+		socket.send(
+			JSON.stringify({
+				op: 0,
+				t: "MESSAGE_CREATE",
+				s: 2,
+				d: { ...base, id: "after-restart", guild_id: "guild", channel_id: "participated" },
+			}),
+		);
+		socket.send(
+			JSON.stringify({
+				op: 0,
+				t: "MESSAGE_CREATE",
+				s: 3,
+				d: {
+					...base,
+					id: "marker",
+					guild_id: "guild",
+					channel_id: "participated",
+					content: "<@42> marker",
+					mentions: [{ id: "42" }],
+				},
+			}),
+		);
+		while ((await completed.next()) !== "marker") {}
+		expect(turns).toEqual(["marker"]);
+		controller.abort();
+		await run;
+	});
+
+	it.each([
+		["bot-owned thread", "42", [], true],
+		["authorized explicit mention on a later history page", "99", ["authorized"], true],
+		["authorized direct reply with embedded bot message", "99", ["reply-embedded"], true],
+		["authorized direct reply resolved through REST", "99", ["reply-fetched"], true],
+		["reply to another bot", "99", ["reply-other"], false],
+		["unauthorized human reply to the bot", "99", ["reply-unauthorized"], false],
+		["mismatched embedded reply target", "99", ["reply-mismatch"], false],
+		["unauthorized explicit mention", "99", ["unauthorized"], false],
+		["another bot's mention", "99", ["bot"], false],
+		["history lookup failure", "99", ["failure"], false],
+		["a later mention cannot retroactively activate an earlier message", "99", ["future"], false],
+	])("restores thread admission after restart from %s", async (_name, owner, evidence, eligible) => {
+		interceptFetch(request => {
+			const url = new URL(request.url);
+			const path = url.pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (request.method === "GET" && path.endsWith("/channels/restored"))
+				return Response.json({ id: "restored", type: 11, parent_id: "parent", owner_id: owner });
+			if (request.method === "GET" && path.endsWith("/channels/restored/messages/150"))
+				return Response.json({ id: "150", author: { id: "42", bot: true } });
+			if (request.method === "GET" && path.endsWith("/channels/restored/messages")) {
+				const before = url.searchParams.get("before");
+				if (evidence[0] === "future")
+					return Response.json(
+						before === "400"
+							? []
+							: [
+									{
+										id: "401",
+										author: { id: "human", bot: false },
+										content: "<@42> marker",
+										mentions: [{ id: "42" }],
+									},
+								],
+					);
+				if (evidence[0] === "failure") return new Response(null, { status: 403 });
+				if (!before || before === "400")
+					return Response.json(
+						Array.from({ length: 100 }, (_, i) => ({
+							id: String(300 - i),
+							author: { id: "42", bot: true },
+							mentions: [],
+						})),
+					);
+				if (before !== "201") return Response.json([]);
+				return Response.json(
+					evidence.map(kind =>
+						kind.startsWith("reply-")
+							? {
+									id: "200",
+									author: { id: kind === "reply-unauthorized" ? "intruder" : "human", bot: false },
+									content: "continue",
+									mentions: [],
+									type: 19,
+									message_reference: { message_id: "150", channel_id: "restored" },
+									...(kind === "reply-embedded" || kind === "reply-unauthorized"
+										? { referenced_message: { id: "150", author: { id: "42", bot: true } } }
+										: {}),
+									...(kind === "reply-other"
+										? { referenced_message: { id: "150", author: { id: "99", bot: true } } }
+										: {}),
+									...(kind === "reply-mismatch"
+										? { referenced_message: { id: "149", author: { id: "42", bot: true } } }
+										: {}),
+								}
+							: {
+									id: "200",
+									author: {
+										id: kind === "authorized" ? "human" : kind === "bot" ? "99" : "intruder",
+										bot: kind === "bot",
+									},
+									content: "<@99> <@42> request",
+									mentions: [{ id: "99" }, { id: "42" }],
+								},
+					),
+				);
+			}
+			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "POST" && path.endsWith("/messages")) return Response.json({ id: "sent" });
+			throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds: ["parent", "dm"] };
+		const adapter = createDiscordAdapter(scoped, env, transportDeps);
+		const turns: string[] = [];
+		const completed = mailbox<string>();
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return "answer";
+			},
+		);
+		const { controller, run } = start(adapter, async incoming => {
+			await gateway.handle(incoming);
+			completed.push(incoming.messageId);
+		});
+		const socket = await fixture.opened;
+		let identify = await fixture.packets.next();
+		while (identify.op !== 2) identify = await fixture.packets.next();
+		socket.send(
+			JSON.stringify({
+				op: 0,
+				t: "READY",
+				s: 1,
+				d: { user: { id: "42" }, session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+			}),
+		);
+		const base = { guild_id: "guild", channel_id: "restored", author: { id: "human" }, mentions: [] };
+		socket.send(JSON.stringify({ op: 0, t: "MESSAGE_CREATE", s: 2, d: { ...base, id: "400", content: "continue" } }));
+		socket.send(
+			JSON.stringify({
+				op: 0,
+				t: "MESSAGE_CREATE",
+				s: 3,
+				d: { ...base, id: "401", content: "<@42> marker", mentions: [{ id: "42" }] },
+			}),
+		);
+		while ((await completed.next()) !== "401") {}
+		expect(turns).toEqual(eligible ? ["400", "401"] : ["401"]);
+		controller.abort();
+		await run;
+	});
+
+	it.each([
+		["allowed parent", ["allowed-parent"]],
+		["allowed thread", ["existing-thread"]],
+		["unrestricted channels", undefined],
+	])("activates an existing thread only after an authorized mention with %s", async (_name, allowedChannelIds) => {
+		const effects: string[] = [];
+		interceptFetch(request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (path.includes("/reactions/")) {
+				effects.push(path);
+				return new Response(null, { status: 204 });
+			}
 			if (request.method === "GET" && path.endsWith("/channels/existing-thread"))
 				return Response.json({ id: "existing-thread", type: 11, parent_id: "allowed-parent" });
+			if (request.method === "GET" && path.endsWith("/channels/forbidden-thread"))
+				return Response.json({ id: "forbidden-thread", type: 11, parent_id: "forbidden-parent" });
+			if (request.method === "GET" && path.endsWith("/channels/existing-thread/messages")) return Response.json([]);
 			if (request.method === "POST" && path.endsWith("/messages")) return Response.json({ id: "reply" });
 			throw new Error("Unexpected Discord fixture endpoint");
 		});
@@ -810,8 +1143,15 @@ describe("Discord Gateway transport", () => {
 		);
 		const base = { channel_id: "existing-thread", guild_id: "guild", author: { id: "human" } };
 		const inputs = [
+			{
+				...base,
+				id: "intruder-mention",
+				author: { id: "intruder" },
+				content: "<@42> request",
+				mentions: [{ id: "42" }],
+			},
 			{ ...base, id: "before", content: "question", mentions: [] },
-			{ ...base, id: "mention", content: "<@42> question", mentions: [{ id: "42" }] },
+			{ ...base, id: "mention", content: "<@99> <@42> question", mentions: [{ id: "99" }, { id: "42" }] },
 			{ ...base, id: "remention", content: "<@42> another", mentions: [{ id: "42" }] },
 			{ ...base, id: "followup", content: "continue", mentions: [] },
 			{ ...base, id: "intruder", author: { id: "intruder" }, content: "continue", mentions: [] },
@@ -819,19 +1159,557 @@ describe("Discord Gateway transport", () => {
 		for (const [index, data] of inputs.entries()) {
 			socket.send(JSON.stringify({ op: 0, t: "MESSAGE_CREATE", s: index + 2, d: data }));
 			expect(await handled.next()).toBe(data.id);
+			if (data.id === "before") expect(turns).toEqual([]);
 		}
 		expect(turns).toEqual(["mention", "remention", "followup"]);
+		if (allowedChannelIds) {
+			socket.send(
+				JSON.stringify({
+					op: 0,
+					t: "MESSAGE_CREATE",
+					s: 20,
+					d: { ...base, id: "forbidden", channel_id: "forbidden-thread", content: "question", mentions: [] },
+				}),
+			);
+			expect(await handled.next()).toBe("forbidden");
+			expect(turns).toEqual(["mention", "remention", "followup"]);
+			expect(effects.some(path => path.includes("/messages/forbidden/"))).toBe(false);
+		}
+		expect(effects.some(path => path.includes("/messages/intruder/"))).toBe(false);
 		controller.abort();
 		await run;
 	});
 
-	it("authorizes explicit mentions in an existing thread only for its allowed parent and sender", async () => {
+	it.each([
+		["allowed parent", ["parent"], false],
+		["explicitly allowed thread with initial mention", ["thread", "other"], true],
+		["unrestricted channels with initial mention", undefined, true],
+	])(
+		"preserves same-thread arrival order without blocking other channels or admission on reply completion: %s",
+		async (_name, allowedChannelIds, initialMention) => {
+			const lookupStarted = Promise.withResolvers<void>();
+			const releaseLookup = Promise.withResolvers<void>();
+			const firstEntered = Promise.withResolvers<void>();
+			const otherEntered = Promise.withResolvers<void>();
+			const secondAdmitted = Promise.withResolvers<void>();
+			const releaseReply = Promise.withResolvers<void>();
+			let lookups = 0;
+			interceptFetch(async request => {
+				const path = new URL(request.url).pathname;
+				if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+				if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+				if (request.method === "GET" && path.endsWith("/channels/thread")) {
+					if (++lookups === 1) {
+						lookupStarted.resolve();
+						await releaseLookup.promise;
+					}
+					return Response.json({ id: "thread", type: 11, parent_id: "parent", owner_id: "42" });
+				}
+				if (request.method === "GET" && path.endsWith("/channels/other"))
+					return Response.json({ id: "other", type: 11, parent_id: "parent", owner_id: "42" });
+				if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+				if (request.method === "POST" && path.endsWith("/messages")) return Response.json({ id: "sent" });
+				throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+			});
+			const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+			const scoped = { ...config, allowedChannelIds };
+			const adapter = createDiscordAdapter(scoped, env, transportDeps);
+			const entries: string[] = [];
+			const completed = mailbox<string>();
+			const gateway = createMessengerGateway(
+				{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+				[adapter],
+				async incoming => {
+					entries.push(incoming.messageId);
+					if (incoming.messageId === "first") {
+						firstEntered.resolve();
+						await releaseReply.promise;
+					}
+					if (incoming.messageId === "other") otherEntered.resolve();
+					return "answer";
+				},
+				{ concurrency: 3 },
+			);
+			const { controller, run } = start(adapter, async incoming => {
+				if (incoming.messageId === "second") secondAdmitted.resolve();
+				await gateway.handle(incoming);
+				completed.push(incoming.messageId);
+			});
+			try {
+				const socket = await fixture.opened;
+				let identify = await fixture.packets.next();
+				while (identify.op !== 2) identify = await fixture.packets.next();
+				socket.send(
+					JSON.stringify({
+						op: 0,
+						t: "READY",
+						s: 1,
+						d: { session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+					}),
+				);
+				const base = { guild_id: "guild", author: { id: "human" }, content: "question", mentions: [] };
+				const send = (id: string, channel_id: string, s: number) =>
+					socket.send(
+						JSON.stringify({
+							op: 0,
+							t: "MESSAGE_CREATE",
+							s,
+							d: {
+								...base,
+								id,
+								channel_id,
+								...(id === "first" && initialMention
+									? { content: "<@42> question", mentions: [{ id: "42" }] }
+									: {}),
+							},
+						}),
+					);
+				send("first", "thread", 2);
+				await lookupStarted.promise;
+				send("second", "thread", 3);
+				send("other", "other", 4);
+				await otherEntered.promise;
+				releaseLookup.resolve();
+				await firstEntered.promise;
+				await secondAdmitted.promise;
+				expect(entries.filter(id => id !== "other")).toEqual(["first"]);
+				releaseReply.resolve();
+				const finished: string[] = [];
+				while (finished.length < 3) finished.push(await completed.next());
+				expect(entries.filter(id => id !== "other")).toEqual(["first", "second"]);
+			} finally {
+				releaseLookup.resolve();
+				releaseReply.resolve();
+				controller.abort();
+				await run;
+			}
+		},
+	);
+
+	it("retries rate-limited channel classification before dispatching same-thread messages in order", async () => {
+		const time = controlledDiscordClock();
+		const delays: number[] = [];
+		const clock: DiscordClock = {
+			...time.clock,
+			schedule(callback, delay) {
+				delays.push(delay);
+				return time.clock.schedule(callback, delay);
+			},
+		};
+		const limited = Promise.withResolvers<void>();
+		let lookups = 0;
+		const delivered: Array<{ path: string; content: unknown }> = [];
+		interceptFetch(async request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (request.method === "GET" && path.endsWith("/channels/thread")) {
+				if (++lookups === 1) {
+					limited.resolve();
+					return Response.json({ message: "rate limited" }, { status: 429, headers: { "Retry-After": "2" } });
+				}
+				return Response.json({ id: "thread", type: 11, parent_id: "parent", owner_id: "42" });
+			}
+			if (request.method === "GET" && path.endsWith("/channels/other"))
+				return Response.json({ id: "other", type: 11, parent_id: "parent", owner_id: "42" });
+			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "POST" && path.endsWith("/messages")) {
+				delivered.push({ path, content: (await payload(request)).content });
+				return Response.json({ id: "sent" });
+			}
+			throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds: ["parent"] };
+		const adapter = createDiscordAdapter(scoped, env, { ...transportDeps, clock });
+		const turns: string[] = [];
+		const completed = mailbox<string>();
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return `answer ${incoming.messageId}`;
+			},
+			{ concurrency: 3 },
+		);
+		const { controller, run } = start(adapter, async incoming => {
+			await gateway.handle(incoming);
+			completed.push(incoming.messageId);
+		});
+		try {
+			const socket = await fixture.opened;
+			let identify = await fixture.packets.next();
+			while (identify.op !== 2) identify = await fixture.packets.next();
+			socket.send(
+				JSON.stringify({
+					op: 0,
+					t: "READY",
+					s: 1,
+					d: { session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+				}),
+			);
+			const send = (id: string, channel_id: string, s: number) =>
+				socket.send(
+					JSON.stringify({
+						op: 0,
+						t: "MESSAGE_CREATE",
+						s,
+						d: { id, channel_id, guild_id: "guild", author: { id: "human" }, content: "question", mentions: [] },
+					}),
+				);
+			send("first", "thread", 2);
+			await limited.promise;
+			send("second", "thread", 3);
+			send("other", "other", 4);
+			expect(await completed.next()).toBe("other");
+			expect(delays).toContain(2000);
+			expect(turns).toEqual(["other"]);
+			time.advance(1999);
+			expect(lookups).toBe(1);
+			time.advance(1);
+			expect(await completed.next()).toBe("first");
+			expect(await completed.next()).toBe("second");
+			expect(turns).toEqual(["other", "first", "second"]);
+			expect(
+				delivered.filter(item => item.path.endsWith("/channels/thread/messages")).map(item => item.content),
+			).toEqual(["answer first", "answer second"]);
+		} finally {
+			controller.abort();
+			await run;
+		}
+	});
+
+	it("cancels a rate-limited channel classification when the gateway stops", async () => {
+		const time = controlledDiscordClock();
+		let lookups = 0;
+		interceptFetch(request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (request.method === "GET" && path.endsWith("/channels/thread")) {
+				lookups++;
+				return Response.json({ message: "rate limited" }, { status: 429, headers: { "Retry-After": "2" } });
+			}
+			throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds: ["parent"] };
+		const adapter = createDiscordAdapter(scoped, env, { ...transportDeps, clock: time.clock });
+		const turns: string[] = [];
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return "answer";
+			},
+		);
+		const { controller, run } = start(adapter, incoming => gateway.handle(incoming));
+		try {
+			const socket = await fixture.opened;
+			let identify = await fixture.packets.next();
+			while (identify.op !== 2) identify = await fixture.packets.next();
+			socket.send(
+				JSON.stringify({
+					op: 0,
+					t: "READY",
+					s: 1,
+					d: { session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+				}),
+			);
+			const retryScheduled = time.nextDelay();
+			socket.send(
+				JSON.stringify({
+					op: 0,
+					t: "MESSAGE_CREATE",
+					s: 2,
+					d: {
+						id: "first",
+						channel_id: "thread",
+						guild_id: "guild",
+						author: { id: "human" },
+						content: "question",
+						mentions: [],
+					},
+				}),
+			);
+			expect(await retryScheduled).toBe(2000);
+			controller.abort();
+			await run;
+			time.advance(2000);
+			expect(lookups).toBe(1);
+			expect(turns).toEqual([]);
+			expect(time.pending()).toBe(0);
+		} finally {
+			controller.abort();
+			await run;
+		}
+	});
+
+	it("does not classify or dispatch a duplicate while the original classification is pending", async () => {
+		const lookupStarted = Promise.withResolvers<void>();
+		const releaseLookup = Promise.withResolvers<void>();
+		let lookups = 0;
+		interceptFetch(async request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (request.method === "GET" && path.endsWith("/channels/thread")) {
+				lookups++;
+				lookupStarted.resolve();
+				await releaseLookup.promise;
+				return Response.json({ id: "thread", type: 11, parent_id: "parent", owner_id: "42" });
+			}
+			if (request.method === "GET" && /\/channels\/marker[12]$/u.test(path))
+				return Response.json({ type: 11, parent_id: "parent", owner_id: "42" });
+			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "POST" && path.endsWith("/messages")) return Response.json({ id: "sent" });
+			throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds: ["parent"] };
+		const adapter = createDiscordAdapter(scoped, env, transportDeps);
+		const turns: string[] = [];
+		const completed = mailbox<string>();
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return "answer";
+			},
+			{ concurrency: 3 },
+		);
+		const { controller, run } = start(adapter, async incoming => {
+			await gateway.handle(incoming);
+			completed.push(incoming.messageId);
+		});
+		try {
+			const socket = await fixture.opened;
+			let identify = await fixture.packets.next();
+			while (identify.op !== 2) identify = await fixture.packets.next();
+			socket.send(
+				JSON.stringify({
+					op: 0,
+					t: "READY",
+					s: 1,
+					d: { session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+				}),
+			);
+			const send = (id: string, channel_id: string, s: number) =>
+				socket.send(
+					JSON.stringify({
+						op: 0,
+						t: "MESSAGE_CREATE",
+						s,
+						d: { id, channel_id, guild_id: "guild", author: { id: "human" }, content: "question", mentions: [] },
+					}),
+				);
+			send("same", "thread", 2);
+			await lookupStarted.promise;
+			send("same", "thread", 3);
+			send("marker1", "marker1", 4);
+			expect(await completed.next()).toBe("marker1");
+			releaseLookup.resolve();
+			expect(await completed.next()).toBe("same");
+			send("marker2", "thread", 5);
+			expect(await completed.next()).toBe("marker2");
+			expect(lookups).toBe(1);
+			expect(turns).toEqual(["marker1", "same", "marker2"]);
+		} finally {
+			releaseLookup.resolve();
+			controller.abort();
+			await run;
+		}
+	});
+
+	it("bounds pending classifications globally and admits new work after they finish", async () => {
+		const release = Promise.withResolvers<void>();
+		const started = Promise.withResolvers<void>();
+		const lookups: string[] = [];
+		interceptFetch(async request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (request.method === "GET" && /\/channels\/channel-\d+$/u.test(path)) {
+				lookups.push(path.split("/").at(-1)!);
+				if (lookups.length === 100) started.resolve();
+				await release.promise;
+				return Response.json({ type: 11, parent_id: "parent", owner_id: "42" });
+			}
+			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "POST" && path.endsWith("/messages")) return Response.json({ id: "sent" });
+			throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds: ["parent", "dm"] };
+		const adapter = createDiscordAdapter(scoped, env, transportDeps);
+		const completed = mailbox<string>();
+		const turns: string[] = [];
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return "answer";
+			},
+			{ concurrency: 100 },
+		);
+		const { controller, run } = start(adapter, async incoming => {
+			await gateway.handle(incoming);
+			completed.push(incoming.messageId);
+		});
+		try {
+			const socket = await fixture.opened;
+			let identify = await fixture.packets.next();
+			while (identify.op !== 2) identify = await fixture.packets.next();
+			socket.send(
+				JSON.stringify({
+					op: 0,
+					t: "READY",
+					s: 1,
+					d: { session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+				}),
+			);
+			const send = (id: number) =>
+				socket.send(
+					JSON.stringify({
+						op: 0,
+						t: "MESSAGE_CREATE",
+						s: id + 2,
+						d: {
+							id: `message-${id}`,
+							channel_id: `channel-${id}`,
+							guild_id: "guild",
+							author: { id: "human" },
+							content: "question",
+							mentions: [],
+						},
+					}),
+				);
+			for (let i = 0; i < 100; i++) send(i);
+			await started.promise;
+			send(100);
+			socket.send(
+				JSON.stringify({
+					op: 0,
+					t: "MESSAGE_CREATE",
+					s: 200,
+					d: { id: "dm-at-capacity", channel_id: "dm", author: { id: "human" }, content: "private", mentions: [] },
+				}),
+			);
+			expect(await completed.next()).toBe("dm-at-capacity");
+			expect(turns).toContain("dm-at-capacity");
+			socket.send(JSON.stringify({ op: 1, d: null }));
+			let heartbeat = await fixture.packets.next();
+			while (heartbeat.op !== 1) heartbeat = await fixture.packets.next();
+			expect(lookups).toHaveLength(100);
+			release.resolve();
+			const finished: string[] = [];
+			for (let i = 0; i < 100; i++) finished.push(await completed.next());
+			expect(new Set(finished)).toEqual(new Set(Array.from({ length: 100 }, (_, i) => `message-${i}`)));
+			send(101);
+			expect(await completed.next()).toBe("message-101");
+			expect(turns).not.toContain("message-100");
+			expect(lookups).not.toContain("channel-100");
+		} finally {
+			release.resolve();
+			controller.abort();
+			await run;
+		}
+	});
+
+	it("keeps allowed channels and DMs responsive during an unauthorized same-channel flood", async () => {
+		const lookupStarted = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		interceptFetch(async request => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
+			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
+			if (request.method === "GET" && path.endsWith("/channels/blocked")) {
+				lookupStarted.resolve();
+				await release.promise;
+				return Response.json({ type: 11, parent_id: "parent", owner_id: "42" });
+			}
+			if (request.method === "GET" && path.endsWith("/channels/other"))
+				return Response.json({ type: 11, parent_id: "parent", owner_id: "42" });
+			if (path.includes("/reactions/")) return new Response(null, { status: 204 });
+			if (request.method === "POST" && path.endsWith("/messages")) return Response.json({ id: "sent" });
+			throw new Error(`Unexpected fixture request ${request.method} ${path}`);
+		});
+		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
+		const scoped = { ...config, allowedChannelIds: ["parent", "dm"] };
+		const adapter = createDiscordAdapter(scoped, env, transportDeps);
+		const turns: string[] = [];
+		const completed = mailbox<string>();
+		const gateway = createMessengerGateway(
+			{ cwd: "/tmp", sessionDir: "/tmp", toolNames: [], platforms: { discord: scoped } },
+			[adapter],
+			async incoming => {
+				turns.push(incoming.messageId);
+				return "answer";
+			},
+			{ concurrency: 3 },
+		);
+		const { controller, run } = start(adapter, async incoming => {
+			await gateway.handle(incoming);
+			if (incoming.senderId === "human") completed.push(incoming.messageId);
+		});
+		try {
+			const socket = await fixture.opened;
+			let identify = await fixture.packets.next();
+			while (identify.op !== 2) identify = await fixture.packets.next();
+			socket.send(
+				JSON.stringify({
+					op: 0,
+					t: "READY",
+					s: 1,
+					d: { session_id: "s", resume_gateway_url: "wss://gateway.discord.gg" },
+				}),
+			);
+			const send = (id: string, channel_id: string, sender: string, s: number, direct = false) =>
+				socket.send(
+					JSON.stringify({
+						op: 0,
+						t: "MESSAGE_CREATE",
+						s,
+						d: {
+							id,
+							channel_id,
+							...(direct ? {} : { guild_id: "guild" }),
+							author: { id: sender },
+							content: "question",
+							mentions: [],
+						},
+					}),
+				);
+			send("blocked", "blocked", "human", 2);
+			await lookupStarted.promise;
+			for (let i = 0; i < 100; i++) send(`intruder-${i}`, "blocked", "intruder", i + 3);
+			send("other", "other", "human", 103);
+			send("dm", "dm", "human", 104, true);
+			const first = await completed.next();
+			const second = await completed.next();
+			expect(new Set([first, second])).toEqual(new Set(["other", "dm"]));
+			expect(new Set(turns)).toEqual(new Set(["other", "dm"]));
+			release.resolve();
+			expect(await completed.next()).toBe("blocked");
+			expect(turns.filter(id => id.startsWith("intruder-"))).toEqual([]);
+		} finally {
+			release.resolve();
+			controller.abort();
+			await run;
+		}
+	});
+
+	it("authorizes existing thread messages only for an allowed parent and sender", async () => {
 		interceptFetch(request => {
 			const path = new URL(request.url).pathname;
 			if (path.endsWith("/users/@me")) return Response.json({ id: "42", bot: true });
 			if (path.endsWith("/gateway/bot")) return Response.json({ url: "wss://gateway.discord.gg" });
 			if (path.endsWith("/channels/existing-thread"))
-				return Response.json({ id: "existing-thread", type: 11, parent_id: "allowed-parent" });
+				return Response.json({ id: "existing-thread", type: 11, parent_id: "allowed-parent", owner_id: "42" });
 			throw new Error("Unexpected Discord fixture endpoint");
 		});
 		const fixture = socketFixture({ op: 10, d: { heartbeat_interval: 60_000 } });
@@ -873,7 +1751,7 @@ describe("Discord Gateway transport", () => {
 		).toEqual([
 			["allowed", "allowed-parent", true],
 			["intruder", undefined, false],
-			["last", undefined, false],
+			["last", "allowed-parent", true],
 		]);
 		controller.abort();
 		await run;

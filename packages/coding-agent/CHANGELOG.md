@@ -6,6 +6,10 @@
 
 - `jeopi messenger setup --config <file> [--service]` sets up a Discord bot from its token: it verifies the token, enables the Message Content Intent through the API when allowed, allowlists the application owner, prints the invite link and waits for the join, picks a request channel the bot has every needed permission in, allows the owner's DM, writes the configuration with a `0600` token file and a run script, confirms a Gateway session, optionally installs a launchd or `systemd --user` service, and sends a test DM; reruns repair the same profile; see [Discord quick setup](../../docs/messenger/discord.md#quick-setup-jeopi-messenger-setup).
 
+### Changed
+
+- Discord messenger accepts direct replies to bot messages and unmentioned follow-ups only in threads where that bot was invoked, including after restart; unrelated channels and threads remain ignored.
+
 ## [16.6.14] - 2026-10-30
 
 ### Added

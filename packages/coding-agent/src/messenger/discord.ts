@@ -9,6 +9,7 @@ import type { MessengerAdapter, MessengerMessage, MessengerPlatformConfig, Messe
 export const DISCORD_API = "https://discord.com/api/v10";
 export const DISCORD_GATEWAY_INTENTS = (1 << 9) | (1 << 12) | (1 << 15);
 const PERMANENT_CLOSE_CODES = new Set([4004, 4010, 4011, 4012, 4013, 4014]);
+const MAX_CLASSIFICATION_PENDING = 100;
 
 // Discord strips boundary whitespace. Invisible guards preserve it in message content;
 // they are part of the delivered text, and consume one UTF-16 unit each.
@@ -158,7 +159,7 @@ function connectGateway(
 	token: string,
 	accountId: string,
 	session: DiscordSession,
-	onMessage: (message: MessengerMessage) => Promise<void>,
+	onMessage: (message: MessengerMessage, raw: unknown) => Promise<void>,
 	signal: AbortSignal,
 	WebSocketImpl: typeof WebSocket,
 	clock: DiscordClock,
@@ -304,7 +305,7 @@ function connectGateway(
 					// The gateway owns authorization, deduplication and its bounded work queue.
 					void Promise.resolve()
 						.then(() => {
-							if (!signal.aborted) return onMessage(message);
+							if (!signal.aborted) return onMessage(message, packet.d);
 						})
 						.catch(() => logger.warn("Discord message handler failed"));
 				}
@@ -328,6 +329,8 @@ export function createDiscordAdapter(
 	const token = env[config.tokenEnv]?.trim();
 	const clock = deps.clock ?? defaultClock;
 	const createdThreads = new Map<string, { parentChannelId: string; senderId: string }>();
+	const classificationTails = new Map<string, Promise<void>>();
+	const pendingClassifications = new Set<string>();
 	const rememberThread = (threadId: string, parentChannelId: string, senderId: string): void => {
 		createdThreads.set(threadId, { parentChannelId, senderId });
 		if (createdThreads.size > 10_000) {
@@ -377,47 +380,151 @@ export function createDiscordAdapter(
 						}
 						initialUrl = discordGatewayUrl(gateway.url);
 					}
-					const deliver = async (message: MessengerMessage): Promise<void> => {
+					const lookup = async (url: string): Promise<unknown> => {
+						for (let attempt = 0; ; attempt++) {
+							try {
+								return await messengerFetchJson(url, { headers: headers() }, signal, deps.fetch);
+							} catch (error) {
+								if (
+									!(error instanceof MessengerHttpError) ||
+									error.status !== 429 ||
+									attempt >= 3 ||
+									signal.aborted
+								) {
+									throw error;
+								}
+								await waitForReconnect(error.retryAfterMs ?? 1_000, signal, clock);
+								if (signal.aborted) throw error;
+							}
+						}
+					};
+					const isBotReply = async (value: unknown, channelId: string): Promise<boolean> => {
+						if (!isRecord(value) || value.type !== 19 || !isRecord(value.message_reference)) return false;
+						const reference = value.message_reference;
+						if (
+							typeof reference.message_id !== "string" ||
+							(reference.channel_id && reference.channel_id !== channelId)
+						)
+							return false;
+						let original = value.referenced_message;
+						if (original === undefined) {
+							try {
+								original = await lookup(
+									`${DISCORD_API}/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(reference.message_id)}`,
+								);
+							} catch {
+								if (!signal.aborted) logger.warn("Discord reply lookup failed");
+								return false;
+							}
+						}
+						return (
+							isRecord(original) &&
+							original.id === reference.message_id &&
+							isRecord(original.author) &&
+							original.author.id === accountId
+						);
+					};
+					const forward = (message: MessengerMessage): void => {
+						if (signal.aborted) return;
+						try {
+							void onMessage(message).catch(() => logger.warn("Discord message handler failed"));
+						} catch {
+							logger.warn("Discord message handler failed");
+						}
+					};
+					const classify = async (message: MessengerMessage, raw: unknown): Promise<void> => {
+						if (message.direct || !config.allowedUserIds.includes(message.senderId)) {
+							forward(message);
+							return;
+						}
+						if (!message.mentioned && (await isBotReply(raw, message.channelId))) {
+							message = { ...message, mentioned: true };
+						}
 						const thread = createdThreads.get(message.channelId);
 						if (thread && thread.senderId === message.senderId) {
-							await onMessage({
-								...message,
-								threadId: message.channelId,
-								parentChannelId: thread.parentChannelId,
-							});
-						} else if (
-							!message.direct &&
-							message.mentioned &&
-							config.allowedUserIds.includes(message.senderId) &&
-							config.allowedChannelIds &&
-							!config.allowedChannelIds.includes(message.channelId)
-						) {
-							try {
-								const channel = await messengerFetchJson(
-									`${DISCORD_API}/channels/${encodeURIComponent(message.channelId)}`,
-									{ headers: headers() },
-									signal,
-									deps.fetch,
-								);
-								if (
-									isRecord(channel) &&
-									typeof channel.type === "number" &&
-									[10, 11, 12].includes(channel.type) &&
-									typeof channel.parent_id === "string" &&
-									channel.parent_id
-								) {
-									await onMessage({
-										...message,
-										threadId: message.channelId,
-										parentChannelId: channel.parent_id,
-									});
-								}
-							} catch {
-								if (!signal.aborted) logger.warn("Discord thread parent lookup failed");
-							}
-						} else {
-							await onMessage(message);
+							forward({ ...message, threadId: message.channelId, parentChannelId: thread.parentChannelId });
+							return;
 						}
+						try {
+							const channel = await lookup(`${DISCORD_API}/channels/${encodeURIComponent(message.channelId)}`);
+							if (
+								!isRecord(channel) ||
+								typeof channel.type !== "number" ||
+								![10, 11, 12].includes(channel.type) ||
+								typeof channel.parent_id !== "string" ||
+								!channel.parent_id ||
+								(config.allowedChannelIds &&
+									!config.allowedChannelIds.includes(message.channelId) &&
+									!config.allowedChannelIds.includes(channel.parent_id))
+							) {
+								forward(message);
+								return;
+							}
+							if (!message.mentioned && channel.owner_id !== accountId) {
+								let before = message.messageId;
+								for (;;) {
+									const history = await lookup(
+										`${DISCORD_API}/channels/${encodeURIComponent(message.channelId)}/messages?limit=100&before=${encodeURIComponent(before)}`,
+									);
+									if (!Array.isArray(history)) return;
+									let invoked = false;
+									for (const entry of history) {
+										if (
+											!isRecord(entry) ||
+											!isRecord(entry.author) ||
+											entry.author.bot ||
+											entry.webhook_id ||
+											typeof entry.author.id !== "string" ||
+											!config.allowedUserIds.includes(entry.author.id)
+										)
+											continue;
+										if (
+											(Array.isArray(entry.mentions) &&
+												entry.mentions.some(user => isRecord(user) && user.id === accountId)) ||
+											(await isBotReply(entry, message.channelId))
+										) {
+											invoked = true;
+											break;
+										}
+									}
+									if (invoked) break;
+									if (history.length < 100) {
+										forward(message);
+										return;
+									}
+									const last = history[history.length - 1];
+									if (!isRecord(last) || typeof last.id !== "string" || !last.id || last.id === before) return;
+									before = last.id;
+								}
+							}
+							forward({ ...message, threadId: message.channelId, parentChannelId: channel.parent_id });
+						} catch {
+							if (!signal.aborted) logger.warn("Discord thread lookup failed");
+						}
+						return;
+					};
+					const deliver = (message: MessengerMessage, raw: unknown): Promise<void> => {
+						if (signal.aborted) return Promise.resolve();
+						if (message.direct || !config.allowedUserIds.includes(message.senderId)) {
+							forward(message);
+							return Promise.resolve();
+						}
+						const key = `${message.channelId}:${message.messageId}`;
+						if (pendingClassifications.has(key) || pendingClassifications.size >= MAX_CLASSIFICATION_PENDING) {
+							return Promise.resolve();
+						}
+						pendingClassifications.add(key);
+						const previous = classificationTails.get(message.channelId) ?? Promise.resolve();
+						const current = previous
+							.then(() => (signal.aborted ? undefined : classify(message, raw)))
+							.catch(() => logger.warn("Discord classification failed"));
+						classificationTails.set(message.channelId, current);
+						void current.then(() => {
+							pendingClassifications.delete(key);
+							if (classificationTails.get(message.channelId) === current)
+								classificationTails.delete(message.channelId);
+						});
+						return current;
 					};
 					await connectGateway(
 						session.url ?? initialUrl,
