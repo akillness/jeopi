@@ -330,6 +330,7 @@ export function createDiscordAdapter(
 	const clock = deps.clock ?? defaultClock;
 	const createdThreads = new Map<string, { parentChannelId: string; senderId: string }>();
 	const classificationTails = new Map<string, Promise<void>>();
+	const messageClassifications = new Map<string, Promise<void>>();
 	const pendingClassifications = new Set<string>();
 	const rememberThread = (threadId: string, parentChannelId: string, senderId: string): void => {
 		createdThreads.set(threadId, { parentChannelId, senderId });
@@ -514,13 +515,19 @@ export function createDiscordAdapter(
 							return Promise.resolve();
 						}
 						pendingClassifications.add(key);
-						const previous = classificationTails.get(message.channelId) ?? Promise.resolve();
+						const previous = Promise.all([
+							classificationTails.get(message.channelId),
+							messageClassifications.get(message.channelId),
+						]);
 						const current = previous
 							.then(() => (signal.aborted ? undefined : classify(message, raw)))
 							.catch(() => logger.warn("Discord classification failed"));
 						classificationTails.set(message.channelId, current);
+						messageClassifications.set(message.messageId, current);
 						void current.then(() => {
 							pendingClassifications.delete(key);
+							if (messageClassifications.get(message.messageId) === current)
+								messageClassifications.delete(message.messageId);
 							if (classificationTails.get(message.channelId) === current)
 								classificationTails.delete(message.channelId);
 						});
@@ -612,12 +619,27 @@ export function createDiscordAdapter(
 				}
 			}
 			const emoji = state === "processing" ? "⏳" : state === "success" ? "✅" : "❌";
-			await messengerFetchJson(
-				`${base}/${encodeURIComponent(emoji)}/@me`,
-				{ method: "PUT", headers: headers() },
-				signal,
-				deps.fetch,
-			);
+			try {
+				await messengerFetchJson(
+					`${base}/${encodeURIComponent(emoji)}/@me`,
+					{ method: "PUT", headers: headers() },
+					signal,
+					deps.fetch,
+				);
+			} finally {
+				if (state === "processing" && signal?.aborted) {
+					try {
+						await messengerFetchJson(
+							`${base}/${processing}/@me`,
+							{ method: "DELETE", headers: headers() },
+							AbortSignal.timeout(3_000),
+							deps.fetch,
+						);
+					} catch {
+						logger.warn("Discord late processing reaction removal failed");
+					}
+				}
+			}
 		},
 		releaseActivity(message) {
 			activityMessages.delete(JSON.stringify([message.threadId ?? message.channelId, message.messageId]));

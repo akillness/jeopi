@@ -186,14 +186,18 @@ export function messengerSessionRoute(cwd: string, message: MessengerMessage): s
 }
 
 /**
- * Scheduling heuristic, refined after `prepare`: a top-level server message on a prepare-capable adapter
- * (Discord) starts its own reply thread, so it is never held behind queued work; every other message waits for
- * earlier requests in its conversation. A follow-up arriving in that new thread is ordered behind the request
- * that created it by the prepared-conversation lock in `processRequest`.
+ * Discord creates a thread with the original message's ID. Reserve that conversation key before
+ * preparing it so follow-ups cannot overtake the request while thread creation is in flight.
  */
 function schedulingKey(message: MessengerMessage, adapter: MessengerAdapter): string {
-	if (adapter.prepare && !message.direct && !message.threadId && !message.parentChannelId) {
-		return JSON.stringify([message.platform, message.accountId, message.channelId, message.messageId]);
+	if (
+		message.platform === "discord" &&
+		adapter.prepare &&
+		!message.direct &&
+		!message.threadId &&
+		!message.parentChannelId
+	) {
+		return messengerConversationKey({ ...message, threadId: message.messageId });
 	}
 	return messengerConversationKey(message);
 }

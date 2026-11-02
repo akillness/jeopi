@@ -608,12 +608,9 @@ jobs:
          id-token: write
       env:
          MACOS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_API_KEY_ID != '' && secrets.APPLE_API_ISSUER_ID != '' && secrets.APPLE_API_KEY != '' }}
-         # npm publish auth: either the NPM_TOKEN secret or a pre-configured
-         # trusted publisher (scripts/setup-npm-trust.ts) must exist. Without the
-         # secret, publish steps auto-skip so a release without npm credentials
-         # still ships binaries and the GitHub Release; run the local publish
-         # flow (`bun scripts/ci-release-publish.ts`) for npm instead.
-         HAS_NPM_AUTH: ${{ secrets.NPM_TOKEN != '' }}
+         # Opt in after configuring npm trusted publishers, or use NPM_TOKEN.
+         # Otherwise skip npm publication while still shipping release binaries.
+         HAS_NPM_AUTH: ${{ secrets.NPM_TOKEN != '' || vars.NPM_TRUSTED_PUBLISHING == 'true' }}
       steps:
          - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -773,10 +770,9 @@ jobs:
          id-token: write
          contents: read
       env:
-         # Without npm auth every step no-ops (HOMEBREW_TAP_DEPLOY_KEY pattern),
-         # so a credential-less release still completes; npm is then published
-         # locally via `bun scripts/ci-release-publish.ts`.
-         HAS_NPM_AUTH: ${{ secrets.NPM_TOKEN != '' }}
+         # Enable OIDC explicitly after configuring every npm trusted publisher;
+         # otherwise require NPM_TOKEN or leave npm publication skipped.
+         HAS_NPM_AUTH: ${{ secrets.NPM_TOKEN != '' || vars.NPM_TRUSTED_PUBLISHING == 'true' }}
       steps:
          - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
            if: env.HAS_NPM_AUTH == 'true'
