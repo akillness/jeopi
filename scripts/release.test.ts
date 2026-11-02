@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { hasUnreleasedContent } from "./release";
 
 // Contract: the release changelog gate refuses to cut a release when no
@@ -32,33 +32,39 @@ describe("release changelog gate", () => {
 
 describe("release Bun version gate", () => {
 	function runRelease(pinnedVersion: string) {
-		const cwd = mkdtempSync(join(tmpdir(), "release-test-"));
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "release-test-"));
 		try {
 			const packageJson = JSON.stringify({ packageManager: `bun@${pinnedVersion}` });
-			writeFileSync(join(cwd, "package.json"), packageJson);
-			writeFileSync(join(cwd, "bun.lock"), "unchanged lockfile\n");
-			mkdirSync(join(cwd, "packages", "example"), { recursive: true });
-			writeFileSync(join(cwd, "packages", "example", "package.json"), '{"name": "example", "version": "1.0.0"}\n');
-			writeFileSync(
-				join(cwd, "git"),
+			fs.writeFileSync(path.join(cwd, "package.json"), packageJson);
+			fs.writeFileSync(path.join(cwd, "bun.lock"), "unchanged lockfile\n");
+			fs.mkdirSync(path.join(cwd, "packages", "example"), { recursive: true });
+			fs.writeFileSync(
+				path.join(cwd, "packages", "example", "package.json"),
+				'{"name": "example", "version": "1.0.0"}\n',
+			);
+			fs.writeFileSync(
+				path.join(cwd, "git"),
 				'#!/bin/sh\ncase "$*" in\n  *branch*) echo jeopi ;;\n  *status*) ;;\n  *describe*) echo v1.0.0 ;;\n  *) exit 1 ;;\nesac\n',
 				{ mode: 0o755 },
 			);
-			const result = Bun.spawnSync([process.execPath, join(import.meta.dir, "release.ts"), "patch", "--allow-empty"], {
-				cwd,
-				env: { ...process.env, PATH: `${cwd}:${process.env.PATH}` },
-				stdout: "pipe",
-				stderr: "pipe",
-			});
+			const result = Bun.spawnSync(
+				[process.execPath, path.join(import.meta.dir, "release.ts"), "patch", "--allow-empty"],
+				{
+					cwd,
+					env: { ...process.env, PATH: `${cwd}:${process.env.PATH}` },
+					stdout: "pipe",
+					stderr: "pipe",
+				},
+			);
 			return {
 				exitCode: result.exitCode,
 				output: result.stdout.toString() + result.stderr.toString(),
-				packageJson: readFileSync(join(cwd, "package.json"), "utf8"),
-				lockfile: readFileSync(join(cwd, "bun.lock"), "utf8"),
-				packageVersion: readFileSync(join(cwd, "packages", "example", "package.json"), "utf8"),
+				packageJson: fs.readFileSync(path.join(cwd, "package.json"), "utf8"),
+				lockfile: fs.readFileSync(path.join(cwd, "bun.lock"), "utf8"),
+				packageVersion: fs.readFileSync(path.join(cwd, "packages", "example", "package.json"), "utf8"),
 			};
 		} finally {
-			rmSync(cwd, { recursive: true, force: true });
+			fs.rmSync(cwd, { recursive: true, force: true });
 		}
 	}
 

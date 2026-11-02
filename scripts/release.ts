@@ -260,7 +260,9 @@ async function cmdRelease(versionOrBump: string, options: { allowEmptyChangelog:
 	}
 	const expectedBunVersion = packageManager.slice("bun@".length);
 	if (Bun.version !== expectedBunVersion) {
-		console.error(`Error: Bun version mismatch: expected ${expectedBunVersion} (root package.json), actual ${Bun.version}. Install and use Bun ${expectedBunVersion} before releasing.`);
+		console.error(
+			`Error: Bun version mismatch: expected ${expectedBunVersion} (root package.json), actual ${Bun.version}. Install and use Bun ${expectedBunVersion} before releasing.`,
+		);
 		process.exit(1);
 	}
 	console.log(`  Bun ${Bun.version} matches packageManager`);
