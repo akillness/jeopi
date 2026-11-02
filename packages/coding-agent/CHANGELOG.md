@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Discord messenger accepts direct replies to bot messages and unmentioned follow-ups only in threads where that bot was invoked, including after restart; unrelated channels and threads remain ignored.
+
 ## [16.6.15] - 2026-11-02
 
 ### Added

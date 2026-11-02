@@ -253,6 +253,17 @@ async function cmdRelease(versionOrBump: string, options: { allowEmptyChangelog:
 
 	// 1. Pre-flight checks
 	console.log("Pre-flight checks...");
+	const { packageManager } = await Bun.file("package.json").json();
+	if (typeof packageManager !== "string" || !/^bun@\d+\.\d+\.\d+$/.test(packageManager)) {
+		console.error("Error: Root package.json must specify an exact Bun version in packageManager (e.g. bun@1.3.14).");
+		process.exit(1);
+	}
+	const expectedBunVersion = packageManager.slice("bun@".length);
+	if (Bun.version !== expectedBunVersion) {
+		console.error(`Error: Bun version mismatch: expected ${expectedBunVersion} (root package.json), actual ${Bun.version}. Install and use Bun ${expectedBunVersion} before releasing.`);
+		process.exit(1);
+	}
+	console.log(`  Bun ${Bun.version} matches packageManager`);
 
 	const branch = await git(["branch", "--show-current"]).text();
 	if (branch.trim() !== "jeopi") {
@@ -421,7 +432,7 @@ async function cmdRelease(versionOrBump: string, options: { allowEmptyChangelog:
 	// 4. Regenerate lockfiles
 	console.log("Regenerating lockfiles...");
 	await $`rm -f bun.lock`;
-	await $`bun install`;
+	await $`${process.execPath} install`;
 	await $`cargo generate-lockfile`;
 	console.log();
 
