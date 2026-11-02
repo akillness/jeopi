@@ -151,6 +151,39 @@ async function harness(
 const signal = () => new AbortController().signal;
 
 describe("messenger persistent session boundary", () => {
+	test("uses the configured model for independent sessions and restores a prior session's model", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "messenger-model-role-"));
+		cleanups.push(() => rm(directory, { recursive: true, force: true }));
+		async function run(model: string, sender: string) {
+			const child = Bun.spawn(
+				[process.execPath, join(import.meta.dir, "fixtures/messenger-model-role.ts"), directory, model, sender],
+				{
+					cwd: directory,
+					env: {
+						HOME: directory,
+						XDG_CONFIG_HOME: join(directory, "config"),
+						PI_CODING_AGENT_DIR: join(directory, "agent"),
+						PATH: process.env.PATH ?? "",
+						CI: "1",
+					},
+					stdout: "pipe",
+					stderr: "pipe",
+				},
+			);
+			cleanups.push(() => child.kill());
+			const [exitCode, stdout, stderr] = await Promise.all([
+				child.exited,
+				new Response(child.stdout).text(),
+				new Response(child.stderr).text(),
+			]);
+			expect({ exitCode, diagnostics: exitCode === 0 ? "" : stdout + stderr }).toEqual({ exitCode: 0, diagnostics: "" });
+			return JSON.parse(await readFile(join(directory, "model-result.json"), "utf8"));
+		}
+		expect(await run("first", "alice")).toEqual({ responses: ["first"], networkCalls: 0 });
+		expect(await run("second", "charlie")).toEqual({ responses: ["second"], networkCalls: 0 });
+		expect(await run("second", "alice")).toEqual({ responses: ["first"], networkCalls: 0 });
+	}, 30000);
+
 	test("assembles the real SDK without ambient capabilities or cross-sender context", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "messenger-sdk-smoke-"));
 		cleanups.push(() => rm(directory, { recursive: true, force: true }));

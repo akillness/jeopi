@@ -83,6 +83,9 @@ export function createMessengerSessionBridge(
 	}
 
 	async function initialize(route: string, file: string): Promise<void> {
+		const userSettings = await Settings.loadReadOnly({ cwd, agentDir: dependencies?.agentDir });
+		const defaultModel = userSettings.getModelRole("default");
+		if (defaultModel) settings.override("modelRoles", { default: defaultModel });
 		const sessionManager = await SessionManager.open(file, sessionDir, undefined, {
 			initialCwd: cwd,
 			suppressBreadcrumb: true,
