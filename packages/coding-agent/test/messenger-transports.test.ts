@@ -753,6 +753,87 @@ describe("Discord activity line", () => {
 	});
 });
 
+describe("threaded transport activity lines", () => {
+	it("creates, refreshes and removes one Telegram topic status without enabling formatting", async () => {
+		const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+		interceptFetch(async request => {
+			const method = new URL(request.url).pathname.split("/").at(-1)!;
+			const body = await payload(request);
+			requests.push({ method, body });
+			if (method === "sendMessage") return Response.json({ ok: true, result: { message_id: 91 } });
+			return Response.json({ ok: true, result: true });
+		});
+		const adapter = createTelegramAdapter(config, env, transportDeps);
+		const incoming = message("telegram");
+		await adapter.activity!(incoming, "Step 1 · Reading *literal*");
+		await adapter.activity!(incoming, "Step 2 · Editing");
+		await adapter.activity!(incoming, undefined);
+		await adapter.activity!(incoming, undefined);
+		expect(requests).toEqual([
+			{
+				method: "sendMessage",
+				body: { chat_id: "123", text: "⏳ Step 1 · Reading *literal*", message_thread_id: 789 },
+			},
+			{
+				method: "editMessageText",
+				body: { chat_id: "123", message_id: 91, text: "⏳ Step 2 · Editing" },
+			},
+			{ method: "deleteMessage", body: { chat_id: "123", message_id: 91 } },
+		]);
+	});
+
+	it("surfaces Telegram API retry-after metadata to the gateway activity limiter", async () => {
+		interceptFetch(() => Response.json({ ok: false, error_code: 429, parameters: { retry_after: 3 } }));
+		const error = await createTelegramAdapter(config, env, transportDeps).activity!(
+			message("telegram"),
+			"Working",
+		).then(
+			() => undefined,
+			(reason: unknown) => reason,
+		);
+		expect(error).toBeInstanceOf(MessengerHttpError);
+		expect([(error as MessengerHttpError).status, (error as MessengerHttpError).retryAfterMs]).toEqual([429, 3_000]);
+	});
+
+	it("creates, refreshes and removes one Slack thread status with rich rendering disabled", async () => {
+		const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+		interceptFetch(async request => {
+			const method = new URL(request.url).pathname.replace("/api/", "");
+			const body = await payload(request);
+			requests.push({ method, body });
+			return Response.json({ ok: true, ...(method === "chat.postMessage" ? { ts: "status.1" } : {}) });
+		});
+		const adapter = createSlackAdapter(config, env, transportDeps);
+		const incoming = message("slack");
+		await adapter.activity!(incoming, "Step 1 · Reading <@U123>");
+		await adapter.activity!(incoming, "Step 2 · Editing");
+		await adapter.activity!(incoming, undefined);
+		await adapter.activity!(incoming, undefined);
+		expect(requests.map(({ method }) => method)).toEqual(["chat.postMessage", "chat.update", "chat.delete"]);
+		expect(requests[0]!.body).toEqual({
+			channel: "123",
+			text: "⏳ Step 1 · Reading <@U123>",
+			thread_ts: "789",
+			mrkdwn: false,
+			parse: "none",
+			link_names: false,
+			unfurl_links: false,
+			unfurl_media: false,
+		});
+		expect(requests[1]!.body).toEqual({
+			channel: "123",
+			text: "⏳ Step 2 · Editing",
+			ts: "status.1",
+			mrkdwn: false,
+			parse: "none",
+			link_names: false,
+			unfurl_links: false,
+			unfurl_media: false,
+		});
+		expect(requests[2]!.body).toEqual({ channel: "123", ts: "status.1" });
+	});
+});
+
 // Discord opcodes/payloads: docs.discord.com/developers/events/gateway-events.
 describe("Discord Gateway transport", () => {
 	function discordNetwork() {

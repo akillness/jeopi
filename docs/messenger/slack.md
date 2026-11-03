@@ -11,6 +11,7 @@ This guide covers setting up, authorizing, and running a Slack bot with `jeopi m
   2. **App-Level Token (`xapp-...`)**: Used to establish the outbound Socket Mode WebSocket connection.
 - **Message Types**: Direct Messages (DMs via App Home) and Channel mentions (`@YourBot`).
 - **Threading**: Channel responses are posted automatically as replies in the message's thread.
+- **Progress**: One plain-text status message shows the current tool step in the same thread or DM, refreshes in place at most every 2 seconds, and is deleted when the turn finishes. It never includes raw tool arguments, output, or provider errors.
 
 ---
 

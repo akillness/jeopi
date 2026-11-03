@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Messenger requests now show a single refreshable progress line in Telegram topics and Slack threads as well as Discord threads, and remove it when the turn finishes.
+
 ## [16.6.17] - 2026-11-03
 
 ### Fixed

@@ -8,6 +8,7 @@ This guide walks through configuring, authorizing, and running a Telegram bot wi
 - **Network Requirement**: Outbound HTTPS requests to `api.telegram.org` only. No public IP, webhook URL, or open incoming ports required.
 - **Message Types**: Direct messages (private chat) and group/supergroup mentions (`@YourBot` or `/ask@YourBot`).
 - **Threads**: Telegram forum topics in supergroups are automatically supported and preserved via `message_thread_id`.
+- **Progress**: One plain-text status message shows the current tool step in the same chat or topic, refreshes in place at most every 2 seconds, and is deleted when the turn finishes. It never includes raw tool arguments, output, or provider errors.
 
 ---
 

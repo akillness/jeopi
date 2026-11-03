@@ -58,6 +58,7 @@ It is designed for personal assistants, team developer bots, and remote coding c
    - Polls `getUpdates` with `timeout: 25` and `allowed_updates: ["message"]`.
    - Mentions (`@YourBot`) and addressed bot commands (`/ask@YourBot ...`) are stripped from incoming text before prompting the agent.
    - Forum topics in supergroups are mapped to `threadId` via `message_thread_id`.
+   - During a turn, one plain-text progress message is posted in the same chat/topic, refreshed in place at most every 2 seconds, and deleted when the turn finishes.
    - Outbound replies are split into chunks of up to 4,096 characters.
    - **Constraint**: Cannot run alongside an active webhook. If previously used with a webhook, call `deleteWebhook` before starting.
 
@@ -68,6 +69,7 @@ It is designed for personal assistants, team developer bots, and remote coding c
    - Automatically negotiates heartbeats (Opcode 1 / Opcode 10) and handles Gateway Resumes (Opcode 6).
    - A direct bot mention or a reply to a bot-authored message invokes the bot. Authorized users can continue without mentions only in threads created by or explicitly addressed to this bot, including after a restart. Unrelated threads are ignored; user and channel allowlists still apply.
    - Threads are treated as their own distinct channels using Discord's thread channel Snowflake ID.
+   - During a turn, one silent progress message is posted in the reply thread or DM, refreshed in place at most every 2 seconds, and deleted when the turn finishes.
    - Outbound replies are split into chunks of up to 2,000 characters.
 
 3. **Slack Adapter (`packages/coding-agent/src/messenger/slack.ts`)**:
@@ -76,6 +78,7 @@ It is designed for personal assistants, team developer bots, and remote coding c
    - Listens for `events_api` envelopes containing `message.im` and `app_mention` events.
    - Mentions (`<@bot_user_id>`) in channels are stripped before prompt processing.
    - Replies to channel messages are automatically threaded (`thread_ts`). Direct messages are unthreaded unless the incoming message was already part of a thread.
+   - During a turn, one plain-text progress message is posted in the same thread or DM, refreshed in place at most every 2 seconds, and deleted when the turn finishes.
    - Outbound replies are split into chunks of up to 4,000 characters with a 1-second delay between chunks.
 
 ---

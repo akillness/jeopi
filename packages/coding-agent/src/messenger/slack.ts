@@ -40,7 +40,7 @@ function requiredToken(value: string | undefined, prefix: string): string {
 }
 
 async function slackRequest(
-	method: "auth.test" | "apps.connections.open" | "chat.postMessage",
+	method: "auth.test" | "apps.connections.open" | "chat.postMessage" | "chat.update" | "chat.delete",
 	token: string,
 	body: Record<string, unknown>,
 	signal?: AbortSignal,
@@ -247,6 +247,7 @@ export function createSlackAdapter(
 ): MessengerAdapter {
 	let teamId: string | undefined;
 	let running = false;
+	const activityMessages = new Map<string, string>();
 	return {
 		platform: "slack",
 		async start(onMessage, signal) {
@@ -328,6 +329,66 @@ export function createSlackAdapter(
 					deps.fetch,
 				);
 			}
+		},
+		releaseActivity(message) {
+			activityMessages.delete(
+				JSON.stringify([message.accountId, message.channelId, message.threadId ?? "", message.messageId]),
+			);
+		},
+		async activity(message, text, signal) {
+			if (message.platform !== "slack" || (teamId !== undefined && message.accountId !== teamId)) {
+				throw new SlackConfigurationError("Slack reply account does not match");
+			}
+			const token = requiredToken(env[config.tokenEnv], "xoxb-");
+			const key = JSON.stringify([message.accountId, message.channelId, message.threadId ?? "", message.messageId]);
+			const statusId = activityMessages.get(key);
+			if (text === undefined) {
+				if (!statusId) return;
+				await slackRequest("chat.delete", token, { channel: message.channelId, ts: statusId }, signal, deps.fetch);
+				activityMessages.delete(key);
+				return;
+			}
+			const body = {
+				channel: message.channelId,
+				text: `⏳ ${text}`,
+				mrkdwn: false,
+				parse: "none",
+				link_names: false,
+				unfurl_links: false,
+				unfurl_media: false,
+			};
+			if (statusId) {
+				await slackRequest("chat.update", token, { ...body, ts: statusId }, signal, deps.fetch);
+				return;
+			}
+			if (signal?.aborted) return;
+			// Keep creation alive after cancellation so a late ID can be deleted; HTTP has its own timeout.
+			const created = await slackRequest(
+				"chat.postMessage",
+				token,
+				{
+					...body,
+					thread_ts: message.threadId ?? (message.direct ? undefined : message.messageId),
+				},
+				undefined,
+				deps.fetch,
+			);
+			if (typeof created.ts !== "string" || !created.ts) throw new Error("Slack activity message returned no ID");
+			if (signal?.aborted) {
+				try {
+					await slackRequest(
+						"chat.delete",
+						token,
+						{ channel: message.channelId, ts: created.ts },
+						AbortSignal.timeout(3_000),
+						deps.fetch,
+					);
+				} catch {
+					logger.warn("Slack late activity removal failed");
+				}
+				return;
+			}
+			activityMessages.set(key, created.ts);
 		},
 	};
 }

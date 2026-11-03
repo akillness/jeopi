@@ -144,6 +144,7 @@ export function createTelegramAdapter(
 	const baseUrl = `https://api.telegram.org/bot${encodeURIComponent(token).replaceAll("%3A", ":")}/`;
 	let running = false;
 	let offset = 0;
+	const activityMessages = new Map<string, number>();
 
 	async function request(method: string, parameters: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
 		const response = await messengerFetchJson(
@@ -156,7 +157,9 @@ export function createTelegramAdapter(
 		if (!response.ok) {
 			const status = isInteger(response.error_code) ? response.error_code : 400;
 			const retryAfter = isRecord(response.parameters) ? response.parameters.retry_after : undefined;
-			throw new TelegramApiError(status, isPositiveId(retryAfter) ? Math.min(retryAfter, 300) * 1_000 : 0);
+			const retryAfterMs = isPositiveId(retryAfter) ? Math.min(retryAfter, 300) * 1_000 : 0;
+			if (status === 429) throw new MessengerHttpError(status, retryAfterMs || undefined);
+			throw new TelegramApiError(status, retryAfterMs);
 		}
 		if (!("result" in response)) throw new TelegramApiError(400);
 		return response.result;
@@ -239,6 +242,56 @@ export function createTelegramAdapter(
 				);
 				if (!isRecord(result) || !isPositiveId(result.message_id)) throw new TelegramApiError(400);
 			}
+		},
+		releaseActivity(message) {
+			activityMessages.delete(
+				JSON.stringify([message.accountId, message.channelId, message.threadId ?? "", message.messageId]),
+			);
+		},
+		async activity(message, text, signal) {
+			const key = JSON.stringify([message.accountId, message.channelId, message.threadId ?? "", message.messageId]);
+			const statusId = activityMessages.get(key);
+			if (text === undefined) {
+				if (!statusId) return;
+				await request("deleteMessage", { chat_id: message.channelId, message_id: statusId }, signal);
+				activityMessages.delete(key);
+				return;
+			}
+			if (statusId) {
+				await request(
+					"editMessageText",
+					{ chat_id: message.channelId, message_id: statusId, text: `⏳ ${text}` },
+					signal,
+				);
+				return;
+			}
+			const threadId = message.threadId === undefined ? undefined : Number(message.threadId);
+			if (threadId !== undefined && !isPositiveId(threadId)) throw new Error("Telegram topic identifier is invalid");
+			if (signal?.aborted) return;
+			// Keep creation alive after cancellation so a late ID can be deleted; HTTP has its own timeout.
+			const created = await request(
+				"sendMessage",
+				{
+					chat_id: message.channelId,
+					text: `⏳ ${text}`,
+					...(threadId === undefined ? {} : { message_thread_id: threadId }),
+				},
+				undefined,
+			);
+			if (!isRecord(created) || !isPositiveId(created.message_id)) throw new TelegramApiError(400);
+			if (signal?.aborted) {
+				try {
+					await request(
+						"deleteMessage",
+						{ chat_id: message.channelId, message_id: created.message_id },
+						AbortSignal.timeout(3_000),
+					);
+				} catch {
+					logger.warn("Telegram late activity removal failed");
+				}
+				return;
+			}
+			activityMessages.set(key, created.message_id);
 		},
 	};
 }
