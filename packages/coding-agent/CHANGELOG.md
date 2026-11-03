@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.17] - 2026-11-03
+
 ### Fixed
 
 - New messenger sessions use the configured default model, while resumed sessions retain their previous model.
