@@ -176,7 +176,10 @@ describe("messenger persistent session boundary", () => {
 				new Response(child.stdout).text(),
 				new Response(child.stderr).text(),
 			]);
-			expect({ exitCode, diagnostics: exitCode === 0 ? "" : stdout + stderr }).toEqual({ exitCode: 0, diagnostics: "" });
+			expect({ exitCode, diagnostics: exitCode === 0 ? "" : stdout + stderr }).toEqual({
+				exitCode: 0,
+				diagnostics: "",
+			});
 			return JSON.parse(await readFile(join(directory, "model-result.json"), "utf8"));
 		}
 		expect(await run("first", "alice")).toEqual({ responses: ["first"], networkCalls: 0 });

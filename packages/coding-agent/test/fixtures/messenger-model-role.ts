@@ -37,18 +37,33 @@ const config = {
 	platforms: { discord: { tokenEnv: "UNUSED", allowedUserIds: ["alice", "bob"] } },
 };
 function message(text: string, senderId: string): MessengerMessage {
-	return { platform: "discord", accountId: "bot", channelId: "room", senderId, messageId: text, text, direct: true, mentioned: false };
+	return {
+		platform: "discord",
+		accountId: "bot",
+		channelId: "room",
+		senderId,
+		messageId: text,
+		text,
+		direct: true,
+		mentioned: false,
+	};
 }
 try {
 	const id = process.argv[3];
 	const sender = process.argv[4];
 	if (!id || !sender) throw new Error("Fixture requires a model and sender");
-	await Bun.write(path.join(cwd, ".jeopi", "settings.json"), JSON.stringify({ modelRoles: { default: `mock/${id}` } }));
+	await Bun.write(
+		path.join(cwd, ".jeopi", "settings.json"),
+		JSON.stringify({ modelRoles: { default: `mock/${id}` } }),
+	);
 	const bridge = createMessengerSessionBridge(config);
 	try {
 		const signal = new AbortController().signal;
 		const responses = [await bridge.reply(message(`message-${sender}`, sender), signal)];
-		await Bun.write(path.join(root, "model-result.json"), JSON.stringify({ responses, networkCalls: network.mock.calls.length }));
+		await Bun.write(
+			path.join(root, "model-result.json"),
+			JSON.stringify({ responses, networkCalls: network.mock.calls.length }),
+		);
 	} finally {
 		await bridge.close();
 	}
