@@ -21,7 +21,7 @@
     },
     "packages/agent": {
       "name": "jeopi-agent-core",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
         "jeopi-ai": "catalog:",
@@ -39,7 +39,7 @@
     },
     "packages/ai": {
       "name": "jeopi-ai",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/catalog": {
       "name": "jeopi-catalog",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -69,7 +69,7 @@
     },
     "packages/coding-agent": {
       "name": "jeopi-cli",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "bin": {
         "jeopi": "dist/cli.js",
       },
@@ -147,7 +147,7 @@
     },
     "packages/hashline": {
       "name": "jeopi-hashline",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "dependencies": {
         "diff": "catalog:",
         "lru-cache": "catalog:",
@@ -158,7 +158,7 @@
     },
     "packages/mnemopi": {
       "name": "jeopi-mnemopi",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
@@ -184,7 +184,7 @@
     },
     "packages/natives": {
       "name": "jeopi-natives",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
@@ -192,7 +192,7 @@
     },
     "packages/snapcompact": {
       "name": "jeopi-snapcompact",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "dependencies": {
         "jeopi-ai": "catalog:",
         "jeopi-natives": "catalog:",
@@ -205,7 +205,7 @@
     },
     "packages/stats": {
       "name": "jeopi-stats",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "bin": {
         "jeopi-stats": "./src/index.ts",
       },
@@ -231,7 +231,7 @@
     },
     "packages/swarm-extension": {
       "name": "jeopi-swarm-extension",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "bin": {
         "jeopi-swarm": "src/cli.ts",
       },
@@ -257,7 +257,7 @@
     },
     "packages/tui": {
       "name": "jeopi-tui",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "dependencies": {
         "jeopi-natives": "catalog:",
         "jeopi-utils": "catalog:",
@@ -298,7 +298,7 @@
     },
     "packages/utils": {
       "name": "jeopi-utils",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "dependencies": {
         "handlebars": "catalog:",
         "jeopi-natives": "catalog:",
@@ -311,7 +311,7 @@
     },
     "packages/wire": {
       "name": "jeopi-wire",
-      "version": "16.6.17",
+      "version": "16.6.18",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
@@ -375,18 +375,18 @@
     "fflate": "0.8.3",
     "ghostty-web": "^0.4.0",
     "handlebars": "^4.7.9",
-    "jeopi-agent-core": "16.6.17",
-    "jeopi-ai": "16.6.17",
-    "jeopi-catalog": "16.6.17",
-    "jeopi-cli": "16.6.17",
-    "jeopi-hashline": "16.6.17",
-    "jeopi-mnemopi": "16.6.17",
-    "jeopi-natives": "16.6.17",
-    "jeopi-snapcompact": "16.6.17",
-    "jeopi-stats": "16.6.17",
-    "jeopi-tui": "16.6.17",
-    "jeopi-utils": "16.6.17",
-    "jeopi-wire": "16.6.17",
+    "jeopi-agent-core": "16.6.18",
+    "jeopi-ai": "16.6.18",
+    "jeopi-catalog": "16.6.18",
+    "jeopi-cli": "16.6.18",
+    "jeopi-hashline": "16.6.18",
+    "jeopi-mnemopi": "16.6.18",
+    "jeopi-natives": "16.6.18",
+    "jeopi-snapcompact": "16.6.18",
+    "jeopi-stats": "16.6.18",
+    "jeopi-tui": "16.6.18",
+    "jeopi-utils": "16.6.18",
+    "jeopi-wire": "16.6.18",
     "linkedom": "^0.18.12",
     "lint-staged": "^17.0.7",
     "lru-cache": "11.5.1",
@@ -1023,7 +1023,7 @@
 
     "duck": ["duck@0.1.12", "", { "dependencies": { "underscore": "^1.13.1" } }, "sha512-wkctla1O6VfP89gQ+J/yDesM0S7B7XLXjKGzXxMDVFg7uEn706niAtyYovKbyq1oT9YwDcly721/iUWoc8MVRg=="],
 
-    "electron-to-chromium": ["electron-to-chromium@1.5.470", "", {}, "sha512-omO9daK1eC5K0AFhIYtCcKsxm1erRC/SNr9I1RtPZrgdcR5KdAkPT8jtaoPgNhMsUf/zcslmDev4T7KqiDEa9w=="],
+    "electron-to-chromium": ["electron-to-chromium@1.5.471", "", {}, "sha512-Lo7jyyneHRYUQYM3WZ2rBEei9FcUIwValFPLifTbr4NTpc6oyUB+nN2rrOtbn3CE5pgz930mYxRJeD+glR7d6Q=="],
 
     "emnapi": ["emnapi@1.11.3", "", { "peerDependencies": { "node-addon-api": ">= 6.1.0" }, "optionalPeers": ["node-addon-api"] }, "sha512-+/ZS90YK/rYfVOHtGLHkGffVsnmD/MAKaBHio+Y4XAtg75RLr4cveV/w0jTkUdLM1CcAlaRgG76mpIemWAlk0A=="],
 
@@ -1209,7 +1209,7 @@
 
     "lru-cache": ["lru-cache@11.5.1", "", {}, "sha512-RPimw/7aMdv2oqRrxKwvZXcPfwBrn/JZ2xYcY9Hus/6LaS3VOAKVWKWgNLCFSiOm1ESXinjsDlidVU7JlnCN2A=="],
 
-    "lucide-react": ["lucide-react@1.65.0", "", { "peerDependencies": { "@types/react": "*", "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-roSdtzudEY39i2hn5LLjA8toYfhF2z4S10WSqZF4ubXpHlOmNTvaxMxZLdJfQDi6pEifQWX+cRmYihKSsvAxfA=="],
+    "lucide-react": ["lucide-react@1.66.0", "", { "peerDependencies": { "@types/react": "*", "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-8zjbi/Us+ETXqfBwmXF/FHrWGIqOdE6zT1yUdRJLQVoptomSkB0zdFWVIM667t9K8djWDaXdkBkqi2qVTuDNiw=="],
 
     "magic-string": ["magic-string@0.30.21", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
 
