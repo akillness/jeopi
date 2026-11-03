@@ -18,6 +18,7 @@
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&colorA=0B0B14&logo=typescript&logoColor=white" alt="TypeScript"></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-DEA584?style=flat&colorA=0B0B14&logo=rust&logoColor=black" alt="Rust"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun%20%E2%89%A5%201.3.14-f472b6?style=flat&colorA=0B0B14" alt="Bun"></a>
+  <a href="https://buymeacoffee.com/akillness3q"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-AC6415?style=flat-square&logo=buy-me-a-coffee" alt="Support on Buy Me a Coffee"></a>
 </p>
 
 <p align="center">
