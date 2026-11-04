@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="1000" height="420" role="img" aria-label="jeopi Subagents &amp; IRC Coordination Mesh">
+  <defs>
+    <linearGradient id="sbg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0B14"/>
+      <stop offset="100%" stop-color="#12121E"/>
+    </linearGradient>
+    <linearGradient id="mainG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#0284C7" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="criticCardG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F43F5E" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#BE123C" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="archCardG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#4F46E5" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="taskCardG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#B45309" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="revCardG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#047857" stop-opacity="0.05"/>
+    </linearGradient>
+    <marker id="s-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#64748B"/>
+    </marker>
+    <marker id="s-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#38BDF8"/>
+    </marker>
+    <marker id="s-irc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#A855F7"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="420" rx="16" fill="url(#sbg)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <text x="40" y="44" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="18" font-weight="700">jeopi Subagent Swarm &amp; Peer-to-Peer IRC Mesh</text>
+  <text x="40" y="66" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">Parallel execution up to 32 agents · Real-time direct IRC messaging · Isolated workspaces (pi-iso)</text>
+
+  <rect x="800" y="28" width="160" height="26" rx="13" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+  <circle cx="815" cy="41" r="4" fill="#A855F7"/>
+  <text x="828" y="45" fill="#E2E8F0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="600">32x Concurrency Cap</text>
+
+  <!-- Left: Main Agent / Orchestrator -->
+  <g transform="translate(40, 95)">
+    <rect width="250" height="235" rx="14" fill="url(#mainG)" stroke="#38BDF8" stroke-width="1.5"/>
+    <rect x="20" y="16" width="115" height="22" rx="5" fill="#38BDF8" fill-opacity="0.2"/>
+    <text x="28" y="31" fill="#38BDF8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5" font-weight="700">ORCHESTRATOR</text>
+    <text x="20" y="64" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="16" font-weight="800">Main Agent</text>
+    <text x="20" y="82" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">Decomposes goals &amp; tracks progress</text>
+    
+    <path d="M 20 96 L 230 96" stroke="#1E293B" stroke-width="1"/>
+
+    <rect x="18" y="108" width="214" height="48" rx="8" fill="#0B0B14" stroke="#1E293B" stroke-width="1"/>
+    <text x="28" y="126" fill="#38BDF8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700">task [tasks[]]</text>
+    <text x="28" y="144" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">Fan-out parallel subagents in one turn</text>
+
+    <rect x="18" y="166" width="214" height="48" rx="8" fill="#0B0B14" stroke="#1E293B" stroke-width="1"/>
+    <text x="28" y="184" fill="#FBBF24" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700">todo &amp; job tools</text>
+    <text x="28" y="202" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">Phased lifecycle &amp; non-blocking polling</text>
+  </g>
+
+  <!-- Fan-out Arrows -->
+  <path d="M 290 145 C 330 145, 340 125, 380 125" stroke="#38BDF8" stroke-width="1.8" marker-end="url(#s-cyan)"/>
+  <path d="M 290 175 C 330 175, 340 190, 380 190" stroke="#38BDF8" stroke-width="1.8" marker-end="url(#s-cyan)"/>
+  <path d="M 290 205 C 330 205, 340 255, 380 255" stroke="#38BDF8" stroke-width="1.8" marker-end="url(#s-cyan)"/>
+  <path d="M 290 235 C 330 235, 340 320, 380 320" stroke="#38BDF8" stroke-width="1.8" marker-end="url(#s-cyan)"/>
+
+  <!-- Right: 4 Specialized Subagent Cards -->
+
+  <!-- Subagent 1: critic -->
+  <g transform="translate(390, 95)">
+    <rect width="270" height="60" rx="10" fill="url(#criticCardG)" stroke="#F43F5E" stroke-width="1.2"/>
+    <rect x="12" y="10" width="55" height="18" rx="4" fill="#F43F5E" fill-opacity="0.3"/>
+    <text x="18" y="23" fill="#FDA4AF" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-weight="800">CRITIC</text>
+    <text x="75" y="24" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="700">Read-Only Actionability Gate</text>
+    <text x="14" y="44" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">Verdict: okay / iterate / reject · Blocks non-okay plans</text>
+  </g>
+
+  <!-- Subagent 2: architect -->
+  <g transform="translate(390, 163)">
+    <rect width="270" height="60" rx="10" fill="url(#archCardG)" stroke="#818CF8" stroke-width="1.2"/>
+    <rect x="12" y="10" width="75" height="18" rx="4" fill="#818CF8" fill-opacity="0.3"/>
+    <text x="18" y="23" fill="#C7D2FE" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-weight="800">ARCHITECT</text>
+    <text x="95" y="24" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="700">System Structural Review</text>
+    <text x="14" y="44" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">Severity-rated findings · Inspected evidence required</text>
+  </g>
+
+  <!-- Subagent 3: task -->
+  <g transform="translate(390, 231)">
+    <rect width="270" height="60" rx="10" fill="url(#taskCardG)" stroke="#F59E0B" stroke-width="1.2"/>
+    <rect x="12" y="10" width="70" height="18" rx="4" fill="#F59E0B" fill-opacity="0.3"/>
+    <text x="18" y="23" fill="#FDE68A" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-weight="800">TASK (DOER)</text>
+    <text x="90" y="24" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="700">Focused Implementation</text>
+    <text x="14" y="44" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">Code edits, tests, refactoring, smallest diff</text>
+  </g>
+
+  <!-- Subagent 4: reviewer -->
+  <g transform="translate(390, 299)">
+    <rect width="270" height="60" rx="10" fill="url(#revCardG)" stroke="#10B981" stroke-width="1.2"/>
+    <rect x="12" y="10" width="70" height="18" rx="4" fill="#10B981" fill-opacity="0.3"/>
+    <text x="18" y="23" fill="#A7F3D0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-weight="800">REVIEWER</text>
+    <text x="90" y="24" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="700">Pre-Merge Safety Sweep</text>
+    <text x="14" y="44" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">P0-P3 confidence score · Regression prevention</text>
+  </g>
+
+  <!-- Far Right Column: Peer-to-Peer IRC & pi-iso CoW Box -->
+  <g transform="translate(685, 95)">
+    <!-- IRC Mesh Box -->
+    <rect width="275" height="150" rx="12" fill="#151329" stroke="#A855F7" stroke-width="1.5"/>
+    <rect x="16" y="14" width="130" height="20" rx="4" fill="#A855F7" fill-opacity="0.25"/>
+    <text x="24" y="28" fill="#D8B4FE" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5" font-weight="700">PEER-TO-PEER IRC</text>
+    <text x="16" y="56" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Real-Time Coordination</text>
+    <text x="16" y="74" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Direct text between live subagents</text>
+    <text x="16" y="92" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Bypasses parent: zero bottle-neck</text>
+    <text x="16" y="110" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Fire-and-forget or await: true reply</text>
+    <text x="16" y="130" fill="#C084FC" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="10">irc send to="TaskB" message="..."</text>
+
+    <!-- pi-iso CoW Box -->
+    <g transform="translate(0, 164)">
+      <rect width="275" height="95" rx="12" fill="#0C1B1B" stroke="#0D9488" stroke-width="1.5"/>
+      <rect x="16" y="12" width="125" height="20" rx="4" fill="#0D9488" fill-opacity="0.25"/>
+      <text x="24" y="26" fill="#5EEAD4" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5" font-weight="700">pi-iso CO-W ISOLATION</text>
+      <text x="16" y="52" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">Zero-Copy Scratch Clones</text>
+      <text x="16" y="70" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• APFS CoW · Btrfs/ZFS reflinks · OverlayFS</text>
+      <text x="16" y="86" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• No repo lock contention across workers</text>
+    </g>
+  </g>
+
+  <!-- IRC Mesh Bidirectional Connection Arrows -->
+  <path d="M 660 125 L 685 140" stroke="#A855F7" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#s-irc)"/>
+  <path d="M 660 190 L 685 170" stroke="#A855F7" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#s-irc)"/>
+  <path d="M 660 255 L 685 200" stroke="#A855F7" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#s-irc)"/>
+
+  <!-- Bottom Info Strip -->
+  <rect x="40" y="370" width="920" height="34" rx="8" fill="#0E131F" stroke="#1E293B" stroke-width="1"/>
+  <text x="56" y="391" fill="#E2E8F0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11.5" font-weight="600">Dynamic Swarm Control: <tspan fill="#38BDF8">task</tspan> spawns workers, <tspan fill="#A855F7">irc</tspan> coordinates locks/APIs live, <tspan fill="#10B981">pi-iso</tspan> isolates filesystems, <tspan fill="#F43F5E">critic</tspan> guards safety.</text>
+</svg>

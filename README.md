@@ -6,14 +6,16 @@
 
 <p align="center">
   <strong>Encode intention. Decode software.</strong><br>
-  The oh-my-pi engine, rebuilt around one belief: <em>a gate that didn't pass is reported as not passed.</em>
+  <em>A spec-first coding agent engine where a gate that didn't pass is reported as not passed.</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/akillness/jeopi"><img src="https://img.shields.io/badge/jeopi-spec--first-3B82F6?style=flat&colorA=0B0B14&logo=github&logoColor=white" alt="spec-first"></a>
   <img src="https://img.shields.io/badge/gates-critic%20blocked-8B5CF6?style=flat&colorA=0B0B14" alt="critic gated">
-  <img src="https://img.shields.io/badge/verification-artifact%20backed-EC4899?style=flat&colorA=0B0B14" alt="artifact backed">
-  <a href="packages/coding-agent/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep-F472B6?style=flat&colorA=0B0B14" alt="Changelog"></a>
+  <img src="https://img.shields.io/badge/messenger-Discord%20%7C%20Slack%20%7C%20Telegram-5865F2?style=flat&colorA=0B0B14" alt="messenger integration">
+  <img src="https://img.shields.io/badge/subagents-32x%20IRC%20mesh-EC4899?style=flat&colorA=0B0B14" alt="subagents mesh">
+  <img src="https://img.shields.io/badge/verification-artifact%20backed-10B981?style=flat&colorA=0B0B14" alt="artifact backed">
+  <a href="packages/coding-agent/CHANGELOG.md"><img src="https://img.shields.io/badge/version-16.6.18-F472B6?style=flat&colorA=0B0B14" alt="Version 16.6.18"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-58A6FF?style=flat&colorA=0B0B14" alt="License"></a>
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&colorA=0B0B14&logo=typescript&logoColor=white" alt="TypeScript"></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-DEA584?style=flat&colorA=0B0B14&logo=rust&logoColor=black" alt="Rust"></a>
@@ -22,641 +24,284 @@
 </p>
 
 <p align="center">
-  Fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> by <a href="https://github.com/can1357">@can1357</a> (itself a fork of <a href="https://github.com/badlogic/pi-mono">Pi</a> by <a href="https://github.com/mariozechner">@mariozechner</a>), fused with the spec-first working philosophy of <a href="https://github.com/akillness/jeo-code">jeo-code</a>.
+  <strong>jeopi는 <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>를 기반으로 확장된 고성능 터미널 코딩 에이전트 프로젝트입니다.</strong><br>
+  <em>jeopi is an extended, production-grade coding agent project built upon oh-my-pi.</em>
 </p>
 
-jeopi combines the oh-my-pi coding-agent engine with jeo-code's spec-first workflow. It provides an interactive terminal, model and provider integrations, built-in tools, subagents, and configurable verification gates.
+jeopi는 oh-my-pi의 강력한 인터랙티브 터미널 엔진을 기반으로, **런타임 강제 스펙 우선 파이프라인(`/jeo`)**, **멀티 플랫폼 메신저 게이트웨이(Discord · Slack · Telegram)**, **32개 병렬 P2P IRC 서브에이전트 메시**, **네이티브 Rust 가속 N-API 레이어**를 결합하여 확장된 자율 코딩 환경을 제공합니다.
 
-## jeopi vs omp — what actually changed
+---
 
-| | `omp` (upstream) | `jeopi` |
-| --- | --- | --- |
-| **Vague request** | starts working | crystallizes goal / constraints / **checkable acceptance criteria** first — "make it better" gets sharpened, not accepted |
-| **Planning** | plan agent | plan agent + **blocking `critic` gate**: `okay` / `iterate` / `reject` verdict, schema-enforced — and **runtime-enforced**: after a non-okay verdict the `task` tool refuses to spawn execution agents and `write`/`edit` lock the working tree until a fresh `okay` (or a new user message) |
-| **Review** | `reviewer` (patch bugs) | `reviewer` + **`architect`**: severity-rated structural verdict that is invalid without an `inspected[]` evidence list |
-| **Failure** | retry | **failure-lesson loop** — capture what the failure proved, change the next attempt, split stuck subgoals; no apology loops. Runtime 3-strike counter closes the critic-iterate loop before it can spin |
-| **"Done"** | tests pass | Goal mode checks for recent verification evidence and can invoke an independent `goal-verifier`. These checks have a bounce-once escape hatch; independent verification is controlled by `goal.verifyCompletion`. Report unsupported criteria as unresolved. |
-| **Pipeline** | ad-hoc | **`/jeo`**: interview → frozen seed → plan → critic gate → bounded execution → artifact-gated verification |
-| **Identity** | `omp` | `jeopi` binary; config directory renamed `~/.omp` → `~/.jeopi` (`jeopi config migrate-legacy` moves existing auth/sessions/settings over) |
+## ⚡ 주요 핵심 기능 (Core Capabilities)
 
-Real gates, no theater. The rest of this README is the engine both share.
+- **스펙 우선 jeo 워크플로우 (`/jeo`)** — 모호성 인터뷰 → 불변 Seed 문서 → DAG 계획 → **런타임 강제 `critic` 게이트** (3회 제한 서킷 브레이커, 작업트리 쓰기 잠금) → 유한 실행 → 아티팩트 검증.
+- **멀티 플랫폼 메신저 연동 (Discord · Slack · Telegram)** — 아웃바운드 WSS / 롱폴링 기반으로 **공인 IP · 방화벽 오픈 · 웹훅 · ngrok 없이** 봇 연결. 대화/스레드별 독립 프로세스 세션 격리 및 실시간 상태 라인 갱신.
+- **1급 서브에이전트 & IRC 메시 (`task`, `irc`, `job`)** — 최대 32개 병렬 서브에이전트 팬아웃, 오케스트레이터 병목 없는 에이전트 간 직접 텍스트 통신(`irc`), `pi-iso` CoW 파일시스템 복제.
+- **인프로세스 네이티브 Rust 가속 (`jeopi-natives`)** — `ripgrep`, `glob`, `brush` bash, `ast-grep`이 프로세스 내에서 직접 실행되어 fork-exec 오버헤드 0. macOS, Linux, Windows 네이티브 지원.
+- **40개 이상의 프론티어 & 로컬 모델** — Claude 3.7 / Opus, GPT-5 / Codex, Gemini 2.5, xAI Grok, Ollama, LM Studio, vLLM을 단일 `/model` 명령어로 자유롭게 전환 및 폴백 체인 구성.
 
-## Install
+---
 
-**Bun (recommended)**
+## 1. The Spec-First Spine (`/jeo` 워크플로우)
+
+단순한 프롬프트 주입이 아닌, 런타임 코드로 강제되는 **스펙 우선(Spec-First) 개발 파이프라인**입니다.
+
+```
+/jeo <구현하고자 하는 목표나 기능>
+```
+
+<p align="center">
+  <img src="assets/jeo-workflow.svg" alt="jeo Spec-First Workflow Architecture" width="1000">
+</p>
+
+### 6단계 생명주기와 런타임 게이트
+
+1. **소크라테스식 인터뷰 (Ambiguity Gate)**  
+   모호한 지시("더 좋게 만들어줘", "알아서 해줘")는 즉시 거부됩니다. 목표, 제약사항, 제외 범위, **기계적으로 검증 가능한 수락 기준(Checkable Acceptance Criteria)**을 확정하기 전까지 코드를 작성하지 않습니다.
+2. **불변 Seed 문서 (`local://jeo-seed.md`)**  
+   합의된 요구사항은 Seed 파일로 동결됩니다. 작업 진행 중 범위가 바뀌면 인터뷰가 다시 열리며, 임의로 스코프가 표류(silent drift)하지 않습니다.
+3. **읽기 전용 Plan 에이전트**  
+   대상 파일, 변경 순서, 기준별 검증 명령을 포함하는 구체적인 작업 DAG를 설계합니다. 이 단계에서는 디스크 쓰기가 일절 발생하지 않습니다.
+4. **런타임 강제 `critic` 게이트 (Hard Blocker)**  
+   독립된 `critic` 에이전트가 계획의 실현 가능성을 평가하여 `okay`, `iterate`, `reject` 판정을 내립니다.
+   - **코드 레벨 강제**: 판정이 `okay`가 아니면 `task` 실행 서브에이전트 생성이 거부되고, `write`/`edit` 툴의 작업 트리 수정이 원천 차단됩니다.
+   - **3-Strike 서킷 브레이커**: 3회 연속 비-okay 판정 시 계획 루프를 강제 중단하여 무한 루프를 방지합니다. 게이트는 계획이 통과하거나 사용자가 직접 새 입력을 보낼 때만 해제됩니다.
+5. **유한 서브에이전트 실행 (Failure-Lesson Loop)**  
+   단위별 `task` 에이전트가 격리된 환경에서 작업을 수행합니다. 실패 시 무의미한 사과나 재시도 대신, 무엇이 실패했는지를 다음 시도에 피드백하는 레슨 루프로 동작합니다.
+6. **아티팩트 기반 단일 테스트 검증**  
+   글로벌 테스트 스위트는 단 1회 실행되어 전체 무결성을 보장하며, 각 수락 기준마다 실행한 실제 명령과 관측된 결과를 명시해야만 작업이 완료됩니다.
+
+---
+
+## 2. Messenger Gateway (Discord, Slack, Telegram 메신저 연동)
+
+사무실이나 이동 중에도 스마트폰 메신저를 통해 로컬/서버의 jeopi 세션과 실시간 양방향 대화 및 협업을 수행할 수 있습니다.
+
+<p align="center">
+  <img src="assets/jeopi-messenger.svg" alt="jeopi Messenger Gateway Architecture" width="1000">
+</p>
+
+### Zero-Configuration 아웃바운드 아키텍처
+
+- **방화벽 친화적 (No Inbound Ports)**  
+  웹훅이나 공인 IP, 포트포워딩, ngrok 같은 터널링 도구가 전혀 필요 없습니다.
+  - **Discord**: WSS Gateway v10 아웃바운드 연결 (Message Content Intent)
+  - **Slack**: Socket Mode WSS 아웃바운드 연결 (`xapp-...` 앱 토큰 + `xoxb-...` 봇 토큰)
+  - **Telegram**: HTTPS 아웃바운드 롱폴링 (BotFather API)
+- **대화별 프로세스 격리 (1 Process per Conversation)**  
+  디스코드 스레드/DM, 슬랙 스레드, 텔레그램 채팅/토픽마다 **별도의 jeopi 세션 서브프로세스**가 생성됩니다. 대화 간 메모리, 세션 파일, 작업 디렉터리가 완벽히 분리됩니다.
+- **실시간 진행 상태 표시 (Live Step Status)**  
+  디스코드와 슬랙 스레드에서 도구 호출 내용(실행 명령, 파일 읽기 등)을 최대 2초 주기로 제자리(in-place) 갱신하여 현재 작업 단계를 한눈에 보여줍니다.
+- **엄격한 보안 화이트리스트**  
+  `allowedUserIds`와 `allowedChannelIds`를 지정하여 승인된 사용자 및 지정된 채널에서만 봇이 응답합니다.
+- **도구 권한 제어 (`toolNames`)**  
+  기본값은 순수 텍스트 챗봇(`toolNames: []`)이며, 필요에 따라 `bash`, `read`, `write`, `lsp`, `web_search` 등 코딩 툴 권한을 명시적으로 부여할 수 있습니다.
+
+### 메신저 명령어 및 설정
+
+```sh
+# 설정 마법사: 토큰 검증, Message Content Intent 확인, 채널 선택 및 백그라운드 서비스 등록
+jeopi messenger setup --config messenger.json --service
+
+# 봇 연결 및 채널 상태 진단
+jeopi messenger check --config messenger.json
+
+# 메신저 게이트웨이 데몬 실행
+jeopi messenger run --config messenger.json
+```
+
+**설정 파일 예시 (`messenger.json`)**:
+```json
+{
+  "cwd": "./workspace",
+  "sessionDir": "./sessions",
+  "toolNames": ["read", "bash", "edit", "glob", "grep", "lsp"],
+  "platforms": {
+    "discord": {
+      "tokenEnv": "JEOPI_DISCORD_BOT_TOKEN",
+      "allowedUserIds": ["123456789012345678"],
+      "allowedChannelIds": ["987654321098765432"]
+    },
+    "slack": {
+      "tokenEnv": "JEOPI_SLACK_BOT_TOKEN",
+      "appTokenEnv": "JEOPI_SLACK_APP_TOKEN",
+      "allowedUserIds": ["U0123456789"],
+      "allowedChannelIds": ["C0123456789"]
+    },
+    "telegram": {
+      "tokenEnv": "JEOPI_TELEGRAM_BOT_TOKEN",
+      "allowedUserIds": ["123456789"]
+    }
+  }
+}
+```
+
+자세한 가이드는 [docs/messenger.md](docs/messenger.md), [docs/messenger/discord.md](docs/messenger/discord.md), [docs/messenger/slack.md](docs/messenger/slack.md), [docs/messenger/telegram.md](docs/messenger/telegram.md)를 참고하세요.
+
+---
+
+## 3. Subagent Swarm & Peer-to-Peer IRC Mesh
+
+단일 에이전트의 컨텍스트 한계를 넘어, 세분화된 전문 에이전트들이 실시간으로 협력하는 **군집 오케스트레이션** 환경입니다.
+
+<p align="center">
+  <img src="assets/jeopi-subagents.svg" alt="jeopi Subagents & IRC Coordination Mesh" width="1000">
+</p>
+
+### 대규모 병렬 팬아웃 & P2P 통신
+
+- **최대 32개 동시 실행 (`task` 툴)**  
+  단일 턴에서 독립된 서브에이전트 배열을 한 번에 스폰하여 병렬로 처리합니다. 대규모 리팩토링, 멀티 모듈 조사, 병렬 코드 리뷰를 극도로 빠르게 완수합니다.
+- **Main 병목 없는 직접 IRC 메시 (`irc` 툴)**  
+  서브에이전트끼리 `irc send to="TaskB" message="..."`를 통해 실시간으로 락 상태, API 인터페이스, 중간 산출물을 주고받습니다. 오케스트레이터를 거치지 않아 지연과 컨텍스트 낭비가 없습니다.
+- **Copy-on-Write 작업 공간 격리 (`pi-iso`)**  
+  APFS 클론, Btrfs/ZFS 리플링크, OverlayFS를 활용하여 원본 작업트리를 오염시키지 않고 0초 만에 격리된 스크래치 워크스페이스를 생성하고 검증합니다.
+- **전문 상주 에이전트 페르소나**  
+  - `critic`: 읽기 전용 실행 게이트. 계획의 빈틈을 가차없이 지적
+  - `architect`: 심각도별 아키텍처 및 시스템 설계 감사
+  - `task`: 최소 단위의 변경으로 요구사항을 완수하는 주력 실행자
+  - `reviewer`: P0~P3 신뢰도 점수를 부여하는 보안/품질 리뷰어
+  - `advisor`: 별도 컨텍스트에서 메인 에이전트의 모든 턴을 감시하며 실시간 피드백 제공
+
+---
+
+## 4. Install & Quick Start (설치 및 빠른 시작)
+
+### Bun (권장)
 
 ```sh
 bun install -g jeopi-cli
 jeopi --version
 ```
 
-**npm**
+### npm
 
 ```sh
 npm install -g jeopi-cli
 ```
 
-### First session
-
-Run `jeopi` in your project directory, then use `/login` to authenticate with a supported provider or configure its API key. Use `/model` to select a model and describe the work you want done. For a single non-interactive prompt, run `jeopi -p "explain this project"`.
-
-For provider configuration and local models, see [docs/providers.md](docs/providers.md) and [docs/local-models.md](docs/local-models.md).
-
-**From source**
+### 소스코드 빌드 및 개발 환경 구축
 
 ```sh
 git clone https://github.com/akillness/jeopi.git && cd jeopi
-bun run setup   # installs deps, builds natives, links the global `jeopi` command
+bun run setup   # 의존성 설치, Rust 네이티브 빌드, 전역 jeopi 심볼릭 링크 생성
 ```
 
-The native addon supports macOS, Linux, and Windows on the architectures listed below; source builds require Bun 1.3.14 or newer and a Rust toolchain. Upgrading from `omp`? Run `jeopi config migrate-legacy` to migrate `~/.omp` to `~/.jeopi`. The CLI package is `jeopi-cli` (command: `jeopi`); workspace libraries use `jeopi-*` names. A compatibility shim supports legacy `@oh-my-pi/pi-*` plugin imports.
+> **업그레이드 안내**: 기존 `omp` 설정을 사용 중이었다면 `jeopi config migrate-legacy`를 실행하여 `~/.omp`의 인증, 세션, 설정 데이터를 `~/.jeopi`로 안전하게 이전할 수 있습니다.
 
-## The spec-first spine
+### 쉘 자동 완성 (Shell Completions)
 
-The jeo-code pipeline, rebuilt on jeopi's native subagents. One command drives it:
-
-```
-/jeo <what you want built>
-```
-
-```
-  interview        Socratic ambiguity gate — goal, constraints, out-of-scope,
-      │            checkable acceptance criteria. Vague criteria are refused.
-      ▼
-  frozen seed      local://jeo-seed.md — immutable; scope changes reopen the
-      │            interview, never drift silently.
-      ▼
-  plan             read-only `plan` agent; concrete files, sequencing,
-      │            per-criterion verification.
-      ▼
-  critic gate      read-only `critic` agent; schema-enforced verdict
-      │            okay / iterate / reject. A non-okay verdict blocks execution
-      │            Hard gate: the RUNTIME blocks execution spawns and
-      │            working-tree writes until the verdict is okay.
-      ▼
-  execute          bounded `task` subagents; a failed task feeds the lesson
-      │            into the next attempt instead of retrying unchanged.
-      ▼
-  verify           suite runs once as a global signal; each criterion cites
-                   its command + observed result, or is reported unresolved.
-```
-
-### The gate is code, not vibes
-
-Upstream jeo-code enforces its critic verdict with a state file and hash check between CLI processes. jeopi runs the whole pipeline inside one agent session — so the gate lives in the session runtime instead:
-
-- A `critic` subagent's schema-validated verdict is recorded by the session the moment the run completes.
-- While the latest verdict is `iterate` or `reject`, the `task` tool **refuses to spawn any non-read-only agent**, and `write`/`edit`/patch **reject every working-tree mutation** (the `local://` sandbox stays writable for seeds, plans, and notes).
-- The gate clears in exactly two ways: a fresh critic returns `okay` for the revised plan, or **you** send a new message — the user regaining control is the only override.
-- A **3-strike counter** bounds the iterate loop: after three consecutive non-okay verdicts even critic re-submission is refused, forcing a stop-and-report instead of an unbounded re-planning spin.
-
-### Loop engineering
-
-The `/jeo` pipeline borrows the deep-research playbook for token efficiency and loop stability:
-
-- **Reference, don't repeat** — the seed and plan live in `local://` files; assignments and critic submissions pass paths, never re-inlined bodies.
-- **Delta-only iteration** — each critic re-submission carries a short "what changed per required fix" note; the critic re-reads the plan file, not a re-narrated history.
-- **Every round must change state** — an iteration that incorporates no new fact (a fix applied, a failure lesson, a user answer) is a prohibited no-op retry.
-- **Hard bounds everywhere** — interview ≤2 ask rounds, critic ≤2 iterations (runtime stop at 3 strikes), per-task retries ≤2, verification suite runs once.
-- **No silent caps** — anything a bound dropped (an unverified criterion, an unsplit subgoal) is named in the report.
-
-The same discipline is welded into the standing agents:
-
-- **`critic`** — read-only actionability gate. *"If you catch yourself softening a real, blocking gap into `iterate` just to avoid blocking, that softening is the signal the gap is real."*
-- **`architect`** — severity-rated structural review whose verdict is invalid without the list of files it actually inspected. A clean verdict is not the absence of inspection.
-- **`task`** — smallest correct change, subgoal-by-subgoal, verification evidence before `done`, debug leftovers removed.
-
-### Skills: jeo-skills works out of the box
-
-[jeo-skills](https://github.com/akillness/jeo-skills) can be installed into the shared agent skill directory, which jeopi discovers alongside its native skill roots and supported third-party locations. See [docs/skills.md](docs/skills.md) for discovery details.
+jeopi는 자체 CLI 메타데이터와 모델 카탈로그를 기반으로 완벽한 자동완성 스크립트를 제공합니다.
 
 ```sh
-# global install — jeopi picks these up automatically
-npx skills add -g https://github.com/akillness/jeo-skills --skill deep-research --skill god-tibo-imagen
-
-# jeopi-only pin (native roots)
-#   global : ~/.jeopi/agent/skills/<skill>/SKILL.md
-#   project: .jeopi/skills/<skill>/SKILL.md
-```
-
-Invoke any discovered skill with `/skill:<name>` or let the agent route to it by description.
-
-### Shell completions
-
-`jeopi` generates its own completion scripts for **bash**, **zsh**, and **fish** from the live command/flag metadata, so they never drift from the actual CLI. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against your on-disk sessions.
-
-```sh
-# zsh — add to ~/.zshrc (or write the output into a file on your $fpath)
+# zsh (~/.zshrc 에 추가)
 eval "$(jeopi completions zsh)"
 
-# bash — add to ~/.bashrc
+# bash (~/.bashrc 에 추가)
 eval "$(jeopi completions bash)"
 
 # fish
 jeopi completions fish > ~/.config/fish/completions/jeopi.fish
 ```
 
-## Tools for coding and research
-
-jeopi includes file and structural editing, code search, language-server and debugger integration, persistent Python and JavaScript execution, and optional web and browser tools. Availability depends on configuration and installed dependencies. See the [tool reference](docs/tools/) for details.
-
-## The Pi _you love_, with **batteries included**.
-
-Originally built on [Mario Zechner](https://github.com/mariozechner)'s wonderful [Pi](https://github.com/badlogic/pi-mono), jeopi adds everything you're missing.
-
-### 01 · Code execution w/ tool-calling
-
-The `eval` tool runs persistent Python and JavaScript kernels, with access to supported agent tools through a shared prelude.
-
-![jeopi TUI: a single eval session with `[1/2] pandas describe` (Python) printing a real DataFrame.describe() table, followed by `[2/2] top scorer` (JavaScript) running a reduce. Footer: 'Both kernels ran in one session.'](https://omp.sh/captures/eval.webp)
-
-### 02 · LSP wired into every write
-
-Ask for a rename and you get a rename. The call goes through workspace/willRenameFiles, so re-exports, barrel files, and aliased imports update before the file moves. Everything your IDE knows, the agent knows.
-
-![jeopi TUI: `LSP references` returns five hits across three files for the symbol `formatBytes`, then `LSP rename` applies the change with edits to format.ts/report.ts/cli.ts, then a `Search formatBytes 0 matches` confirmation. Final line: 'Rename complete. Five edits across three files…'.](https://omp.sh/captures/lsp.webp)
-
-### 03 · Drives a real debugger
-
-A C binary segfaults: the agent attaches lldb, steps to the bad pointer, reads the frame. A Go service hangs: it attaches dlv and walks the goroutines. A Python process is wedged: debugpy, pause, inspect, evaluate. Most agents are still sprinkling print statements.
-
-![jeopi TUI: a live lldb-dap session against a native binary at /tmp/omp-native/demo. Adapter=lldb-dap, Status=stopped, Frame=xorshift32, Instruction pointer 0x10000055C, Location demo.c:6:10. Debug scopes and Debug variables cards show locals (x = 57351) and the agent confirms the math: x went from 7 → 57351 (= 7 ^ (7<<13)).](https://omp.sh/clips/dap-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/dap.mp4)_
-
-### 04 · Time-traveling stream rules
-
-Your rules sit dormant until the model goes off-script. A regex match aborts the stream mid-token, injects the rule as a system reminder, and retries from the same point. You get course-correction without paying context tax on every turn. Injections survive compaction, so the fix sticks.
-
-![jeopi TUI: agent reading src.rs and about to write Box::leak when the request aborts (red `Error: Request was aborted`), an amber `⚠ Injecting rule: box-leak` card injects the rule body `Don't reach for Box::leak in production code paths`, and the agent then course-corrects by proposing `Arc<str>` and asking the user to confirm.](https://omp.sh/clips/ttsr-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/ttsr.mp4)_
-
-### 05 · First-class subagents
-
-Split a job across subagents and receive structured results. The `task` tool supports parallel work and optional workspace isolation; agents can coordinate through `irc`.
-
-![jeopi TUI showing `task` spawning two subagents `ComponentsExports` and `RoutesExports`, the constraints block requiring an IRC DM between peers, the per-subagent status cards with cost and duration, and a final Findings section listing both exports plus an honest 'IRC coordination note' about a one-sided handshake.](https://omp.sh/clips/irc-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/irc.mp4)_
-
-### 06 · A second model, watching every turn.
-
-Pair a reviewer model to the 'advisor' role and it reads every turn the main agent takes, injecting notes inline — a quiet aside, a concern, or a hard blocker. It runs on its own context and its own model, so it catches what the doer rushed past. The main agent sees the note and course-corrects, or tells you why it won't.
-
-![jeopi TUI: /advisor status shows the advisor running on openai-codex/gpt-5.5; after the main agent scopes a catch to ENOENT instead of swallowing every error, an amber 'Advisor 1 note (concern)' card warns the fix no longer matches the user's literal acceptance criterion.](https://omp.sh/clips/advisor-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/advisor.mp4)_
-
-### 07 · Hand someone the link, they're in.
-
-/collab puts your live session on a relay and hands back a link — and a QR. A teammate joins from another terminal with jeopi join, or just opens it in a browser. Share read-write to pair on the same agent, or /collab view for a read-only link anyone can watch but no one can steer. Frames are sealed client-side; the relay never sees your keys.
-
-![jeopi TUI: /collab view prints 'Collab session started!' with a jeopi join command, a my.omp.sh browser link, the note 'Anyone with this link can watch the session but cannot prompt the agent', and a large scannable QR code.](https://omp.sh/clips/collab-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/collab.mp4)_
-
-### 08 · Read a pdf on arxiv, why not?
-
-`web_search` can use configured search providers, while `read` retrieves supported URLs and documents as structured content. See the [web search reference](docs/tools/web_search.md) for provider configuration.
-
-![jeopi TUI: web_search returns 10 ranked Perplexity sources for inference-time compute scaling, the agent picks an arxiv paper, calls read https://arxiv.org/pdf/2604.10739v1, and summarizes the paper's headline result with real numbers.](https://omp.sh/clips/web-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/web.mp4)_
-
-### 09 · Unapologetically native. Even on Windows.
-
-Other agents shell out to rg, grep, find, and bash. On many machines those binaries don't exist, and on the ones where they do, every call costs a fork-exec round-trip. jeopi links the real implementations into the process. ripgrep, glob, find: in-process. brush is the bash, with sessions that survive across calls. The same jeopi binary runs on macOS, Linux, and Windows — no WSL bridge.
-
-### 10 · Code review with priorities and a verdict
-
-Get a clear verdict on whether the change ships, with every issue ranked P0 through P3 and scored for confidence. /review spawns dedicated reviewer subagents that sweep branches, single commits, or uncommitted work in parallel. You tackle what blocks release first; nothing important hides in a wall of prose.
-
-### 11 · Hashline: edit by content hash
-
-Hashline patches reference content-hash anchors rather than retyping matching lines. Stale anchors are rejected so a changed file can be read again before retrying.
-
-### 12 · GitHub is just another filesystem
-
-Other harnesses bolt on gh_issue_view, gh_pr_view, gh_search — each with its own parameters the agent has to learn and you have to debug. We skipped that. read already handles paths; PRs are paths. One interface to teach the model, one surface to keep correct.
-
-### 13 · Hindsight: memory the agent curates
-
-The agent remembers your codebase between sessions. It writes facts mid-run with retain, pulls them back with recall, and compresses each session into a mental model that loads on the first turn of the next one. Project-scoped by default, so what it learns about this repo stays with this repo.
-
-### 14 · ACP: editor-drivable agent
-
-Run jeopi inside Zed and you get the same agent you drive from the terminal — reading the buffer you're actually looking at, writing through the editor's save path, spawning shells in the editor's terminal. Destructive tools pause for a permission prompt you can answer once and forget. No bridge, no plugin, no second brain to keep in sync.
-
-### 15 · Inherits what your other tools already wrote
-
-Every other agent ships an importer and expects you to convert. jeopi reads the eight formats already on disk in their native shape — Cursor MDC, Cline .clinerules, Codex AGENTS.md, Copilot applyTo, and the rest. No migration script, no YAML-to-TOML port, no "supported subset" footnotes. The config your team wrote last quarter still works tonight.
-
-### 16 · jeopi commit: atomic splits, validated messages
-
-jeopi reads the working tree through git_overview, git_file_diff, and git_hunk, then splits unrelated changes into atomic commits ordered by their dependencies. Cycles are rejected before anything is written. Source files score above tests, docs, and configs, so the headline commit is the one that matters. Lock files are excluded from analysis entirely.
-
-### 17 · Read PRs. _Walk skills._ Pull JSON out of subagents.
-
-Internal schemes such as `pr://`, `issue://`, `agent://`, `skill://`, and `rule://` provide access to resources through supported filesystem-shaped tools. For example, `read pr://1428` reads a pull request and `agent://<id>/findings.0.path` selects a field from an agent result.
-
-![jeopi TUI reading pr://can1357/oh-my-pi/1063 and then /diff/1, showing hunk headers, added lines, and a [MODIFIED] (+12 -0) summary.](https://omp.sh/captures/pr.webp)
-
-### 18 · Conflict resolution, made easy.
-
-Each merge conflict becomes one URL. The agent writes `@theirs`, `@ours`, or `@base` to `conflict://N` and the file resolves cleanly. Bulk form: `conflict://*`.
-
-![jeopi TUI: ✓ Read src/session.ts (⚠ 1 conflict), then ✓ Write conflict://1 · 1 line with content @theirs, then a confirmation 'Resolved.'](https://omp.sh/clips/conflict-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/conflict.mp4)_
-
-### 19 · Preview, then accept.
-
-`ast_edit` returns a _(proposed)_ card with the replacement count. The change is staged. The agent calls `resolve` with a reason; the TUI turns it into an **Accept** card and the disk move happens — atomic, all or nothing.
-
-![jeopi TUI: ✓ AST Edit: console.log($X) (proposed) 3 replacements · 1 file, then ✓ Accept: 3 replacements in 1 file (AST Edit), followed by 'Applied 3 replacements in src/auth.ts.'](https://omp.sh/clips/codemod-poster.webp)
-
-_[Watch the capture ↗](https://omp.sh/clips/codemod.mp4)_
-
-### 20 · Drives a _real browser_. _Or your Slack?_
-
-The browser tool drives Chromium tabs and can connect to an existing CDP endpoint or launch a compatible Electron application. Browser access is subject to the permissions and configuration of the environment.
-
-![jeopi TUI driving the browser tool against DuckDuckGo](https://omp.sh/captures/browser.webp)
-
-## Whatever the task needs, _it's already in the box_.
-
-Built-in tools are configurable with `--tools`. When tool discovery is enabled, `search_tool_bm25` can activate tools from the hidden index during a session.
-
-**Files & search**
-
-- `read` — files, dirs, archives, SQLite, PDFs, notebooks, URLs, and internal `://` schemes through one path.
-- `write` — create or overwrite a file, archive entry, or SQLite row.
-- `edit` — hashline patches with content-hash anchors and stale-anchor recovery.
-- `ast_edit` — structural rewrites previewed before apply, via ast-grep.
-- `ast_grep` — structural code queries over 50+ tree-sitter grammars.
-- `grep` — regex search over files and paths.
-- `glob` — glob-based path lookup.
-
-**Runtime**
-
-- `bash` — workspace shell, with optional PTY or background-job dispatch.
-- `eval` — persistent Python and JavaScript cells with shared prelude and tool re-entry.
-- `ssh` — one remote command against a configured host.
-
-**Code intelligence**
-
-- `lsp` — diagnostics, navigation, symbols, renames, code actions, raw requests.
-- `debug` — drive a DAP session — breakpoints, stepping, threads, stack, variables.
-
-**Coordination**
-
-- `task` — fan out subagents in parallel, optionally workspace-isolated.
-- `irc` — short prose between live agents in this process.
-- `todo` — ordered mutations over the session todo list with phase tracking.
-- `job` — wait on or cancel background jobs.
-- `ask` — structured follow-up questions for interactive runs.
-
-**Outside the box**
-
-- `browser` — Puppeteer tabs over headless Chromium or CDP-attached apps.
-- `web_search` — one query across configured providers, returning answer plus citations.
-- `github` — GitHub CLI ops — repo, PR, issues, code search, Actions run-watch.
-- `generate_image` — generate or edit raster images via Gemini, GPT, or xAI Grok image models.
-- `inspect_image` — vision-model analysis of a local image file.
-- `tts` — text-to-speech via xAI Grok Voice — five built-in voices, WAV or MP3.
-
-**Memory & state**
-
-- `checkpoint` — mark conversation state for a later collapse-and-report.
-- `rewind` — prune exploratory context, keep a concise report.
-- `retain` — queue durable facts into the active Hindsight bank.
-- `recall` — search the Hindsight bank for raw memories.
-- `reflect` — ask Hindsight to synthesize an answer over the bank.
-
-**Misc**
-
-- `resolve` — apply or discard a queued preview action.
-- `search_tool_bm25` — BM25 over the hidden tool index; activates top matches mid-session.
-
-Setting-gated, off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `rewind`, `search_tool_bm25`, `retain`, `recall`, `reflect`. Flip them on once, scoped per project.
-
-[Full reference →](docs/tools/)
-
-## Forty-plus providers, hundreds of models, _one /model away_.
-
-Roles route work by intent. `default` for normal turns. `smol` for cheap subagent fan-out. `slow` for deep reasoning. `plan` for plan mode. `commit` for changelogs. Override at launch with `--smol`, `--slow`, or `--plan`; cycle through the configured models for the active role with `Ctrl+P`. Swap the active model mid-session with the `/model` slash command.
-
-Auth tags below: `oauth` signs in with your provider account, `plan` routes through a coding-plan subscription, `local` runs against a local server with the key optional.
-
-### Frontier APIs
-
-Direct APIs and gateways. Mix providers per role.
-
-Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google Antigravity `oauth` · xAI · Mistral · Groq · Cerebras · Fireworks · Together · Hugging Face · NVIDIA · OpenRouter · Synthetic · Vercel AI Gateway · Cloudflare AI Gateway · Wafer Serverless · Perplexity `oauth`
-
-### Coding plans
-
-Subscription-routed. `/login` attaches the session.
-
-Cursor `oauth` · GitHub Copilot `oauth` · GitLab Duo · Kimi Code `plan` · Moonshot · MiniMax Coding Plan `plan` · MiniMax Coding Plan CN `plan` · Alibaba Coding Plan `plan` · Qwen Portal · Z.AI / GLM Coding Plan `plan` · Xiaomi MiMo · Qianfan · NanoGPT · Venice · Kilo · ZenMux · Tencent Cloud MaaS · OpenCode Go · OpenCode Zen
-
-### Run it yourself
-
-OpenAI-compatible `/v1/models`, with local runtimes treated as live snapshots instead of stale catalog guesses. `jeopi models <provider>` and `/model` refresh LM Studio/Ollama/llama.cpp from the running server, replace removed entries, and keep local instances keyless by default.
-
-Ollama `local` · Ollama Cloud · LM Studio `local` · llama.cpp `local` · vLLM `local` · LiteLLM
-
-### Four knobs that make routing useful
-
-- **Custom providers** — Declare anything that speaks `openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `google-generative-ai`, or `google-vertex` in `~/.jeopi/agent/models.yml`.
-- **Fallback chains** — Per-role chains under `retry.fallbackChains`. When the primary throws 429s or hits a quota wall, the next entry takes the rest of the turn — restored on cooldown.
-- **Path-scoped models** — Scope `enabledModels` and `disabledProviders` entries to a `path:` prefix to pin a different model set on one repo without touching the global config. Scoped entries cover the path and everything under it.
-- **Round-robin credentials** — Stack API keys per provider and the runtime rotates with session affinity and per-credential backoff. Useful when one key would burn its quota by lunch.
-
-Full provider & routing reference at [docs/providers.md](docs/providers.md).
-
-## Eighteen backends. _One tool the agent already knows_.
-
-`web_search` is built in, not bolted on. `auto` walks an eighteen-provider chain; pin one by name if you already pay for it. Behind every hit, site-aware extraction turns GitHub, registries, arXiv, Stack Overflow, and docs into structured markdown — anchors and link targets survive.
-
-### Search providers
-
-Eighteen backends. Pin one, or let `auto` walk the chain in order.
-
-| provider     | auth                   |
-| ------------ | ---------------------- |
-| `auto`       | chain                  |
-| `perplexity` | `PERPLEXITY_API_KEY`   |
-| `gemini`     | oauth                  |
-| `anthropic`  | oauth                  |
-| `codex`      | oauth                  |
-| `xai`        | `XAI_API_KEY`          |
-| `zai`        | `ZAI_API_KEY`          |
-| `exa`        | `EXA_API_KEY` (or mcp) |
-| `tinyfish`   | `TINYFISH_API_KEY`     |
-| `jina`       | `JINA_API_KEY`         |
-| `kagi`       | `KAGI_API_KEY`         |
-| `tavily`     | `TAVILY_API_KEY`       |
-| `firecrawl`  | `FIRECRAWL_API_KEY`    |
-| `brave`      | `BRAVE_API_KEY`        |
-| `kimi`       | `MOONSHOT_API_KEY`     |
-| `parallel`   | `PARALLEL_API_KEY`     |
-| `synthetic`  | `SYNTHETIC_API_KEY`    |
-| `searxng`    | self-hosted            |
-| `duckduckgo` | no key                 |
-
-### Specialised handlers
-
-The agent gets structured content, not stripped HTML.
-
-- **Code hosts** — github, gitlab
-- **Package registries** — npm, PyPI, crates.io, Hex, Hackage, NuGet, Maven, RubyGems, Packagist, pub.dev, Go packages
-- **Research sources** — arxiv, semantic scholar
-- **Forums** — stack overflow, reddit, hn
-- **Docs** — mdn, readthedocs, docs.rs
-
-Pages convert to markdown with link structure intact. The agent can cite, follow, and quote without losing anchors.
-
-### Security databases
-
-Vuln lookups answer with vendor data, not blog summaries.
-
-- **NVD** — national vulnerability database
-- **OSV** — open source vuln feed
-- **CISA KEV** — known exploited vulns
-
-[`web_search` reference ↗](docs/tools/web_search.md)
-
-## Native components
-
-The `jeopi-natives` N-API addon provides native implementations for features including search, shell execution, AST operations, and terminal support. Its Rust components include `pi-natives`, `pi-shell`, `pi-ast`, and `pi-iso`; see [the native architecture](docs/natives-architecture.md) and [build runbook](docs/natives-build-release-debugging.md).
-
-Platform packages target `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `win32-x64`.
-
-## Entry points: interactive, one-shot, SDK, RPC, ACP, and Messenger
-
-`jeopi` runs the TUI. `jeopi -p` answers a single prompt and exits. The SDK embeds the session in your process. `jeopi --mode rpc` and `jeopi acp` expose the agent to other programs over stdio. `jeopi messenger` connects Discord, Telegram, and Slack bots to headless sessions.
-
-### Interactive — when in doubt, the agent asks
-
-The TUI is the default surface. Tool calls render as cards, edits preview before they land, and ambiguity routes through the `ask` tool — a structured option picker the agent can call mid-turn. The keyboard handles the rest.
-
-The same prompt cards surface over ACP, so editors get the picker without writing one.
-
-![jeopi TUI: the ask tool renders an option picker with three choices, a (Recommended) badge on the first, and 'up/down navigate · enter select · esc cancel' footer.](https://omp.sh/captures/ask.webp)
-
-### SDK — embed in Node
-
-`jeopi`
-
-Node and TypeScript hosts pull the engine in directly. The package exposes `ModelRegistry`, `SessionManager`, `createAgentSession`, and `discoverAuthStorage`; the session emits typed events you subscribe to.
-
-```ts
-import {
-  ModelRegistry,
-  SessionManager,
-  createAgentSession,
-  discoverAuthStorage,
-} from "jeopi-cli";
-
-const auth = await discoverAuthStorage();
-const models = new ModelRegistry(auth);
-await models.refresh();
-
-const { session } = await createAgentSession({
-  sessionManager: SessionManager.inMemory(),
-  authStorage: auth,
-  modelRegistry: models,
-});
-await session.prompt("list .ts files");
-```
-
-### RPC — drive over stdio
-
-`jeopi --mode rpc`
-
-For non-Node embedders, or when you want process isolation. NDJSON commands in, response and event frames out. `--mode rpc-ui` adds tool cards, selectors, and dialogs as `extension_ui_request` frames the host must answer.
-
-```
-$ jeopi --mode rpc --no-session
-> {"id":"r1","type":"prompt","message":"list .ts files"}
-< {"id":"r1","type":"response", ...}
-> {"id":"r2","type":"set_model","provider":"anthropic","modelId":"sonnet-4.5"}
-> {"id":"r3","type":"abort"}
-```
-
-### ACP — speak to editors
-
-`jeopi acp`
-
-The [Agent Client Protocol](https://github.com/zed-industries/agent-client-protocol) over JSON-RPC. When the editor advertises capabilities, tool I/O routes through it and writes are gated by `session/request_permission`.
-
-| jeopi tool                      | ACP route                           |
-| ----------------------------- | ----------------------------------- |
-| `bash`                        | `terminal/create + terminal/output` |
-| `read`                        | `fs/read_text_file`                 |
-| `write`                       | `fs/write_text_file`                |
-| `edit, bash`                  | `session/request_permission`        |
-
-Full reference: [docs/sdk.md](docs/sdk.md).
-
-### Messenger — chat via Telegram, Discord, and Slack
-
-`jeopi messenger setup|check|run --config <file>`
-
-Connect authorized Discord, Telegram, and Slack bots directly to headless agent sessions for bidirectional **text** conversations. Discord Gateway and Slack Socket Mode connect over outbound WebSockets; Telegram connects via outbound HTTPS long polling. No public IP, webhook endpoints, cloud relays, or tunnel tools (like ngrok) are required.
-
-```json
-{
-  "cwd": "./workspace",
-  "sessionDir": "./sessions",
-  "toolNames": [],
-  "platforms": {
-    "telegram": {
-      "tokenEnv": "JEOPI_TELEGRAM_BOT_TOKEN",
-      "allowedUserIds": ["TELEGRAM_USER_ID"],
-      "allowedChannelIds": ["TELEGRAM_CHAT_ID"]
-    },
-    "discord": {
-      "tokenEnv": "JEOPI_DISCORD_BOT_TOKEN",
-      "allowedUserIds": ["DISCORD_USER_ID"],
-      "allowedChannelIds": ["DISCORD_CHANNEL_OR_THREAD_ID"]
-    },
-    "slack": {
-      "tokenEnv": "JEOPI_SLACK_BOT_TOKEN",
-      "appTokenEnv": "JEOPI_SLACK_APP_TOKEN",
-      "allowedUserIds": ["SLACK_MEMBER_ID"],
-      "allowedChannelIds": ["SLACK_CHANNEL_OR_DM_ID"]
-    }
-  }
-}
-```
-
-```sh
-jeopi messenger check --config /path/to/messenger.json
-jeopi messenger run --config /path/to/messenger.json
-```
-
-For Discord, `jeopi messenger setup --config <file> --service` does the rest after you create the bot: it enables the Message Content Intent, allowlists the application owner, invites the bot, picks a channel, verifies the Gateway, and installs a login service; see the [Discord quick setup](docs/messenger/discord.md#quick-setup-jeopi-messenger-setup).
-
-- **Telegram**: Outbound HTTPS long polling via BotFather token. Supports forum topics in supergroups (`message_thread_id`).
-- **Discord**: Outbound WebSocket Gateway v10. Requires privileged **Message Content Intent**; supports threads and channel mentions.
-- **Slack**: Outbound WebSocket Socket Mode via App Token (`xapp-...`) and Bot Token (`xoxb-...`). Automatically threads channel replies.
-- **Allowlists**: Each platform requires exact `allowedUserIds`; optional channel allowlists further restrict where the bot responds.
-- **Session isolation**: Conversation histories are keyed by platform, account, channel, thread, sender, and working directory.
-- **Tool access**: `toolNames` defaults to `[]` (text chat). Tools must be explicitly enabled. This is not OS isolation: enabled tools run as the same OS user and can access resources available to that user.
-
-Detailed documentation:
-- [Messenger Gateway Architecture and Configuration Reference](docs/messenger.md)
-- [Telegram Bot Setup Guide](docs/messenger/telegram.md)
-- [Discord Bot Setup Guide](docs/messenger/discord.md)
-- [Slack Socket Mode Setup Guide](docs/messenger/slack.md)
-
-#### Agent Skill Installation
-
-Install the `jeopi-messenger` skill so AI coding agents (jeopi, Claude Code, Codex, Cursor, Aside) can autonomously configure, validate, run, and troubleshoot messenger bots:
-
-```sh
-# Universal install via skills CLI
-npx skills add akillness/jeopi --skill jeopi-messenger
-
-# Or install manually into agent project skills
-mkdir -p .agents/skills/jeopi-messenger
-cp -r skills/jeopi-messenger/* .agents/skills/jeopi-messenger/
-```
-
-## A harness worth keeping is one you _don't_ outgrow.
-
-jeopi's lineage: [Pi](https://github.com/badlogic/pi-mono) by [Mario Zechner](https://github.com/mariozechner) → rewritten as the coding-first surface [oh-my-pi](https://github.com/can1357/oh-my-pi) by [Can Bölük](https://github.com/can1357) → fused with [jeo-code](https://github.com/akillness/jeo-code)'s spec-first discipline as **jeopi**. Sessions, subagents, slash commands, extensions — all TypeScript, all MIT. Shape it from config, hook it from outside, or read the source when you need to.
-
-### Primitives
-
-An extension is a TypeScript module. Same tool API, same slash-command registry, same hotkey table, same TUI primitives the built-ins use. Nothing is reserved.
-
-### Discovery
-
-On first run jeopi inherits whatever is already on disk: rules, skills, and MCP servers from `.claude`, `.cursor`, `.windsurf`, `.gemini`, `.codex`, `.cline`, `.github/copilot`, and `.vscode`. No migration script.
-
-### Extensibility
-
-Ask jeopi to write the piece you're missing, then `/reload-plugins`. Keep it local, ship it in a `marketplace`, or publish it to npm.
-
-## Philosophy
-
-jeopi = oh-my-pi's engine × jeo-code's discipline.
-
-From **oh-my-pi** (and Pi before it):
-
-- Keep interactive terminal-first UX for real coding work
-- Include practical built-ins (tools, sessions, branching, subagents, extensibility)
-- Make advanced behavior configurable rather than hidden
-
-From **jeo-code**:
-
-- Interviews before plans; plans before execution; gates between every handoff
-- A non-okay critic verdict blocks execution until a fresh okay or a new user message clears the gate
-- Honest verification: the suite runs once as a global signal; per-criterion passes are never fabricated
-- Failure is information: extract the lesson, change the next attempt, split stuck subgoals
+---
+
+## 5. Built-in Tools & Native Engine (도구 및 네이티브 엔진)
+
+jeopi는 외부 CLI에 의존하지 않고 고성능 네이티브 구현체를 직접 내장하고 있습니다.
+
+### 파일 및 코드 수정
+- `read` — 파일, 디렉터리, tar/zip 압축파일, SQLite, PDF, Jupyter 노트북, URL 및 내부 URI(`pr://`, `issue://`, `agent://`, `skill://`)를 단일 인터페이스로 조회
+- `write` — 파일, 압축 엔트리, SQLite 행을 신규 생성 또는 덮어쓰기
+- `edit` — 줄 번호와 본문 해시 기반의 hashline 패치 (오프셋 드리프트 방지 및 충돌 복구)
+- `ast_grep` — 50여 개 언어의 tree-sitter AST 구조 기반 구문 탐색
+- `ast_edit` — ast-grep 기반 안전한 구문 재작성 (적용 전 미리보기 지원)
+- `grep` & `glob` — 인프로세스 Rust 정규식 파일 검색 및 고속 경로 글로빙
+
+### 런타임 및 실행 환경
+- `bash` — 워크스페이스 셸 (PTY 지원, 백그라운드 작업, 영구 프로세스 유지)
+- `eval` — 지속 상태를 유지하는 Python(IPython) 및 JavaScript(Bun) 커널 셀 (에이전트 도구 상호 호출 가능)
+- `ssh` — 사전 구성된 원격 호스트 대상 단일 보안 명령 실행
+
+### 코드 인텔리전스
+- `lsp` — 정의 이동, 참조 검색, 심볼 목록, 프로젝트 전반 심볼 이름 변경, 코드 액션 자동 적용
+- `debug` — DAP 프로토콜 디버거 드라이버 (브레이크포인트, 스텝 인/오버, 콜스택, 변수 스코프 검사)
+
+### 에이전트 조율 및 협업
+- `task` — 다중 서브에이전트 병렬 스폰 및 결과 자동 수신
+- `irc` — 프로세스 내 활성 에이전트 간 직접 텍스트 메시지 송수신 및 대기
+- `todo` — 단계별(phase) 목표 추적 및 순차 완료 관리
+- `job` — 백그라운드 비동기 작업 모니터링 및 취소
+- `ask` — 사용자에게 구조화된 선택지 제시 및 분기 확인
+
+### 웹 & 브라우저
+- `web_search` — 18개 백엔드(Perplexity, Gemini, Exa, Tavily 등) 자동 체인 검색 및 마크다운 정규화
+- `browser` — Chromium 탭 직접 제어 (DOM 추출, 접근성 트리 관측, 스크린샷, 상호작용)
 
 ---
 
-## Development
+## 6. Multi-Provider & Model Ecosystem (40+ 프로바이더)
 
-### Getting started from source
-
-Fresh clones need both workspace dependencies and the local Rust/N-API addon before the source CLI can start.
-
-```sh
-bun setup
-bun dev
-```
-
-`bun setup` installs workspace dependencies, builds `jeopi-natives`, and links the `jeopi` command. Re-run `bun run build:native` after changing Rust crates or `packages/natives`.
-
-For a non-interactive smoke check:
+역할(Role)에 따른 지능적인 모델 라우팅을 지원합니다:
+- `default`: 일상적인 개발 턴
+- `smol`: 경량/저비용 서브에이전트 병렬 작업
+- `slow`: 심층 추론 및 복잡한 아키텍처 판단
+- `plan`: 계획 수립 모드
 
 ```sh
-bun dev -- --version
+# 모델 지정 실행 예시
+jeopi --model claude-3-7-sonnet
+jeopi --model gpt-5 --smol gemini-2.5-flash
 ```
 
-### Debug Command
-
-`/debug` opens tools for debugging, reporting, and profiling.
-
-For architecture and contribution guidelines, see [packages/coding-agent/DEVELOPMENT.md](packages/coding-agent/DEVELOPMENT.md).
+- **프론티어 API**: Anthropic Claude, OpenAI, OpenAI Codex, Google Gemini, Google Antigravity, xAI Grok, Mistral, Groq, Cerebras, OpenRouter 등
+- **코딩 플랜**: Cursor, GitHub Copilot, Kimi Code, MiniMax, Qwen, GLM, OpenCode 등
+- **로컬 셀프 호스팅**: Ollama, LM Studio, llama.cpp, vLLM, LiteLLM (키 없이 로컬 자동 갱신)
+- **고급 라우팅**: 자동 폴백 체인(`retry.fallbackChains`), 경로별 모델 고정(path-scoped), 다계정 라운드로빈 API 키 로테이션
 
 ---
 
-## Monorepo Packages
+## 7. Entry Points (다양한 진입점)
 
-| Package                                                   | Description                                                                |
-| --------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **[jeopi-collab-web](packages/collab-web)**           | Browser guest client, mock host, and local relay for collab live sessions  |
-| **[jeopi-ai](packages/ai)**                        | Multi-provider LLM client with streaming and model/provider integration    |
-| **[jeopi-catalog](packages/catalog)**              | Model catalog: bundled model database, provider descriptors, and identity  |
-| **[jeopi-agent-core](packages/agent)**             | Agent runtime with tool calling and state management                       |
-| **[jeopi-cli](packages/coding-agent)**    | Interactive coding agent CLI and SDK                                       |
-| **[jeopi-tui](packages/tui)**                      | Terminal UI library with differential rendering                            |
-| **[jeopi-natives](packages/natives)**              | N-API bindings for grep, shell, image, text, syntax highlighting, and more |
-| **[jeopi-stats](packages/stats)**                 | Local observability dashboard for AI usage statistics                      |
-| **[jeopi-utils](packages/utils)**                  | Shared utilities (logging, streams, dirs/env/process helpers)              |
-| **[jeopi-wire](packages/wire)**                    | Shared collab live-session protocol types and relay constants              |
-| **[jeopi-hashline](packages/hashline)**               | Line-anchored patch language and applier behind the `edit` tool            |
-| **[jeopi-mnemopi](packages/mnemopi)**              | Local SQLite memory engine for Oh My Pi agents                             |
-| **[jeopi-snapcompact](packages/snapcompact)**         | Bitmap-frame context compression package and SQuAD eval suite              |
-| **[jeopi-swarm-extension](packages/swarm-extension)** | Swarm orchestration extension package                                      |
+- **인터랙티브 TUI (`jeopi`)**: 차분하고 아름다운 터미널 차등 렌더링 UI. 도구 실행 카드, 실시간 스트리밍, `ask` 선택기.
+- **원샷 모드 (`jeopi -p "명령"`)**: 단일 프롬프트를 처리하고 즉시 결과를 반환하는 CLI 파이프라인.
+- **SDK 라이브러리 (`jeopi-cli`)**: Node.js/TypeScript 프로젝트 내에서 에이전트 세션을 직접 제어.
+- **RPC 모드 (`jeopi --mode rpc`)**: 표준 입출력(stdio) NDJSON 프로토콜을 통해 다른 언어 프로세스에서 에이전트 구동.
+- **ACP 모드 (`jeopi acp`)**: Zed 등 최신 에디터에서 Agent Client Protocol을 통해 에디터 버퍼 직접 조작.
+- **라이브 협업 (`/collab`)**: 실시간 세션을 중계 서버에 올려 URL과 QR 코드로 동료와 페어 프로그래밍.
+- **메신저 게이트웨이 (`jeopi messenger`)**: Discord, Slack, Telegram을 통한 원격 헤드리스 세션 연동.
 
-### Rust Crates
+---
 
-| Crate                                              | Description                                                                                         |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **[pi-natives](crates/pi-natives)**                | Core Rust native addon (N-API `cdylib`) used by `jeopi-natives`; aggregates the crates below |
-| **[pi-shell](crates/pi-shell)**                    | Embedded shell / PTY / process management split out of `pi-natives` (wraps `brush-*`)               |
-| **[pi-ast](crates/pi-ast)**                        | tree-sitter-based code summarizer and AST utilities (50+ language grammars)                         |
-| **[pi-iso](crates/pi-iso)**                        | Task isolation backend resolver: APFS clones, btrfs/zfs reflinks, overlayfs, projfs, rcopy          |
-| **[brush-core](crates/vendor/brush-core)**         | Vendored fork of [brush-shell](https://github.com/reubeno/brush) for embedded bash execution        |
-| **[brush-builtins](crates/vendor/brush-builtins)** | Vendored bash builtins (cd, echo, test, printf, read, export, etc.)                                 |
+## 8. Monorepo Packages
+
+| Package | Description |
+|---|---|
+| **[jeopi-cli](packages/coding-agent)** | 터미널 코딩 에이전트 CLI, SDK, 메신저 게이트웨이 통합 패키지 |
+| **[jeopi-agent-core](packages/agent)** | 도구 호출 및 상태 머신을 담당하는 코어 런타임 |
+| **[jeopi-ai](packages/ai)** | 멀티 프로바이더 LLM 스트리밍 클라이언트 |
+| **[jeopi-catalog](packages/catalog)** | 모델 카탈로그, 프로바이더 디스크립터 및 추론 정책 관리 |
+| **[jeopi-tui](packages/tui)** | 터미널 차등 렌더링 TUI 컴포넌트 라이브러리 |
+| **[jeopi-natives](packages/natives)** | grep, shell, AST, 이미지 연산용 고속 N-API 바인딩 |
+| **[jeopi-stats](packages/stats)** | 로컬 AI 사용량 통계 대시보드 (`jeopi stats`) |
+| **[jeopi-utils](packages/utils)** | 파일, 로깅, 스트림, 프로세스 공통 유틸리티 |
+| **[jeopi-collab-web](packages/collab-web)** | Collab 실시간 웹 게스트 클라이언트 및 릴레이 |
+| **[jeopi-hashline](packages/hashline)** | 해시 기반 라인 패치 및 충돌 복구 언어 |
+| **[jeopi-wire](packages/wire)** | Collab 및 RPC 세션 통신 프로토콜 정의 |
+| **[jeopi-mnemopi](packages/mnemopi)** | SQLite 기반 영구 메모리 엔진 |
+| **[jeopi-snapcompact](packages/snapcompact)** | 비트맵 프레임 컨텍스트 압축 엔진 |
+| **[jeopi-swarm-extension](packages/swarm-extension)** | Swarm 분산 에이전트 확장 패키지 |
+
+### Rust Crates (`crates/`)
+
+| Crate | Description |
+|---|---|
+| **[pi-natives](crates/pi-natives)** | Rust 코어 N-API `cdylib` 네이티브 모듈 |
+| **[pi-shell](crates/pi-shell)** | PTY 및 프로세스 관리를 위한 임베디드 셸 엔진 |
+| **[pi-ast](crates/pi-ast)** | 50개 이상 언어의 tree-sitter AST 파서 및 코드 요약기 |
+| **[pi-iso](crates/pi-iso)** | APFS CoW, Btrfs/ZFS reflink, OverlayFS 기반 파일시스템 격리 엔진 |
+
+---
 
 ## Changelog
 
@@ -671,24 +316,18 @@ Latest 5 released entries:
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->
 
-## Contributing
-
-Issues and PRs are open at [akillness/jeopi](https://github.com/akillness/jeopi). Keep diffs small, name the acceptance criterion your change serves, and bring the verification evidence — the same contract the agent itself is held to. Upstream engine work belongs in [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi); jeopi tracks it.
-
 ---
 
-## License
+## License & Attribution
 
-MIT. See [LICENSE](LICENSE).
+- **License**: MIT License. See [LICENSE](LICENSE).
+- **Lineage**:
+  - Based on and extended from [oh-my-pi](https://github.com/can1357/oh-my-pi) by [Can Bölük](https://github.com/can1357).
+  - Derived from [Pi](https://github.com/badlogic/pi-mono) by [Mario Zechner](https://github.com/mariozechner).
+  - Spec-first engineering discipline and runtime gates inspired by [jeo-code](https://github.com/akillness/jeo-code).
 
 © 2025 Mario Zechner  
-© 2025-2026 Can Bölük  
+© 2025–2026 Can Bölük  
 © 2026 jeopi contributors
 
 _Encode intention. Decode software._
-
-- [GitHub](https://github.com/akillness/jeopi)
-- [Changelog](packages/coding-agent/CHANGELOG.md)
-- [jeo-code](https://github.com/akillness/jeo-code) — the philosophy donor
-- [oh-my-pi](https://github.com/can1357/oh-my-pi) — the engine upstream
-- [MIT](LICENSE)

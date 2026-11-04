@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="1000" height="420" role="img" aria-label="jeo Spec-First Workflow">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0B14"/>
+      <stop offset="100%" stop-color="#12121E"/>
+    </linearGradient>
+    <linearGradient id="blueG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0284C7" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="purpleG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A855F7" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#7E22CE" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="roseG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F43F5E" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#BE123C" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="amberG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#B45309" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="greenG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#047857" stop-opacity="0.05"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#64748B"/>
+    </marker>
+    <marker id="arrow-rose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#F43F5E"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10B981"/>
+    </marker>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="1000" height="420" rx="16" fill="url(#bg)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Title & Badge -->
+  <text x="40" y="44" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="18" font-weight="700">jeo Spec-First Spine &amp; Verification Pipeline</text>
+  <text x="40" y="66" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">Socratic interview, immutable seed, runtime-enforced critic gate, and artifact-backed proof</text>
+
+  <rect x="830" y="28" width="130" height="26" rx="13" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+  <circle cx="845" cy="41" r="4" fill="#38BDF8"/>
+  <text x="857" y="45" fill="#E2E8F0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="600">Runtime Gated</text>
+
+  <!-- Step 1: Socratic Interview -->
+  <g transform="translate(40, 100)">
+    <rect width="135" height="180" rx="12" fill="url(#blueG)" stroke="#38BDF8" stroke-width="1.5"/>
+    <rect x="12" y="14" width="28" height="20" rx="6" fill="#38BDF8" fill-opacity="0.2"/>
+    <text x="21" y="28" fill="#38BDF8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="800">01</text>
+    <text x="12" y="56" fill="#F1F5F9" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Interview</text>
+    <text x="12" y="74" fill="#38BDF8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" font-weight="600">Ambiguity Gate</text>
+    <path d="M 12 86 L 123 86" stroke="#1E293B" stroke-width="1"/>
+    <text x="12" y="104" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Socratic inquiry</text>
+    <text x="12" y="122" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Goal &amp; constraints</text>
+    <text x="12" y="140" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Checkable criteria</text>
+    <text x="12" y="162" fill="#64748B" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-style="italic">Vague asks refused</text>
+  </g>
+
+  <!-- Arrow 1 -> 2 -->
+  <path d="M 175 190 L 199 190" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 2: Frozen Seed -->
+  <g transform="translate(205, 100)">
+    <rect width="135" height="180" rx="12" fill="url(#purpleG)" stroke="#A855F7" stroke-width="1.5"/>
+    <rect x="12" y="14" width="28" height="20" rx="6" fill="#A855F7" fill-opacity="0.2"/>
+    <text x="21" y="28" fill="#A855F7" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="800">02</text>
+    <text x="12" y="56" fill="#F1F5F9" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Frozen Seed</text>
+    <text x="12" y="74" fill="#A855F7" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" font-weight="600">Contract Lock</text>
+    <path d="M 12 86 L 123 86" stroke="#1E293B" stroke-width="1"/>
+    <text x="12" y="104" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• local://jeo-seed.md</text>
+    <text x="12" y="122" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Strict immutability</text>
+    <text x="12" y="140" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Zero silent drift</text>
+    <text x="12" y="162" fill="#64748B" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-style="italic">Reopens on scope shift</text>
+  </g>
+
+  <!-- Arrow 2 -> 3 -->
+  <path d="M 340 190 L 364 190" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 3: Plan Agent -->
+  <g transform="translate(370, 100)">
+    <rect width="135" height="180" rx="12" fill="url(#purpleG)" stroke="#818CF8" stroke-width="1.5"/>
+    <rect x="12" y="14" width="28" height="20" rx="6" fill="#818CF8" fill-opacity="0.2"/>
+    <text x="21" y="28" fill="#818CF8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="800">03</text>
+    <text x="12" y="56" fill="#F1F5F9" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Plan Agent</text>
+    <text x="12" y="74" fill="#818CF8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" font-weight="600">Read-Only DAG</text>
+    <path d="M 12 86 L 123 86" stroke="#1E293B" stroke-width="1"/>
+    <text x="12" y="104" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Concrete file targets</text>
+    <text x="12" y="122" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Execution order</text>
+    <text x="12" y="140" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Evidence mapping</text>
+    <text x="12" y="162" fill="#64748B" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-style="italic">No disk mutations</text>
+  </g>
+
+  <!-- Arrow 3 -> 4 -->
+  <path d="M 505 190 L 529 190" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 4: Critic Gate (Hard Block) -->
+  <g transform="translate(535, 90)">
+    <rect width="145" height="200" rx="14" fill="url(#roseG)" stroke="#F43F5E" stroke-width="2"/>
+    <rect x="12" y="14" width="28" height="20" rx="6" fill="#F43F5E" fill-opacity="0.25"/>
+    <text x="21" y="28" fill="#F43F5E" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="800">04</text>
+    <text x="12" y="56" fill="#FFF1F2" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" font-weight="800">Critic Gate</text>
+    <text x="12" y="74" fill="#FB7185" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5" font-weight="700">Hard Code Blocker</text>
+    <path d="M 12 86 L 133 86" stroke="#47141E" stroke-width="1"/>
+    <text x="12" y="104" fill="#FDA4AF" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5" font-weight="600">Verdict: okay / iterate</text>
+    <text x="12" y="122" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Locks write/edit tools</text>
+    <text x="12" y="140" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Refuses task spawns</text>
+    <text x="12" y="158" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• 3-strike circuit breaker</text>
+    <rect x="12" y="172" width="121" height="18" rx="4" fill="#881337"/>
+    <text x="22" y="184" fill="#FFE4E6" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" font-weight="700">NO VIBES · CODE ONLY</text>
+  </g>
+
+  <!-- Iterate / Reject Loop Back from 4 to 3 -->
+  <path d="M 607 90 C 607 60, 437 60, 437 92" fill="none" stroke="#F43F5E" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrow-rose)"/>
+  <rect x="480" y="50" width="84" height="18" rx="4" fill="#181825" stroke="#F43F5E" stroke-width="1"/>
+  <text x="487" y="63" fill="#F43F5E" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" font-weight="700">Iterate (≤2x)</text>
+
+  <!-- Arrow 4 -> 5 (Passed Okay) -->
+  <path d="M 680 190 L 704 190" stroke="#10B981" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="682" y="180" fill="#10B981" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" font-weight="700">okay</text>
+
+  <!-- Step 5: Bounded Execution -->
+  <g transform="translate(710, 100)">
+    <rect width="125" height="180" rx="12" fill="url(#amberG)" stroke="#F59E0B" stroke-width="1.5"/>
+    <rect x="12" y="14" width="28" height="20" rx="6" fill="#F59E0B" fill-opacity="0.2"/>
+    <text x="21" y="28" fill="#F59E0B" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="800">05</text>
+    <text x="12" y="56" fill="#F1F5F9" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Execute</text>
+    <text x="12" y="74" fill="#F59E0B" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" font-weight="600">Subagent Tasks</text>
+    <path d="M 12 86 L 113 86" stroke="#1E293B" stroke-width="1"/>
+    <text x="12" y="104" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Bounded task scope</text>
+    <text x="12" y="122" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Failure-lesson loop</text>
+    <text x="12" y="140" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• State transitions</text>
+    <text x="12" y="162" fill="#64748B" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-style="italic">No apology loops</text>
+  </g>
+
+  <!-- Arrow 5 -> 6 -->
+  <path d="M 835 190 L 859 190" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 6: Artifact-Gated Verification -->
+  <g transform="translate(865, 100)">
+    <rect width="105" height="180" rx="12" fill="url(#greenG)" stroke="#10B981" stroke-width="1.5"/>
+    <rect x="12" y="14" width="28" height="20" rx="6" fill="#10B981" fill-opacity="0.2"/>
+    <text x="21" y="28" fill="#10B981" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="800">06</text>
+    <text x="12" y="56" fill="#F1F5F9" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Verify</text>
+    <text x="12" y="74" fill="#10B981" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" font-weight="600">Proof Gate</text>
+    <path d="M 12 86 L 93 86" stroke="#1E293B" stroke-width="1"/>
+    <text x="12" y="104" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Single suite run</text>
+    <text x="12" y="122" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Exact command</text>
+    <text x="12" y="140" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Observed output</text>
+    <text x="12" y="162" fill="#10B981" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" font-weight="700">Done Contract</text>
+  </g>
+
+  <!-- Bottom Infobar -->
+  <rect x="40" y="320" width="930" height="74" rx="10" fill="#0E131F" stroke="#1E293B" stroke-width="1"/>
+  <text x="60" y="346" fill="#E2E8F0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="700">Runtime Guarantee</text>
+  <text x="60" y="366" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">Critic verdicts are recorded in session state. On iterate/reject, task tool refuses execution spawns and file tools lock the working tree.</text>
+  <text x="60" y="382" fill="#64748B" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">The gate clears ONLY when critic returns okay or the human issues an explicit turn override.</text>
+
+  <rect x="790" y="338" width="160" height="36" rx="8" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+  <text x="806" y="360" fill="#38BDF8" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12" font-weight="700">/jeo &lt;objective&gt;</text>
+</svg>

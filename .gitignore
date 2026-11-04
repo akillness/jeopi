@@ -38,12 +38,18 @@ coverage/
 .nyc_output/
 packages/ai/test/.temp-images/
 
-# Project specific
-!.jeopi/
-.jeopi/plugins/
+# Hidden directories (dot-prefixed folders)
+.*/
+!/.github/
+!/.github/**
+!/**/fixtures/**/.*/
+!/**/examples/**/.*/
+.DS_Store
+**/.DS_Store
 .gjc/
 .omc/
 .omx/
+.jeopi/
 .zvec-grep/
 # Local knowledge-pipeline state. `llm-wiki/sync-tracker.md` is the one
 # tracked artifact here (the upstream-sync ledger) and stays committed.

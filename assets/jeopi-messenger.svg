@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" width="1000" height="440" role="img" aria-label="jeopi Messenger Gateway Architecture">
+  <defs>
+    <linearGradient id="mbg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0B14"/>
+      <stop offset="100%" stop-color="#12121E"/>
+    </linearGradient>
+    <linearGradient id="discordG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5865F2" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#4752C4" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="slackG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E01E5A" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#ECB22E" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="telegramG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#229ED9" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#0088CC" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="coreG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="procG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#047857" stop-opacity="0.05"/>
+    </linearGradient>
+    <marker id="m-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#64748B"/>
+    </marker>
+    <marker id="m-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#38BDF8"/>
+    </marker>
+    <marker id="m-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10B981"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="440" rx="16" fill="url(#mbg)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <text x="40" y="44" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="18" font-weight="700">jeopi Messenger Gateway Architecture</text>
+  <text x="40" y="66" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">Outbound-only connections · Process-isolated sessions per conversation · Zero open ports</text>
+
+  <rect x="795" y="28" width="165" height="26" rx="13" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+  <circle cx="810" cy="41" r="4" fill="#10B981"/>
+  <text x="822" y="45" fill="#E2E8F0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="600">No Webhook / Public IP</text>
+
+  <!-- Platform Cards (Column 1) -->
+  <g transform="translate(40, 95)">
+    <!-- Discord Card -->
+    <rect width="210" height="92" rx="10" fill="url(#discordG)" stroke="#5865F2" stroke-width="1.2"/>
+    <text x="16" y="28" fill="#FFFFFF" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Discord Bot</text>
+    <rect x="135" y="14" width="60" height="18" rx="4" fill="#5865F2" fill-opacity="0.3"/>
+    <text x="144" y="27" fill="#C7D2FE" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" font-weight="700">WSS v10</text>
+    <text x="16" y="50" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Outbound WebSocket Gateway</text>
+    <text x="16" y="68" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Message Content Intent</text>
+    <text x="16" y="84" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• In-place live step status</text>
+
+    <!-- Slack Card -->
+    <g transform="translate(0, 106)">
+      <rect width="210" height="92" rx="10" fill="url(#slackG)" stroke="#E01E5A" stroke-width="1.2"/>
+      <text x="16" y="28" fill="#FFFFFF" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Slack Bot</text>
+      <rect x="110" y="14" width="85" height="18" rx="4" fill="#E01E5A" fill-opacity="0.3"/>
+      <text x="117" y="27" fill="#FECDD3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" font-weight="700">Socket Mode</text>
+      <text x="16" y="50" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Outbound WebSocket xapp-</text>
+      <text x="16" y="68" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Automatic channel thread replies</text>
+      <text x="16" y="84" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Bot token authorization xoxb-</text>
+    </g>
+
+    <!-- Telegram Card -->
+    <g transform="translate(0, 212)">
+      <rect width="210" height="92" rx="10" fill="url(#telegramG)" stroke="#229ED9" stroke-width="1.2"/>
+      <text x="16" y="28" fill="#FFFFFF" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">Telegram Bot</text>
+      <rect x="115" y="14" width="80" height="18" rx="4" fill="#229ED9" fill-opacity="0.3"/>
+      <text x="122" y="27" fill="#BAE6FD" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" font-weight="700">Long-Poll</text>
+      <text x="16" y="50" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Outbound HTTPS polling</text>
+      <text x="16" y="68" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• BotFather API integration</text>
+      <text x="16" y="84" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Supergroup forum topics</text>
+    </g>
+  </g>
+
+  <!-- Connection Lines from Platforms to Gateway -->
+  <path d="M 250 141 L 305 210" stroke="#5865F2" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#m-blue)"/>
+  <path d="M 250 247 L 305 247" stroke="#E01E5A" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#m-blue)"/>
+  <path d="M 250 353 L 305 285" stroke="#229ED9" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#m-blue)"/>
+
+  <!-- Column 2: Messenger Gateway Service -->
+  <g transform="translate(315, 95)">
+    <rect width="280" height="304" rx="14" fill="url(#coreG)" stroke="#38BDF8" stroke-width="1.5"/>
+    <rect x="20" y="18" width="120" height="22" rx="5" fill="#38BDF8" fill-opacity="0.2"/>
+    <text x="28" y="33" fill="#38BDF8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5" font-weight="700">GATEWAY DAEMON</text>
+    <text x="20" y="66" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="16" font-weight="800">jeopi messenger run</text>
+    <text x="20" y="84" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">Bidirectional event &amp; turn router</text>
+    
+    <path d="M 20 98 L 260 98" stroke="#1E293B" stroke-width="1"/>
+
+    <!-- Security & Allowlists -->
+    <rect x="20" y="112" width="240" height="52" rx="8" fill="#0B0B14" stroke="#1E293B" stroke-width="1"/>
+    <text x="32" y="130" fill="#38BDF8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700">🔒 Security Allowlists</text>
+    <text x="32" y="148" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• allowedUserIds · allowedChannelIds</text>
+
+    <!-- Activity & Status Lifecycle -->
+    <rect x="20" y="174" width="240" height="52" rx="8" fill="#0B0B14" stroke="#1E293B" stroke-width="1"/>
+    <text x="32" y="192" fill="#FBBF24" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700">⚡ Live Status &amp; Typing</text>
+    <text x="32" y="210" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• In-place step updates (throttled 2s)</text>
+
+    <!-- Session Pool Manager -->
+    <rect x="20" y="236" width="240" height="52" rx="8" fill="#0B0B14" stroke="#1E293B" stroke-width="1"/>
+    <text x="32" y="254" fill="#34D399" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700">📦 Session Worker Pool</text>
+    <text x="32" y="272" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">• Spawn / retire session processes</text>
+  </g>
+
+  <!-- Connection to Isolated Sessions -->
+  <path d="M 595 247 L 640 247" stroke="#10B981" stroke-width="2" marker-end="url(#m-green)"/>
+
+  <!-- Column 3: Process Isolation & Tool Execution -->
+  <g transform="translate(650, 95)">
+    <rect width="310" height="304" rx="14" fill="url(#procG)" stroke="#10B981" stroke-width="1.5"/>
+    <rect x="20" y="18" width="150" height="22" rx="5" fill="#10B981" fill-opacity="0.2"/>
+    <text x="28" y="33" fill="#10B981" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5" font-weight="700">PROCESS ISOLATION</text>
+    <text x="20" y="66" fill="#F8FAFC" font-family="ui-sans-serif,system-ui,sans-serif" font-size="16" font-weight="800">1 Process per Conversation</text>
+    <text x="20" y="84" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">Keyed by Platform / Channel / User</text>
+    
+    <path d="M 20 98 L 290 98" stroke="#1E293B" stroke-width="1"/>
+
+    <!-- Isolated Session Instances -->
+    <rect x="20" y="112" width="270" height="52" rx="8" fill="#0B0B14" stroke="#1E293B" stroke-width="1"/>
+    <text x="32" y="130" fill="#E2E8F0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700">Subprocess #1 (Discord Thread #981)</text>
+    <text x="32" y="148" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">Isolated cwd · State &amp; memory isolated</text>
+
+    <rect x="20" y="174" width="270" height="52" rx="8" fill="#0B0B14" stroke="#1E293B" stroke-width="1"/>
+    <text x="32" y="192" fill="#E2E8F0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700">Subprocess #2 (Slack Thread C08AB)</text>
+    <text x="32" y="210" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">Concurrent turn · Independent model</text>
+
+    <!-- Tool Calling & Permissions -->
+    <rect x="20" y="236" width="270" height="52" rx="8" fill="#0B0B14" stroke="#1E293B" stroke-width="1"/>
+    <text x="32" y="254" fill="#F472B6" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700">🛠 Configurable Tool Policy</text>
+    <text x="32" y="272" fill="#94A3B8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5">toolNames: [] (chat-only) or full coding tools</text>
+  </g>
+
+  <!-- Quick Start Pill -->
+  <rect x="40" y="405" width="920" height="24" rx="6" fill="#0E131F"/>
+  <text x="50" y="421" fill="#94A3B8" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11">Quick command: <tspan fill="#38BDF8">jeopi messenger setup --config messenger.json --service</tspan> · Guides token check, gateway test &amp; service install</text>
+</svg>
