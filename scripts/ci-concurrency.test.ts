@@ -261,6 +261,8 @@ function collectRunnerLabels(yaml: string): string[] {
 
 		const inlineOsMatch = /^-\s*\{.*\bos:\s*([^,\s}]+).*\}/.exec(line);
 		if (inlineOsMatch) labels.push(unquoteYamlScalar(inlineOsMatch[1]!));
+		const multilineOsMatch = /^os:\s*([^,\s}]+)/.exec(line);
+		if (multilineOsMatch) labels.push(unquoteYamlScalar(multilineOsMatch[1]!));
 	}
 	return labels;
 }
@@ -354,7 +356,7 @@ describe("ci.yml runner scheduling", () => {
 			"ubuntu-22.04",
 			"ubuntu-24.04-arm",
 			"macos-15-intel",
-			"macos-14",
+			"macos-15",
 		]);
 
 		expect(labels.length).toBeGreaterThan(0);
