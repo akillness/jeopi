@@ -2266,6 +2266,29 @@ describe("Anthropic request fingerprint alignment", () => {
 });
 
 describe("cch attestation", () => {
+	it("sends Fable 5.2 an OAuth billing version accepted by its minimum client gate", async () => {
+		const { promise, resolve } = Promise.withResolvers<string>();
+		const controller = new AbortController();
+		const fakeFetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+			const raw = init?.body;
+			resolve(typeof raw === "string" ? raw : new TextDecoder().decode(raw as Uint8Array));
+			controller.abort();
+			return new Response(null, { status: 400 });
+		};
+		const model = buildModel({ ...ANTHROPIC_MODEL_SPEC, id: "claude-fable-5-2", name: "Claude Fable 5.2" });
+		streamAnthropic(
+			model,
+			{ messages: [{ role: "user", content: "hello", timestamp: Date.now() }] },
+			{ apiKey: "sk-ant-oat-test", isOAuth: true, signal: controller.signal, fetch: fakeFetch },
+		);
+		const body = JSON.parse(await promise) as { system: Array<{ text?: string }> };
+		const billingHeader = body.system.find(block => block.text?.startsWith("x-anthropic-billing-header:"))?.text;
+		const version = billingHeader?.match(/cc_version=(\d+)\.(\d+)\.(\d+)\.[a-f0-9]{3}/);
+		expect(version).toBeDefined();
+		const [major, minor, patch] = version!.slice(1).map(Number);
+		expect(major > 2 || (major === 2 && (minor > 1 || (minor === 1 && patch >= 290)))).toBe(true);
+	});
+
 	it("wrapFetchForCch: replaces cch=00000 with correct XXHash64 in outgoing request body", async () => {
 		const { promise: bodyPromise, resolve: bodyResolve } = Promise.withResolvers<string>();
 		const controller = new AbortController();
