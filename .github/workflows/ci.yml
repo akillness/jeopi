@@ -268,7 +268,7 @@ jobs:
          matrix:
             include:
                - { os: macos-15-intel, platform: darwin, arch: x64, variant: baseline }
-               - { os: macos-14, platform: darwin, arch: arm64 }
+               - { os: macos-15, platform: darwin, arch: arm64 }
       runs-on: ${{ matrix.os }}
       steps:
          - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
@@ -589,7 +589,7 @@ jobs:
                     binary_path: packages/coding-agent/binaries/jeopi-darwin-x64,
                  }
                - {
-                    os: macos-14,
+                    os: macos-15,
                     platform: darwin,
                     arch: arm64,
                     target_id: darwin-arm64,
@@ -725,7 +725,7 @@ jobs:
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
          needs.release_github.result == 'success' }}
       needs: [release_metadata, release_github]
-      runs-on: macos-14
+      runs-on: macos-15
       permissions:
          contents: read
       env:
