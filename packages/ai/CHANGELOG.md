@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.19] - 2026-11-10
+
 ### Fixed
 
 - Updated the Anthropic OAuth fingerprint to Claude Code 2.1.290 and Agent SDK 0.3.290 to meet the minimum client version required by Claude Fable 5.2.
