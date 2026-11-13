@@ -152,7 +152,7 @@ Interact with your local or remote jeopi agent sessions anywhere from your phone
 - **Strict Security Allowlists**  
   `allowedUserIds` and `allowedChannelIds` ensure bots respond only to authorized users in designated channels.
 - **Configurable Tool Policies (`toolNames`)**  
-  Defaults to pure conversation (`toolNames: []`). Coding tools (`bash`, `read`, `write`, `lsp`, `web_search`) must be explicitly whitelisted.
+  Defaults to pure conversation (`toolNames: []`). Only `read`, `grep`, `glob`, `bash`, `edit`, and `write` are supported messenger tools; enable the minimum required tools explicitly.
 
 ### Messenger CLI Commands
 
@@ -160,7 +160,7 @@ Interact with your local or remote jeopi agent sessions anywhere from your phone
 # Interactive setup wizard: validates tokens, enables intents, invites bot, and installs background service
 jeopi messenger setup --config messenger.json --service
 
-# Verify connection, permissions, and channel allowlists
+# Validate local config, token environment, and allowlists offline (no network).
 jeopi messenger check --config messenger.json
 
 # Run the messenger gateway daemon
@@ -172,7 +172,7 @@ jeopi messenger run --config messenger.json
 {
   "cwd": "./workspace",
   "sessionDir": "./sessions",
-  "toolNames": ["read", "bash", "edit", "glob", "grep", "lsp"],
+  "toolNames": [],
   "platforms": {
     "discord": {
       "tokenEnv": "JEOPI_DISCORD_BOT_TOKEN",
@@ -194,6 +194,55 @@ jeopi messenger run --config messenger.json
 ```
 
 Detailed guides: [docs/messenger.md](docs/messenger.md) · [Discord Guide](docs/messenger/discord.md) · [Slack Guide](docs/messenger/slack.md) · [Telegram Guide](docs/messenger/telegram.md).
+
+### Discord, gate recovery, and model setup
+
+#### Choose and start the Discord integration
+
+`jeopi messenger` is the two-way gateway for remote Discord DMs and threads. It is separate from the `jeo-code` notification daemon and does not send webhook-only CI notifications. Create a Discord Application and Bot in the Developer Portal, enable the privileged **Message Content Intent**, and invite the bot with the `bot` scope. Do not grant Administrator. The minimum messenger permissions are View Channels, Send Messages, Read Message History, Add Reactions, Attach Files, Create Public Threads, and Send Messages in Threads. Use exact Discord Snowflake IDs for `allowedUserIds` and `allowedChannelIds`; empty or wildcard allowlists are rejected.
+
+```sh
+# Creates the profile, probes the Gateway, and sends the owner a test DM.
+jeopi messenger setup --config ~/.jeopi/discord/messenger.json
+
+# Validate local config and environment only; this makes no network calls.
+jeopi messenger check --config ~/.jeopi/discord/messenger.json
+
+# Run in the foreground. On macOS/Linux, add --service to setup to install
+# and start a launchd/systemd user service instead; do not start a second copy.
+jeopi messenger run --config ~/.jeopi/discord/messenger.json
+```
+
+Setup reads `JEOPI_DISCORD_BOT_TOKEN`, a `discord-token` file beside the config, or a hidden terminal prompt. It saves the token in a private `0600` sidecar, not in `messenger.json`. For Windows, omit `--service` and use the generated `run-discord.cmd`; setup does not verify the token file's NTFS ACL, so restrict that directory to the intended account. If the app cannot enable Message Content Intent through the API, enable it in the Developer Portal (verified apps and apps in 100+ servers may require approval) and rerun setup. A successful offline `check` is not a Gateway connection test; setup probes the Gateway and `run` is the live-session check.
+
+#### Keep remote authority narrow
+
+`toolNames: []` is the safe default and gives Discord conversations no filesystem or command-execution tools. Add only what the bot needs: `read,grep,glob` for inspection; add `edit,write` only for authorized code changes. `bash` enables command execution and should be reserved for fully trusted users. Tool allowlists are not an OS sandbox: enabled tools run as the same OS account and can access files that account can access. Keep the config, token sidecar, session directory, and allowlists private; never send bot or model credentials in Discord. See the [Discord setup guide](docs/messenger/discord.md) for permissions, IDs, file transfer, and troubleshooting.
+
+#### Re-run the right workflow gate
+
+The spec-first flow is the interactive `/jeo <goal>` skill, not a Discord-specific approval command. Discord only supplies a message channel; it does not grant tools, bypass the critic, or turn a notification acknowledgement into approval.
+
+- On critic `iterate`, revise the plan against every `required_fixes` item and submit the changed plan to a fresh critic. Do not execute until the latest verdict is `okay`; the runtime stops after three consecutive non-okay verdicts (at most two iterations).
+- On `reject`, stop execution and return to the interview or ask the user to resolve the disqualifying constraint. Do not treat it as an approval.
+- On a task failure, carry the observed failure into a changed assignment and retry only the failed bounded task; each task has at most two retries. Split or report a third failure instead of repeating it unchanged.
+- On a failed acceptance check, fix the cause and rerun that criterion's command, recording the new output. The global test suite runs once per `/jeo` run. A code change after that run makes the old suite result stale; start a fresh `/jeo` verification run for fresh global evidence. Unchecked criteria remain unresolved, never passed by implication.
+
+#### Select models independently from the Discord bot token
+
+Authenticate the model provider in jeopi with `/login`, then choose a live model with `/model`. The selection is saved as the most-recent default. For one launch, use `jeopi --model provider/model-id --smol provider/fast-model-id` (and `--slow` or `--plan` when needed). Provider/model credentials are separate from `JEOPI_DISCORD_BOT_TOKEN`; configure them locally and never paste them into chat.
+
+Set role defaults globally in `~/.jeopi/agent/config.yml` or per repository in `.jeopi/config.yml`:
+
+```yaml
+modelRoles:
+  default: provider/model-id
+  smol: provider/fast-model-id
+  slow: provider/reasoning-model-id:high
+  plan: provider/planner-model-id
+```
+
+Use IDs available to the authenticated provider; `/model` is the interactive catalog. Role aliases and thinking suffixes are documented in [Model configuration](docs/models.md), and the layered settings path is documented in [Settings](docs/settings.md).
 
 ---
 

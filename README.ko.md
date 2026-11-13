@@ -152,7 +152,7 @@ jeopi completions fish > ~/.config/fish/completions/jeopi.fish
 - **엄격한 보안 화이트리스트**  
   `allowedUserIds`와 `allowedChannelIds`를 지정하여 승인된 사용자 및 지정된 채널에서만 봇이 응답합니다.
 - **도구 권한 제어 (`toolNames`)**  
-  기본값은 순수 텍스트 챗봇(`toolNames: []`)이며, 필요에 따라 `bash`, `read`, `write`, `lsp`, `web_search` 등 코딩 툴 권한을 명시적으로 부여할 수 있습니다.
+  기본값은 순수 텍스트 대화(`toolNames: []`)입니다. 메신저가 지원하는 도구는 `read`, `grep`, `glob`, `bash`, `edit`, `write`이며 필요한 도구만 명시적으로 허용하세요.
 
 ### 메신저 명령어 및 설정
 
@@ -160,7 +160,7 @@ jeopi completions fish > ~/.config/fish/completions/jeopi.fish
 # 설정 마법사: 토큰 검증, Message Content Intent 확인, 채널 선택 및 백그라운드 서비스 등록
 jeopi messenger setup --config messenger.json --service
 
-# 봇 연결 및 채널 상태 진단
+# 로컬 설정·토큰 환경 변수·허용 목록을 오프라인 검사(네트워크 요청 없음)
 jeopi messenger check --config messenger.json
 
 # 메신저 게이트웨이 데몬 실행
@@ -172,7 +172,7 @@ jeopi messenger run --config messenger.json
 {
   "cwd": "./workspace",
   "sessionDir": "./sessions",
-  "toolNames": ["read", "bash", "edit", "glob", "grep", "lsp"],
+  "toolNames": [],
   "platforms": {
     "discord": {
       "tokenEnv": "JEOPI_DISCORD_BOT_TOKEN",
@@ -195,7 +195,57 @@ jeopi messenger run --config messenger.json
 
 자세한 가이드는 [docs/messenger.md](docs/messenger.md), [docs/messenger/discord.md](docs/messenger/discord.md), [docs/messenger/slack.md](docs/messenger/slack.md), [docs/messenger/telegram.md](docs/messenger/telegram.md)를 참고하세요.
 
+### Discord, 게이트 복구, 모델 설정 가이드
+
+#### Discord 연동 방식 선택 및 실행
+
+`jeopi messenger`는 Discord DM과 스레드에서 원격 대화를 주고받는 양방향 게이트웨이입니다. `jeo-code`의 알림 데몬과는 별개이며 CI 웹훅 전용 발송기는 아닙니다. Discord Developer Portal에서 Application과 Bot을 만들고, 특권 **Message Content Intent**를 켠 뒤 `bot` 스코프로 초대하세요. Administrator 권한은 필요하지 않습니다. 최소 권한은 View Channels, Send Messages, Read Message History, Add Reactions, Attach Files, Create Public Threads, Send Messages in Threads입니다. `allowedUserIds`와 `allowedChannelIds`에는 정확한 Discord Snowflake ID를 사용하세요. 빈 값이나 와일드카드 허용 목록은 거부됩니다.
+
+```sh
+# 프로필 생성, Gateway 확인, 소유자 테스트 DM 전송
+jeopi messenger setup --config ~/.jeopi/discord/messenger.json
+
+# 로컬 설정과 환경 변수만 검사하며 네트워크 요청은 하지 않음
+jeopi messenger check --config ~/.jeopi/discord/messenger.json
+
+# 포그라운드 실행. macOS/Linux에서는 setup에 --service를 추가해
+# launchd/systemd 사용자 서비스를 설치·시작할 수 있음(중복 실행 금지).
+jeopi messenger run --config ~/.jeopi/discord/messenger.json
+```
+
+Setup은 `JEOPI_DISCORD_BOT_TOKEN`, 설정 파일 옆 `discord-token`, 또는 화면에 표시되지 않는 터미널 입력에서 토큰을 읽습니다. 토큰은 `messenger.json`이 아니라 권한 `0600`의 별도 파일에 저장됩니다. Windows에서는 `--service`를 생략하고 생성된 `run-discord.cmd`를 사용하세요. Setup은 Windows NTFS ACL을 검증하지 않으므로 해당 디렉터리를 계정 전용으로 제한해야 합니다. API에서 Message Content Intent를 켤 수 없으면 Developer Portal에서 직접 활성화한 뒤 setup을 다시 실행하세요(검증된 앱 또는 서버 100개 이상 앱은 승인이 필요할 수 있음). 오프라인 `check`는 실제 접속 검사가 아니며, setup이 Gateway를 확인하고 `run`이 실시간 연결을 확인합니다.
+
+#### 원격 권한을 최소화
+
+`toolNames: []`가 안전한 기본값이며 Discord 대화에 파일·명령 실행 도구를 주지 않습니다. 필요한 권한만 추가하세요. `read,grep,glob`는 조회용이며 코드 수정에는 `edit,write`를 추가합니다. `bash`는 명령 실행 권한이므로 완전히 신뢰하는 사용자에게만 허용하세요. 도구 허용 목록은 OS 샌드박스가 아닙니다. 허용된 도구는 같은 OS 계정으로 실행되어 해당 계정이 접근할 수 있는 파일에 접근할 수 있습니다. 설정 파일, 토큰 파일, 세션 디렉터리, 허용 목록을 비공개로 유지하고 Discord 채팅에 봇·모델 자격증명을 보내지 마세요. 권한, ID, 파일 전달 및 문제 해결은 [Discord 설정 가이드](docs/messenger/discord.md)를 참고하세요.
+
+#### 해당 워크플로 게이트 다시 실행
+
+스펙 우선 파이프라인은 대화형 `/jeo <목표>` 스킬이며 Discord 전용 승인 명령이 아닙니다. Discord는 메시지 채널일 뿐, 도구 권한이나 critic 통과를 대신하지 않으며 알림 확인 응답도 승인으로 바뀌지 않습니다.
+
+- critic 판정이 `iterate`이면 `required_fixes` 전부를 반영해 계획을 수정하고 새 critic에게 제출하세요. 최신 판정이 `okay`가 되기 전에는 실행하지 않습니다. 연속 비통과 3회(최대 2회 반복)에서 런타임이 중단합니다.
+- `reject`이면 실행을 멈추고 인터뷰로 돌아가거나 사용자에게 결격 조건을 확인하세요. 승인으로 간주하지 마세요.
+- 작업 실패 시 관측된 실패 원인을 다음 작업 지시에 반영하고 실패한 작업만 다시 실행하세요. 작업별 재시도는 최대 2회입니다. 세 번째 실패는 그대로 반복하지 말고 작업을 나누거나 보고하세요.
+- 수락 기준 검증 실패 시 원인을 수정한 뒤 해당 기준의 명령을 다시 실행하고 새 출력을 기록하세요. 전역 테스트 스위트는 `/jeo` 실행마다 한 번만 실행됩니다. 그 뒤 코드가 바뀌면 이전 테스트 결과는 최신 변경의 증거가 아니므로 새 `/jeo` 검증 실행에서 전역 증거를 다시 확보하세요. 검사하지 않은 기준은 통과가 아니라 미해결입니다.
+
+#### Discord 봇 토큰과 별도로 모델 선택
+
+jeopi에서 `/login`으로 모델 제공자에 인증한 뒤 `/model`에서 사용 가능한 모델을 선택하세요. 선택은 최근 기본 모델로 저장됩니다. 한 번만 지정하려면 `jeopi --model provider/model-id --smol provider/fast-model-id`를 사용하고, 필요하면 `--slow` 또는 `--plan`도 지정하세요. 모델 제공자 인증은 `JEOPI_DISCORD_BOT_TOKEN`과 별개입니다. 로컬에서 설정하고 채팅에 붙여 넣지 마세요.
+
+전역 `~/.jeopi/agent/config.yml` 또는 저장소별 `.jeopi/config.yml`에서 역할 기본값을 지정할 수 있습니다:
+
+```yaml
+modelRoles:
+  default: provider/model-id
+  smol: provider/fast-model-id
+  slow: provider/reasoning-model-id:high
+  plan: provider/planner-model-id
+```
+
+인증된 제공자에서 실제로 사용할 수 있는 모델 ID를 지정하세요. 대화형 카탈로그는 `/model`입니다. 역할 별칭과 추론 수준 접미사는 [모델 설정](docs/models.md), 설정 계층은 [Settings](docs/settings.md)를 참고하세요.
+
 ---
+
 
 ## 3. Subagent Swarm & Peer-to-Peer IRC Mesh
 
