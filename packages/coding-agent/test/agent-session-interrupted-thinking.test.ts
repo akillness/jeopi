@@ -143,8 +143,12 @@ describe("AgentSession interrupted thinking persistence", () => {
 		return { model, sessionManager, session };
 	}
 
-	it("retains native thinking on a user-interrupted assistant for replay and demotes a copy into hidden context", async () => {
+	it("retains native interrupted thinking locally but persists and replays only a safe Anthropic continuity marker", async () => {
 		const harness = createSession();
+		const expectedMarker =
+			'<system-notice type="interrupted-thinking">\n' +
+			"Your previous turn was interrupted. Continue the user's task using the visible conversation and tool results.\n" +
+			"</system-notice>";
 		await emitAssistantEnd(
 			harness.session,
 			harness.sessionManager,
@@ -155,18 +159,17 @@ describe("AgentSession interrupted thinking persistence", () => {
 		const messages = harness.session.agent.state.messages;
 		const assistant = messages.find(isAssistantMessage);
 		expect(assistant).toBeDefined();
-		expect(assistant?.content.some(block => block.type === "thinking")).toBe(true);
+		expect(assistant?.content).toEqual([{ type: "thinking", thinking: REASONING_TEXT }]);
 		const hidden = messages.find(isInterruptedThinkingMessage);
 		expect(hidden).toBeDefined();
 		expect(hidden?.display).toBe(false);
 		expect(hidden?.attribution).toBe("agent");
-		expect(typeof hidden?.content === "string" ? hidden.content : JSON.stringify(hidden?.content)).toContain(
-			REASONING_TEXT,
-		);
+		expect(hidden?.content).toBe(expectedMarker);
 		expect(hidden?.details).toMatchObject({
 			provider: "anthropic",
 			model: "claude-sonnet-4-5",
 			blockCount: 1,
+			reasoningIncluded: false,
 		});
 		expect(typeof (hidden?.details as { interruptedAt?: unknown } | undefined)?.interruptedAt).toBe("number");
 
@@ -183,26 +186,25 @@ describe("AgentSession interrupted thinking persistence", () => {
 		if (assistantEntry?.type !== "message" || assistantEntry.message.role !== "assistant") {
 			throw new Error("assistant entry was not persisted");
 		}
-		expect(assistantEntry.message.content.some(block => block.type === "thinking")).toBe(true);
+		expect(assistantEntry.message.content).toEqual([{ type: "thinking", thinking: REASONING_TEXT }]);
 		const hiddenEntry = branch[hiddenEntryIndex];
 		if (hiddenEntry?.type !== "custom_message") throw new Error("interrupted-thinking entry was not persisted");
 		expect(hiddenEntry.display).toBe(false);
 		expect(hiddenEntry.attribution).toBe("agent");
-		expect(
-			typeof hiddenEntry.content === "string" ? hiddenEntry.content : JSON.stringify(hiddenEntry.content),
-		).toContain(REASONING_TEXT);
+		expect(hiddenEntry.content).toBe(expectedMarker);
+		expect(hiddenEntry.details).toMatchObject({ reasoningIncluded: false });
 
-		// The thinking is stripped from the provider request only: the LLM sees the
-		// assistant turn without the demoted run, plus the reasoning as a hidden
-		// developer continuity turn.
-		const llm = convertToLlm(messages);
+		// Private thinking remains in local history, not in ordinary provider text.
+		// The safe developer marker still signals that the prior turn was interrupted.
+		const llm = convertToLlm(messages, harness.model);
 		const assistantLlm = llm.find(entry => entry.role === "assistant");
 		expect(assistantLlm).toBeDefined();
 		expect(
 			Array.isArray(assistantLlm?.content) && assistantLlm.content.some(block => block.type === "thinking"),
 		).toBe(false);
 		const developerLlm = llm.filter(entry => entry.role === "developer");
-		expect(developerLlm.some(entry => JSON.stringify(entry.content).includes(REASONING_TEXT))).toBe(true);
+		expect(developerLlm.map(entry => entry.content)).toEqual([[{ type: "text", text: expectedMarker }]]);
+		expect(JSON.stringify(llm)).not.toContain(REASONING_TEXT);
 	});
 
 	it("makes hidden continuity available in agent state before awaited message_end delivery finishes", async () => {

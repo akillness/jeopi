@@ -12,19 +12,18 @@ import { buildModel } from "jeopi-catalog/build";
 //   * `stop_reason` is never replayed on the wire, so it does NOT constrain whether a
 //     continuation is valid — a tool_use turn replays fine with tool_results appended
 //     whether it ended on `tool_use` or `end_turn`.
-//   * Therefore the safe recovery for a turn whose signature is untrustworthy is to strip it
-//     and let the encoder downgrade that block to text — which the API accepts. Two cases
-//     qualify: an abandoned `end_turn`+tool_use turn (all signatures are end_turn-bound and
-//     unreplayable), and the single mid-stream block of an `aborted`/`error` turn (only the
-//     block streaming at the abort point can hold a partial signature; earlier blocks
-//     completed and keep their valid, replayable signatures).
+//   * Untrustworthy private thinking must be omitted, not downgraded to ordinary text.
+//     Two cases qualify: a historical abandoned `end_turn`+tool_use turn (all signatures
+//     are end_turn-bound and unreplayable), and the single mid-stream block of an
+//     `aborted`/`error` turn (only the block streaming at the abort point can hold a
+//     partial signature; earlier blocks keep their valid, replayable signatures).
 //   * The latest assistant message is different: Anthropic requires thinking blocks from
 //     its most recent response to remain unmodified, so valid signatures must be preserved
 //     even when the turn is abandoned.
 //
 // The agent loop relies on this: it now runs tool_use blocks under `stop`/`end_turn` and
 // continues. That continuation is valid only when the transform preserves latest signed
-// thinking and downgrades historical/invalid signed thinking.
+// thinking and omits historical/invalid private thinking without losing public tool history.
 
 const model: Model<"anthropic-messages"> = buildModel({
 	api: "anthropic-messages",
@@ -116,17 +115,36 @@ describe("Anthropic abandoned/aborted tool-use replay", () => {
 		expect(blocks.some(b => b.type === "tool_use")).toBe(true);
 	});
 
-	it("downgrades historical end_turn(stop) tool-use thinking to text so the continuation stays wire-valid", () => {
-		const blocks = assistantBlocks(buildHistoryWithLaterAssistant("stop", "sig_valid"));
-		expectNoUnsignedThinking(blocks);
-		// Signature stripped (historical abandoned tool-use) -> encoder downgrades to text.
-		expect(blocks.some(b => b.type === "thinking")).toBe(false);
-		expect(blocks.some(b => b.type === "text" && b.text?.includes("deliberating"))).toBe(true);
-		// tool_use is preserved so it still pairs with the appended tool_result.
-		expect(blocks.some(b => b.type === "tool_use")).toBe(true);
+	it("omits historical end_turn(stop) private thinking while preserving visible context and tool pairs", () => {
+		const params = convertAnthropicMessages(buildHistoryWithLaterAssistant("stop", "sig_valid"), model, false);
+		expect(params[1]).toEqual({
+			role: "assistant",
+			content: [
+				{ type: "text", text: "I'll check the weather." },
+				{ type: "tool_use", id: "toolu_1", name: "get_weather", input: { location: "Paris" } },
+			],
+		});
+		expect(params[2]).toEqual({
+			role: "user",
+			content: [
+				{
+					type: "tool_result",
+					tool_use_id: "toolu_1",
+					content: "15C, partly cloudy",
+					is_error: false,
+				},
+			],
+		});
+		expect(params.filter(param => param.role === "assistant").map(param => param.content)).toEqual([
+			[
+				{ type: "text", text: "I'll check the weather." },
+				{ type: "tool_use", id: "toolu_1", name: "get_weather", input: { location: "Paris" } },
+			],
+			[{ type: "text", text: "done" }],
+		]);
 	});
 
-	it("strips only the mid-stream final block of an aborted interleaved turn, keeping earlier signed thinking", () => {
+	it("omits only interrupted private thinking from an aborted turn, keeping earlier signed thinking and tools", () => {
 		// Interleaved thinking: a fully-signed thinking block and a tool_use completed, then the
 		// model began a second thinking block and was interrupted mid-stream. Only that trailing
 		// block can carry a partial (invalid) signature; the earlier one stays intact.
@@ -146,11 +164,10 @@ describe("Anthropic abandoned/aborted tool-use replay", () => {
 			timestamp: 2,
 		};
 		const blocks = assistantBlocks([user, aborted]);
-		expectNoUnsignedThinking(blocks);
-		expect(blocks.some(b => b.type === "thinking" && b.signature === "sig_done")).toBe(true);
-		expect(blocks.some(b => b.type === "thinking" && b.signature === "trunc")).toBe(false);
-		expect(blocks.some(b => b.type === "text" && b.text === "<thinking>\nnow decide\n</thinking>\n")).toBe(true);
-		expect(blocks.some(b => b.type === "tool_use")).toBe(true);
+		expect(blocks).toEqual([
+			{ type: "thinking", thinking: "first, list them", signature: "sig_done" },
+			{ type: "tool_use", id: "toolu_1", name: "list", input: {} },
+		]);
 	});
 
 	it("replays completed signed thinking when an aborted turn is interrupted during output behind a gateway baseUrl", () => {

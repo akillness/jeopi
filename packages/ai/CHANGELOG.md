@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Updated replay regression coverage to enforce private-reasoning omission on official Anthropic endpoints while preserving signed thinking, visible replies, and paired tool results.
+
 ## [16.6.22] - 2026-11-13
 
 ### Fixed

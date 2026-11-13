@@ -9,13 +9,12 @@ import { buildModel } from "jeopi-catalog/build";
  * replay a prior turn's `thinking` block natively: the target's reasoning slot
  * either rejects a foreign signature or — verified end-to-end against Gemini 3 —
  * silently discards unsigned thought content (a replayed `thought:true` part is
- * neither recalled nor influences generation). `transformMessages` therefore
- * demotes the reasoning to a `text` block so it survives as conversation
- * context, usually wrapping it in the TARGET model's own canonical
- * thinking-block dialect (e.g. a ```thinking fence for Gemini). Claude Fable/Mythos are
- * the exception: they receive markdown-italic assistant prose so replayed
- * reasoning does not look like an extraction request it should continue.
- * Same-model continuations keep the native `thinking` block untouched.
+ * neither recalled nor influences generation). For nonofficial targets,
+ * `transformMessages` demotes the reasoning into the target's canonical
+ * thinking dialect so it survives as context. Official Anthropic targets
+ * instead omit foreign private reasoning before it can become ordinary text,
+ * preserving the visible reply. Same-model continuations keep replayable
+ * native thinking blocks untouched.
  */
 const REASONING = "The user wants the Paris weather; I will call get_weather with city=Paris.";
 
@@ -128,7 +127,7 @@ describe("transformMessages cross-provider thinking demotion → canonical diale
 		expect(text).toContain(REASONING);
 	});
 
-	it("renders demoted foreign reasoning for Claude Fable/Mythos as markdown italic assistant text", () => {
+	it("omits foreign private reasoning for official Claude Fable/Mythos while preserving the visible reply", () => {
 		const targets = [
 			{ name: "Claude Fable", id: "claude-fable-5" },
 			{ name: "Claude Mythos", id: "claude-mythos-5" },
@@ -141,24 +140,11 @@ describe("transformMessages cross-provider thinking demotion → canonical diale
 				model,
 			);
 
-			expect(assistant.content.some(b => b.type === "thinking")).toBe(false);
-
-			const first = assistant.content[0];
-			expect(first?.type).toBe("text");
-			const text = first && first.type === "text" ? first.text : "";
-			expect(text).toBe(`_Hmm. ${REASONING}_\n`);
-			expect(text).not.toContain("<thinking>");
-			expect(text).not.toContain("</thinking>");
-			expect(text).not.toContain("<think>");
-			expect(text).not.toContain("</think>");
-
-			const reply = assistant.content[1];
-			expect(reply?.type).toBe("text");
-			expect(reply && reply.type === "text" ? reply.text : "").toBe("Checking the forecast.");
+			expect(assistant.content).toEqual([{ type: "text", text: "Checking the forecast." }]);
 		}
 	});
 
-	it("keeps canonical Anthropic thinking tags for non-Fable/Mythos Anthropic targets", () => {
+	it("omits foreign private reasoning for official Claude Opus while preserving the visible reply", () => {
 		const targets = [{ name: "Claude Opus", id: "claude-opus-4-8" }] as const;
 
 		for (const target of targets) {
@@ -168,15 +154,7 @@ describe("transformMessages cross-provider thinking demotion → canonical diale
 				model,
 			);
 
-			expect(assistant.content.some(b => b.type === "thinking")).toBe(false);
-
-			const first = assistant.content[0];
-			expect(first?.type).toBe("text");
-			const text = first && first.type === "text" ? first.text : "";
-			expect(text).toBe(`${getDialectDefinition("anthropic").renderThinking(REASONING)}\n`);
-			expect(text).toContain("<thinking>");
-			expect(text).toContain("</thinking>");
-			expect(text).not.toContain("_Hmm.");
+			expect(assistant.content).toEqual([{ type: "text", text: "Checking the forecast." }]);
 		}
 	});
 

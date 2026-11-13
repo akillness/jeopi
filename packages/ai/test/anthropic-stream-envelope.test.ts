@@ -606,7 +606,7 @@ describe("anthropic stream envelope handling", () => {
 		expect(capturedParams?.thinking?.type).toBe("enabled");
 		expect(capturedParams?.context_management).toBeUndefined();
 	});
-	it("unwraps thinking blocks that Anthropic streams with literal thinking tags", async () => {
+	it("unwraps literal thinking tags inbound but omits unsigned private thinking and empty assistants on replay", async () => {
 		const wrappedThinking =
 			"<thinking>\n<thinking>\nCheck logs before accepting container health.\n</thinking></thinking>";
 		vi.spyOn(AnthropicMessages.prototype, "create").mockImplementation(
@@ -641,9 +641,9 @@ describe("anthropic stream envelope handling", () => {
 			model,
 			false,
 		);
-		const replayAssistant = replayParams.find(param => param.role === "assistant");
-		expect(replayAssistant?.content).toEqual([
-			{ type: "text", text: "<thinking>\nCheck logs before accepting container health.\n</thinking>\n" },
+		expect(replayParams).toEqual([
+			{ role: "user", content: "Say hi" },
+			{ role: "user", content: "follow up" },
 		]);
 	});
 	it("preserves signed thinking bytes when no literal thinking envelope is present", async () => {
