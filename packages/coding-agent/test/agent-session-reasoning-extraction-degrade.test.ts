@@ -1,26 +1,25 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "jeopi-agent-core";
-import type { AssistantMessage, Message, Model } from "jeopi-ai";
-import { renderDemotedThinking } from "jeopi-ai/dialect";
+import { scheduler } from "node:timers/promises";
+import { Agent, type AgentMessage, filterProviderReplayMessages } from "jeopi-agent-core";
+import type { AssistantMessage, Context, Message, Model } from "jeopi-ai";
+import { convertAnthropicMessages } from "jeopi-ai/providers/anthropic";
 import { createMockModel } from "jeopi-ai/providers/mock";
 import { getBundledModel } from "jeopi-catalog/models";
 import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { Settings } from "jeopi-cli/config/settings";
-import { AgentSession } from "jeopi-cli/session/agent-session";
+import { AgentSession, type AgentSessionEvent } from "jeopi-cli/session/agent-session";
 import { AuthStorage } from "jeopi-cli/session/auth-storage";
-import { type CustomMessage, type InterruptedThinkingDetails, USER_INTERRUPT_LABEL } from "jeopi-cli/session/messages";
+import {
+	type CustomMessage,
+	convertToLlm,
+	type InterruptedThinkingDetails,
+	USER_INTERRUPT_LABEL,
+} from "jeopi-cli/session/messages";
 import { SessionManager } from "jeopi-cli/session/session-manager";
-import { prompt, TempDir } from "jeopi-utils";
-import interruptedThinkingTemplate from "../src/prompts/system/interrupted-thinking.md" with { type: "text" };
+import { TempDir } from "jeopi-utils";
 
-/**
- * A `reasoning_extraction` classifier refusal is payload-shape-bound: resending
- * the identical batch (unsigned prior thinking replayed as plaintext) predictably
- * re-refuses. `AgentSession` degrades once — strips unsigned thinking/redactedThinking
- * from active context and resends on the *same* model — instead of pinning a
- * configured fallback or burning the generic backoff ladder on an unchanged payload.
- */
+/** A refusal permits one genuine context repair, never unchanged-payload retries or fallback cycling. */
 
 function emptyUsage(): AssistantMessage["usage"] {
 	return {
@@ -49,6 +48,10 @@ function priorUnsignedThinkingTurn(model: Model): AssistantMessage {
 	};
 }
 
+function legacyInterruptedThinking(text: string): CustomMessage<InterruptedThinkingDetails> {
+	return { role: "custom", customType: "interrupted-thinking", content: text, display: false, timestamp: 1 };
+}
+
 describe("AgentSession reasoning_extraction degrade", () => {
 	let tempDir: TempDir;
 	let authStorage: AuthStorage;
@@ -75,392 +78,483 @@ describe("AgentSession reasoning_extraction degrade", () => {
 		}
 	});
 
-	it("strips unsigned prior thinking and resends on the same model instead of pinning the configured fallback", async () => {
-		const primaryModel = getBundledModel("anthropic", "claude-sonnet-4-5");
-		const fallbackModel = getBundledModel("openai", "gpt-4o-mini");
-		if (!primaryModel || !fallbackModel) {
-			throw new Error("Expected bundled test models to exist");
-		}
-
-		const requestedModels: string[] = [];
-		const mock = createMockModel();
-		let primaryAttempts = 0;
-		const reasoningExtractionDetails = {
+	it("does not journal refused tool partials after a deferred extension finishes", async () => {
+		const model = getBundledModel("anthropic", "claude-opus-5-5");
+		if (!model) throw new Error("Expected bundled Anthropic model");
+		const blocked = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		const terminal = Promise.withResolvers<void>();
+		const details = {
 			type: "refusal",
 			category: "reasoning_extraction",
-			explanation:
-				"This request was blocked as it seems to violate Anthropic's Terms of Service restrictions on reverse engineering or duplicating model outputs.",
+			explanation: "Private reasoning was requested.",
 		};
-
+		const errorMessage = `Refusal (reasoning_extraction): ${details.explanation}`;
+		const mock = createMockModel({ id: model.id, provider: model.provider });
+		mock.push({
+			content: [{ type: "toolCall", id: "deferred-unsafe-1", name: "write", arguments: { path: "LICENSE" } }],
+			stopReason: "error",
+			stopDetails: details,
+			errorMessage,
+		});
 		const agent = new Agent({
-			getApiKey: model => `${model.provider}-test-key`,
-			initialState: {
-				model: primaryModel,
-				systemPrompt: ["Test"],
-				tools: [],
-				messages: [priorUnsignedThinkingTurn(primaryModel)],
-			},
-			streamFn: (model, context, options) => {
-				requestedModels.push(`${model.provider}/${model.id}`);
-				if (model.provider !== primaryModel.provider || model.id !== primaryModel.id) {
-					throw new Error(
-						`reasoning_extraction degrade should retry the same model, not fall back to ${model.provider}/${model.id}`,
-					);
-				}
-				primaryAttempts += 1;
-				if (primaryAttempts === 1) {
-					mock.push({
-						content: ["Blocked."],
-						stopReason: "error",
-						stopDetails: reasoningExtractionDetails,
-						errorMessage: `Refusal (reasoning_extraction): ${reasoningExtractionDetails.explanation}`,
-					});
-				} else {
-					mock.push({ content: ["Recovered without replaying prior thinking."] });
-				}
-				return mock.stream(model, context, options);
-			},
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], messages: [], tools: [] },
+			streamFn: (requestedModel, context, options) => mock.stream(requestedModel, context, options),
 		});
-
-		const settings = Settings.isolated({
-			"compaction.enabled": false,
-			"retry.baseDelayMs": 5,
-			"retry.maxRetries": 1,
-			// A fallback chain is configured but must NOT be used: the reasoning_extraction
-			// degrade takes priority over the fallback-pin ladder and resends same-model.
-			"retry.fallbackChains": {
-				default: [`${fallbackModel.provider}/${fallbackModel.id}`],
-			},
-		});
-		settings.setModelRole("default", `${primaryModel.provider}/${primaryModel.id}`);
-
 		session = new AgentSession({
 			agent,
 			sessionManager: SessionManager.inMemory(),
-			settings,
 			modelRegistry,
+			settings: Settings.isolated({ "compaction.enabled": false }),
+			extensionRunner: {
+				hasHandlers: (type: string) => type === "message_end",
+				emitBeforeAgentStart: async () => undefined,
+				emit: async (event: { type: string; message?: AgentMessage }) => {
+					if (event.type === "message_end" && event.message?.role === "toolResult") {
+						blocked.resolve();
+						await release.promise;
+					}
+				},
+			} as never,
 		});
-
-		await session.prompt("Trigger a reasoning_extraction refusal");
-		await session.waitForIdle();
-
-		// Resent on the same model twice; the configured fallback was never touched.
-		expect(requestedModels).toEqual([
-			`${primaryModel.provider}/${primaryModel.id}`,
-			`${primaryModel.provider}/${primaryModel.id}`,
-		]);
-
-		const lastMessage = session.messages.at(-1);
-		if (lastMessage?.role !== "assistant") {
-			throw new Error("Expected final assistant message");
+		session.subscribe(event => {
+			if (event.type === "agent_end") terminal.resolve();
+		});
+		const prompt = session.prompt("Complete the edit.");
+		try {
+			await blocked.promise;
+			await terminal.promise;
+			expect(session.messages.findLast(message => message.role === "assistant")).toMatchObject({
+				content: [],
+				stopReason: "error",
+				stopDetails: details,
+				errorMessage,
+			});
+		} finally {
+			release.resolve();
+			await prompt;
+			await session.waitForIdle();
 		}
-		expect(lastMessage.stopReason).toBe("stop");
-
-		// The unsigned thinking from the earlier turn was stripped from active context;
-		// its text content survives.
-		const strippedTurn = session.messages.find(
-			m => m.role === "assistant" && m.content.some(b => b.type === "text" && b.text === "Earlier answer."),
-		) as AssistantMessage | undefined;
-		expect(strippedTurn).toBeDefined();
-		expect(strippedTurn?.content.some(b => b.type === "thinking")).toBe(false);
+		const restored = session.sessionManager.buildSessionContext().messages;
+		expect(restored.findLast(message => message.role === "assistant")).toMatchObject({
+			content: [],
+			stopReason: "error",
+			stopDetails: details,
+			errorMessage,
+		});
+		expect(restored.filter(message => message.role === "toolResult")).toEqual([]);
+		expect(session.messages.filter(message => message.role === "toolResult")).toEqual([]);
 	});
 
-	/**
-	 * Regression for the one-shot-latch bug: the OLD code set
-	 * `#reasoningExtractionDegraded = true` permanently on the first
-	 * `reasoning_extraction` refusal and never reset it, so every subsequent
-	 * refusal in the same session — even one from a wholly independent LATER
-	 * turn, with its own fresh unsigned thinking — fell through to the
-	 * generic Rung-4 backoff ladder unstripped. That ladder only removes the
-	 * failing tail message; it does NOT re-run the history-wide unsigned-
-	 * thinking strip, so any OLDER unsigned thinking still sitting in active
-	 * context (e.g. a still-unsigned turn that completed successfully after
-	 * its own earlier degrade) rides along on the resend and can re-trigger
-	 * the classifier indefinitely. The fix replaces the boolean with a
-	 * bounded streak gated on `#stripUnsignedThinkingForRefusalDegrade`
-	 * actually finding something to remove, and resets the streak to 0 on
-	 * any turn that succeeds — so a second, independent refusal gets its own
-	 * full history-wide strip, not just a tail-drop.
-	 */
-	it("strips unsigned thinking on a second, independent reasoning_extraction refusal from a later turn", async () => {
-		const primaryModel = getBundledModel("anthropic", "claude-sonnet-4-5");
-		if (!primaryModel) throw new Error("Expected bundled test model to exist");
+	it.each(["claude-opus-5-5", "claude-sonnet-5-5"])(
+		"drops legacy private continuity before the first official request: %s",
+		modelId => {
+			const model = getBundledModel("anthropic", modelId);
+			if (!model) throw new Error("Expected bundled Anthropic model");
+			const history: AgentMessage[] = [
+				legacyInterruptedThinking("PRIVATE_LEGACY_REASONING"),
+				{ role: "user", content: "Continue the coding task.", timestamp: 2 },
+			];
+			const before = structuredClone(history);
+			const converted = convertToLlm(history, model);
+			expect(converted).toEqual([
+				{ role: "user", content: "Continue the coding task.", attribution: "user", timestamp: 2 },
+			]);
+			expect(history).toEqual(before);
+		},
+	);
 
-		const requestedModels: string[] = [];
-		const contextSnapshots: Message[][] = [];
-		const mock = createMockModel();
-		let callIndex = 0;
-		const reasoningExtractionDetails = {
-			type: "refusal",
-			category: "reasoning_extraction",
-			explanation: "This request was blocked as it seems to violate Anthropic's Terms of Service.",
-		};
-
-		const agent = new Agent({
-			getApiKey: model => `${model.provider}-test-key`,
-			initialState: { model: primaryModel, systemPrompt: ["Test"], tools: [], messages: [] },
-			streamFn: (model, context, options) => {
-				requestedModels.push(`${model.provider}/${model.id}`);
-				if (model.provider !== primaryModel.provider || model.id !== primaryModel.id) {
-					throw new Error(
-						`reasoning_extraction degrade should retry the same model, not fall back to ${model.provider}/${model.id}`,
-					);
-				}
-				// Snapshot defensively: `context` is rebuilt fresh per call from
-				// `agent.state.messages`, but later retry handling calls
-				// `agent.replaceMessages()`, which creates NEW message objects for
-				// anything it strips — never mutates in place. A structuredClone
-				// here removes any doubt that a later call's replaceMessages could
-				// retroactively change what an earlier call's snapshot shows.
-				contextSnapshots.push(structuredClone(context.messages));
-				callIndex += 1;
-				if (callIndex === 1) {
-					// Turn 1's own refusal: carries its own fresh unsigned thinking.
-					mock.push({
-						content: [{ type: "thinking", thinking: "Turn 1 pre-refusal reasoning." }, "Blocked."],
-						stopReason: "error",
-						stopDetails: reasoningExtractionDetails,
-						errorMessage: `Refusal (reasoning_extraction): ${reasoningExtractionDetails.explanation}`,
-					});
-				} else if (callIndex === 2) {
-					// Turn 1's resend succeeds, but the answer itself carries fresh
-					// unsigned thinking that survives in active context (a
-					// point-in-time strip does not prevent NEW unsigned thinking from
-					// accumulating) — this is the residual that turn 2's own refusal
-					// will replay, the realistic multi-turn trigger the bug describes.
-					mock.push({
-						content: [{ type: "thinking", thinking: "Turn 1 own reasoning, now completed." }, "Turn 1 answer."],
-					});
-				} else if (callIndex === 3) {
-					// Turn 2's own refusal: independent fresh unsigned thinking, on
-					// top of turn 1's still-unstripped residual already in context.
-					mock.push({
-						content: [{ type: "thinking", thinking: "Turn 2 pre-refusal reasoning." }, "Blocked again."],
-						stopReason: "error",
-						stopDetails: reasoningExtractionDetails,
-						errorMessage: `Refusal (reasoning_extraction): ${reasoningExtractionDetails.explanation}`,
-					});
-				} else {
-					mock.push({ content: ["Turn 2 answer."] });
-				}
-				return mock.stream(model, context, options);
-			},
-		});
-
-		const settings = Settings.isolated({
-			"compaction.enabled": false,
-			"retry.baseDelayMs": 5,
-			"retry.maxRetries": 1,
-		});
-		settings.setModelRole("default", `${primaryModel.provider}/${primaryModel.id}`);
-
-		session = new AgentSession({
-			agent,
-			sessionManager: SessionManager.inMemory(),
-			settings,
-			modelRegistry,
-		});
-
-		await session.prompt("Trigger the first reasoning_extraction refusal");
-		await session.waitForIdle();
-
-		const turn1Final = session.messages.at(-1);
-		if (turn1Final?.role !== "assistant") throw new Error("Expected turn 1 to end on an assistant message");
-		expect(turn1Final.stopReason).toBe("stop");
-
-		await session.prompt("Trigger a second, independent reasoning_extraction refusal");
-		await session.waitForIdle();
-
-		const turn2Final = session.messages.at(-1);
-		if (turn2Final?.role !== "assistant") throw new Error("Expected turn 2 to end on an assistant message");
-		expect(turn2Final.stopReason).toBe("stop");
-
-		// Exactly 4 calls: turn 1 = [refuse, succeed], turn 2 = [refuse, succeed].
-		expect(callIndex).toBe(4);
-		expect(contextSnapshots).toHaveLength(4);
-
-		const hasUnsignedThinking = (messages: Message[]): boolean =>
-			messages.some(
-				m =>
-					m.role === "assistant" &&
-					m.content.some(b => b.type === "redactedThinking" || (b.type === "thinking" && !b.thinkingSignature)),
-			);
-
-		// Sanity check on the trigger itself: turn 2's initial call (call 3) DOES
-		// see turn 1's still-unstripped residual unsigned thinking in context —
-		// proving this is a realistic replay-triggered refusal, not a contrived one.
-		expect(hasUnsignedThinking(contextSnapshots[2]!)).toBe(true);
-
-		// Turn 1's resend (call 2): call 1's own fresh unsigned thinking was
-		// stripped before resend.
-		expect(hasUnsignedThinking(contextSnapshots[1]!)).toBe(false);
-
-		// THE REGRESSION ASSERTION: turn 2's resend (call 4) must ALSO have no
-		// unsigned thinking anywhere — neither turn 1's residual nor turn 2's own
-		// call-3 refusal content. Under the old one-shot latch, `#reasoningExtractionDegraded`
-		// was already true from turn 1, so turn 2's refusal skipped the fast
-		// strip-and-resend path entirely and fell through to the generic Rung-4
-		// ladder, which only drops the failing tail message — turn 1's residual
-		// unsigned thinking (from call 2's answer) would still be present here.
-		expect(hasUnsignedThinking(contextSnapshots[3]!)).toBe(false);
-
-		// Resent on the same model throughout; the reasoning_extraction degrade
-		// never falls back to a different model.
-		expect(requestedModels).toEqual([
-			`${primaryModel.provider}/${primaryModel.id}`,
-			`${primaryModel.provider}/${primaryModel.id}`,
-			`${primaryModel.provider}/${primaryModel.id}`,
-			`${primaryModel.provider}/${primaryModel.id}`,
+	it("preserves third-party legacy continuity when its endpoint permits reasoning replay", () => {
+		const model = getBundledModel("nanogpt", "deepseek-reasoner");
+		if (!model) throw new Error("Expected bundled third-party reasoning model");
+		const converted = convertToLlm([legacyInterruptedThinking("Native reasoning continuity.")], model);
+		expect(converted).toEqual([
+			expect.objectContaining({
+				role: "developer",
+				content: [{ type: "text", text: "Native reasoning continuity." }],
+			}),
 		]);
 	});
 
-	/**
-	 * Regression for the streak cap: `REASONING_EXTRACTION_DEGRADE_STREAK_CAP`
-	 * (3) bounds how many CONSECUTIVE fast-degrades can happen with no
-	 * intervening success, so a pathological classifier state that refuses
-	 * every turn's fresh thinking in a row still reaches the wall-clock-bounded
-	 * Rung-4 ladder instead of resending at zero delay indefinitely. Proven via
-	 * the `auto_retry_start` event's `delayMs`, which the fast path always
-	 * emits as exactly `0` and the generic ladder always emits as `> 0` — a
-	 * first-class, already-emitted observable, not internal state.
-	 *
-	 * One real (but minimized) timer wait is unavoidable here: once the cap is
-	 * hit, `#handleRetryableError` calls a real `scheduler.wait(delayMs, …)`
-	 * before the 5th call fires, and `session.waitForIdle()` must observe that
-	 * 5th call for the turn to settle. `PI_REFUSAL_BACKOFF_BASE_MS=5` shrinks
-	 * that otherwise-2000ms wait to ~5ms so the real-timer surface is
-	 * negligible; a hard `timeout` bounds the test so a regression here fails
-	 * fast instead of hanging CI.
-	 */
-	it(
-		"bounds the fast-degrade path to REASONING_EXTRACTION_DEGRADE_STREAK_CAP consecutive uses, then falls through to the backoff ladder",
-		async () => {
-			const primaryModel = getBundledModel("anthropic", "claude-sonnet-4-5");
-			if (!primaryModel) throw new Error("Expected bundled test model to exist");
-
+	it.each(["claude-opus-5-5", "claude-sonnet-5-5"])(
+		"repairs independent legacy plaintext refusals without losing native history: %s",
+		async modelId => {
+			const model = getBundledModel("anthropic", modelId);
+			const fallback = getBundledModel("openai", "gpt-4o-mini");
+			if (!model || !fallback) throw new Error("Expected bundled models");
+			const nativeTurn = priorUnsignedThinkingTurn(model);
+			nativeTurn.content = [
+				{ type: "thinking", thinking: "Signed reasoning.", thinkingSignature: "native-signature" },
+				{ type: "redactedThinking", data: "opaque-native-blob" },
+				{ type: "text", text: "Earlier answer." },
+			];
+			const contexts: Message[][] = [];
 			const requestedModels: string[] = [];
-			const contextSnapshots: Message[][] = [];
-			const retryDelays: number[] = [];
-			const mock = createMockModel();
-			let callIndex = 0;
-			const reasoningExtractionDetails = {
+			const mock = createMockModel({ id: model.id, provider: model.provider });
+			const details = {
 				type: "refusal",
 				category: "reasoning_extraction",
-				explanation: "This request was blocked as it seems to violate Anthropic's Terms of Service.",
+				explanation: "Private reasoning was requested in context.",
 			};
-
 			const agent = new Agent({
-				getApiKey: model => `${model.provider}-test-key`,
-				initialState: { model: primaryModel, systemPrompt: ["Test"], tools: [], messages: [] },
-				streamFn: (model, context, options) => {
-					requestedModels.push(`${model.provider}/${model.id}`);
-					if (model.provider !== primaryModel.provider || model.id !== primaryModel.id) {
-						throw new Error(
-							`reasoning_extraction degrade should retry the same model, not fall back to ${model.provider}/${model.id}`,
-						);
-					}
-					contextSnapshots.push(structuredClone(context.messages));
-					callIndex += 1;
-					if (callIndex <= 4) {
-						// Every call through the 4th independently refuses with its OWN
-						// fresh unsigned thinking, so `#stripUnsignedThinkingForRefusalDegrade`
-						// would find something to strip on every single occurrence if the
-						// streak cap did not intervene.
-						mock.push({
-							content: [{ type: "thinking", thinking: `Fresh reasoning for call ${callIndex}.` }, "Blocked."],
-							stopReason: "error",
-							stopDetails: reasoningExtractionDetails,
-							errorMessage: `Refusal (reasoning_extraction): ${reasoningExtractionDetails.explanation}`,
-						});
-					} else {
-						mock.push({ content: ["Recovered."] });
-					}
-					return mock.stream(model, context, options);
+				getApiKey: m => `${m.provider}-test-key`,
+				convertToLlm,
+				initialState: {
+					model,
+					systemPrompt: ["Test"],
+					tools: [],
+					messages: [nativeTurn, legacyInterruptedThinking("PRIVATE_FIRST_CONTINUITY")],
+				},
+				streamFn: (requestedModel, context, options) => {
+					requestedModels.push(`${requestedModel.provider}/${requestedModel.id}`);
+					contexts.push(structuredClone(context.messages));
+					mock.push(
+						contexts.length % 2 === 1
+							? {
+									content: ["Blocked."],
+									stopReason: "error",
+									stopDetails: details,
+									errorMessage: `Refusal (reasoning_extraction): ${details.explanation}`,
+								}
+							: { content: [`Answer ${contexts.length / 2}.`] },
+					);
+					return mock.stream(requestedModel, context, options);
 				},
 			});
-
-			// No fallback chain configured: once the streak cap forces a fall-through,
-			// there is nothing to switch to, so the generic path must take the
-			// real Rung-4 refusal-backoff branch (not a zero-delay model switch),
-			// which is the branch under test.
 			const settings = Settings.isolated({
 				"compaction.enabled": false,
-				"retry.maxRetries": 1,
+				"retry.fallbackChains": { default: [`${fallback.provider}/${fallback.id}`] },
 			});
-			settings.setModelRole("default", `${primaryModel.provider}/${primaryModel.id}`);
-
+			settings.setModelRole("default", `${model.provider}/${model.id}`);
 			session = new AgentSession({
 				agent,
 				sessionManager: SessionManager.inMemory(),
 				settings,
 				modelRegistry,
+				convertToLlm,
 			});
-			const unsubscribe = session.subscribe(event => {
-				if (event.type === "auto_retry_start") retryDelays.push(event.delayMs);
+			await session.prompt("Complete the first edit.");
+			await session.waitForIdle();
+			expect(session.messages.at(-1)).toMatchObject({
+				role: "assistant",
+				stopReason: "stop",
+				content: [{ type: "text", text: "Answer 1." }],
 			});
-
-			const originalBackoffBaseMs = process.env.PI_REFUSAL_BACKOFF_BASE_MS;
-			process.env.PI_REFUSAL_BACKOFF_BASE_MS = "5";
-			try {
-				await session.prompt("Trigger a run of consecutive reasoning_extraction refusals");
-				await session.waitForIdle();
-			} finally {
-				if (originalBackoffBaseMs === undefined) delete process.env.PI_REFUSAL_BACKOFF_BASE_MS;
-				else process.env.PI_REFUSAL_BACKOFF_BASE_MS = originalBackoffBaseMs;
-				unsubscribe();
-			}
-
-			const finalMessage = session.messages.at(-1);
-			if (finalMessage?.role !== "assistant") throw new Error("Expected the turn to end on an assistant message");
-			expect(finalMessage.stopReason).toBe("stop");
-
-			// 4 refusals + 1 recovery.
-			expect(callIndex).toBe(5);
-			expect(contextSnapshots).toHaveLength(5);
-
-			// THE CAP ASSERTION: exactly 3 fast-degrades (delayMs === 0), then the
-			// 4th `auto_retry_start` (for the resend that becomes call 5) carries a
-			// real positive delay — proving the code fell through to the generic
-			// Rung-4 ladder instead of fast-degrading a 4th consecutive time.
-			expect(retryDelays).toHaveLength(4);
-			expect(retryDelays.slice(0, 3)).toEqual([0, 0, 0]);
-			expect(retryDelays[3]).toBeGreaterThan(0);
-
-			const hasUnsignedThinking = (messages: Message[]): boolean =>
-				messages.some(
-					m =>
-						m.role === "assistant" &&
-						m.content.some(b => b.type === "redactedThinking" || (b.type === "thinking" && !b.thinkingSignature)),
+			agent.appendMessage(legacyInterruptedThinking("PRIVATE_SECOND_CONTINUITY"));
+			await session.prompt("Complete the independent second edit.");
+			await session.waitForIdle();
+			expect(session.messages.at(-1)).toMatchObject({
+				role: "assistant",
+				stopReason: "stop",
+				content: [{ type: "text", text: "Answer 2." }],
+			});
+			expect(requestedModels).toEqual(Array(4).fill(`${model.provider}/${model.id}`));
+			for (const index of [0, 2])
+				expect(JSON.stringify(contexts[index])).toContain(
+					index === 0 ? "PRIVATE_FIRST_CONTINUITY" : "PRIVATE_SECOND_CONTINUITY",
 				);
-
-			// Calls 2, 3, 4 (the resends for refusals 1, 2, 3) were all stripped —
-			// the fast path ran for exactly `REASONING_EXTRACTION_DEGRADE_STREAK_CAP`
-			// consecutive occurrences.
-			expect(hasUnsignedThinking(contextSnapshots[1]!)).toBe(false);
-			expect(hasUnsignedThinking(contextSnapshots[2]!)).toBe(false);
-			expect(hasUnsignedThinking(contextSnapshots[3]!)).toBe(false);
-
-			// Never fell back to a different model.
-			expect(requestedModels.every(m => m === `${primaryModel.provider}/${primaryModel.id}`)).toBe(true);
-			expect(requestedModels).toHaveLength(5);
+			for (const index of [1, 3]) {
+				expect(JSON.stringify(contexts[index])).not.toContain("PRIVATE_");
+				expect(contexts[index]).toContainEqual(nativeTurn);
+			}
 		},
-		{ timeout: 5000 },
 	);
+
+	it.each(
+		["claude-opus-5-5", "claude-sonnet-5-5"].flatMap(modelId =>
+			[
+				"clean request",
+				"repair still refused",
+				"refusal-only thinking",
+				"raw-only history",
+				"already filtered legacy",
+				"safe continuity marker",
+				"unsafe tool call",
+			].map(scenario => ({ modelId, scenario })),
+		),
+	)("surfaces reasoning_extraction without cycling: $modelId / $scenario", async ({ modelId, scenario }) => {
+		const model = getBundledModel<"anthropic-messages">("anthropic", modelId);
+		const fallback = getBundledModel("openai", "gpt-4o-mini");
+		if (!model || !fallback) throw new Error("Expected bundled test models");
+		const details = {
+			type: "refusal",
+			category: "reasoning_extraction",
+			explanation:
+				"This request was blocked as it seems to violate Anthropic's Terms of Service restrictions on reverse engineering or duplicating model outputs.",
+		};
+		const errorMessage = `Refusal (reasoning_extraction): ${details.explanation}`;
+		const requestedModels: string[] = [];
+		const contexts: Message[][] = [];
+		const events: AgentSessionEvent[] = [];
+		const mock = createMockModel({ id: model.id, provider: model.provider });
+		const expectedAttempts = scenario === "repair still refused" ? 2 : 1;
+		const agent = new Agent({
+			getApiKey: m => `${m.provider}-test-key`,
+			convertToLlm: messages => convertToLlm(messages, scenario === "already filtered legacy" ? model : undefined),
+			initialState: {
+				model,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages:
+					scenario === "repair still refused" ||
+					scenario === "unsafe tool call" ||
+					scenario === "already filtered legacy"
+						? [legacyInterruptedThinking("PRIVATE_LEGACY_CONTINUITY")]
+						: scenario === "raw-only history"
+							? [priorUnsignedThinkingTurn(model)]
+							: scenario === "safe continuity marker"
+								? [
+										{
+											...legacyInterruptedThinking("The previous response was interrupted."),
+											details: {
+												interruptedAt: 1,
+												provider: model.provider,
+												model: model.id,
+												reasoningIncluded: false,
+											},
+										},
+									]
+								: [],
+			},
+			streamFn: (requestedModel, context, options) => {
+				requestedModels.push(`${requestedModel.provider}/${requestedModel.id}`);
+				contexts.push(structuredClone(context.messages));
+				// An erroneous resend finishes deterministically, so the assertion—not
+				// a timeout or the production backoff budget—detects unwanted retries.
+				mock.push(
+					requestedModels.length > expectedAttempts
+						? { content: ["Unexpected retry succeeded."] }
+						: {
+								content:
+									scenario === "clean request"
+										? ["Blocked."]
+										: scenario === "unsafe tool call"
+											? [
+													{
+														type: "toolCall",
+														id: "unsafe-1",
+														name: "write",
+														arguments: { path: "LICENSE", content: "partial" },
+													},
+													"Blocked.",
+												]
+											: [
+													{
+														type: "thinking",
+														thinking: "Fresh reasoning emitted by this refused response.",
+													},
+													"Blocked.",
+												],
+								stopReason: "error",
+								stopDetails: details,
+								errorMessage,
+							},
+				);
+				return mock.stream(requestedModel, context, options);
+			},
+		});
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"retry.maxRetries": 1,
+			"retry.fallbackChains": { default: [`${fallback.provider}/${fallback.id}`] },
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry,
+			convertToLlm: messages => convertToLlm(messages, scenario === "already filtered legacy" ? model : undefined),
+		});
+		const unsubscribe = session.subscribe(event => events.push(event));
+		const waitSpy = vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
+		try {
+			await session.prompt("Summarize the completed coding work.");
+			await session.waitForIdle();
+			expect(requestedModels).toEqual(Array(expectedAttempts).fill(`${model.provider}/${model.id}`));
+			const finalMessage = session.messages.findLast(message => message.role === "assistant");
+			expect(finalMessage).toMatchObject({
+				role: "assistant",
+				content: [],
+				stopReason: "error",
+				stopDetails: details,
+				errorMessage,
+			});
+			expect(events.filter(event => event.type === "auto_retry_start")).toHaveLength(expectedAttempts - 1);
+			expect(events.filter(event => event.type === "retry_fallback_applied")).toEqual([]);
+			expect(events.filter(event => event.type === "auto_retry_end")).toContainEqual(
+				expect.objectContaining({ success: false, finalError: errorMessage }),
+			);
+			if (scenario === "repair still refused") {
+				expect(JSON.stringify(contexts[0])).toContain("PRIVATE_LEGACY_CONTINUITY");
+				expect(JSON.stringify(contexts[1])).not.toContain("PRIVATE_LEGACY_CONTINUITY");
+			}
+			const restoredMessages = session.sessionManager.buildSessionContext().messages;
+			expect(restoredMessages.findLast(message => message.role === "assistant")).toMatchObject({
+				role: "assistant",
+				content: [],
+				stopReason: "error",
+				stopDetails: details,
+				errorMessage,
+			});
+			for (const history of [session.messages, restoredMessages]) {
+				const replay = filterProviderReplayMessages(convertToLlm(history));
+				const wire = convertAnthropicMessages(replay, model, false);
+				expect(JSON.stringify(wire)).not.toContain("Fresh reasoning emitted by this refused response.");
+				expect(JSON.stringify(wire)).not.toContain(errorMessage);
+				if (scenario === "unsafe tool call") expect(JSON.stringify(wire)).not.toContain("unsafe-1");
+			}
+		} finally {
+			waitSpy.mockRestore();
+			unsubscribe();
+		}
+	});
+
+	it.each(
+		["claude-opus-5-5", "claude-sonnet-5-5"].flatMap(modelId => [false, true].map(refuse => ({ modelId, refuse }))),
+	)(
+		"isolates Anthropic side requests from legacy plaintext and live state: $modelId / refusal=$refuse",
+		async ({ modelId, refuse }) => {
+			const model = getBundledModel("anthropic", modelId);
+			if (!model) throw new Error("Expected bundled Anthropic model");
+			const signed = {
+				type: "thinking",
+				thinking: "Signed native reasoning.",
+				thinkingSignature: "native-signature",
+			} as const;
+			const redacted = { type: "redactedThinking", data: "opaque-native-blob" } as const;
+			const toolCall = { type: "toolCall", id: "read-1", name: "read", arguments: { path: "LICENSE" } } as const;
+			const historicalTurn: AssistantMessage = {
+				...priorUnsignedThinkingTurn(model),
+				content: [
+					{ type: "thinking", thinking: "PRIVATE_HISTORY_REASONING" },
+					signed,
+					redacted,
+					{ type: "text", text: "I inspected the license." },
+					toolCall,
+				],
+			};
+			const toolResult: AgentMessage = {
+				role: "toolResult",
+				toolCallId: "read-1",
+				toolName: "read",
+				content: [{ type: "text", text: "License permits this coding task." }],
+				isError: false,
+				timestamp: 1,
+			};
+			const continuity: CustomMessage<InterruptedThinkingDetails> = {
+				role: "custom",
+				customType: "interrupted-thinking",
+				content: "PRIVATE_INTERRUPTED_REASONING",
+				display: false,
+				timestamp: 2,
+			};
+			const messages: AgentMessage[] = [historicalTurn, toolResult, continuity];
+			const agent = new Agent({ initialState: { model, systemPrompt: ["Coding assistant"], messages, tools: [] } });
+			const journal = SessionManager.inMemory();
+			const capturedContexts: Context[] = [];
+			const mock = createMockModel({ id: model.id, provider: model.provider });
+			const explanation =
+				"This request was blocked as it seems to violate Anthropic's Terms of Service restrictions on reverse engineering or duplicating model outputs.";
+			const errorMessage = `Refusal (reasoning_extraction): ${explanation}`;
+			session = new AgentSession({
+				agent,
+				sessionManager: journal,
+				settings: Settings.isolated({ "compaction.enabled": false }),
+				modelRegistry,
+				sideStreamFn: (requestedModel, context, options) => {
+					capturedContexts.push(structuredClone(context));
+					mock.push(
+						refuse
+							? {
+									content: ["Blocked."],
+									stopReason: "error",
+									errorMessage,
+									stopDetails: { type: "refusal", category: "reasoning_extraction", explanation },
+								}
+							: { content: ["The license permits the requested work."] },
+					);
+					return mock.stream(requestedModel, context, options);
+				},
+			});
+			const streaming: AssistantMessage = {
+				...priorUnsignedThinkingTurn(model),
+				content: [
+					{ type: "thinking", thinking: "PRIVATE_STREAM_REASONING" },
+					{ type: "text", text: "The current edit is almost complete." },
+				],
+			};
+			agent.emitExternalEvent({ type: "message_start", message: streaming });
+			const beforeMessages = structuredClone(session.messages);
+			const beforeStreaming = structuredClone(agent.state.streamMessage);
+			const beforeJournal = structuredClone(journal.getEntries());
+			if (refuse) {
+				await expect(
+					session.runEphemeralTurn({ promptText: "Summarize the completed coding work." }),
+				).rejects.toThrow(errorMessage);
+			} else {
+				const result = await session.runEphemeralTurn({ promptText: "Summarize the completed coding work." });
+				expect(result.replyText).toBe("The license permits the requested work.");
+			}
+			expect(capturedContexts).toHaveLength(1);
+			const context = capturedContexts[0]!;
+			expect(JSON.stringify(context.messages)).not.toContain("PRIVATE_INTERRUPTED_REASONING");
+			expect(context.messages).toContainEqual(historicalTurn);
+			expect(context.messages).toContainEqual(expect.objectContaining(toolResult));
+			expect(context.messages).toContainEqual(streaming);
+			expect(context.messages.at(-1)?.content).toEqual([
+				{ type: "text", text: "Summarize the completed coding work." },
+			]);
+			expect(session.messages).toEqual(beforeMessages);
+			expect(agent.state.streamMessage).toEqual(beforeStreaming);
+			expect(journal.getEntries()).toEqual(beforeJournal);
+		},
+	);
+
+	it("preserves native unsigned reasoning for a third-party side request", async () => {
+		const model = getBundledModel("nanogpt", "deepseek-reasoner");
+		if (!model) throw new Error("Expected bundled native reasoning model");
+		const history = priorUnsignedThinkingTurn(model);
+		const agent = new Agent({
+			initialState: {
+				model,
+				systemPrompt: ["Test"],
+				messages: [history, { role: "user", content: "Continue the main task.", timestamp: 1 }],
+				tools: [],
+			},
+		});
+		const contexts: Message[][] = [];
+		const mock = createMockModel({ id: model.id, provider: model.provider });
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings: Settings.isolated({ "compaction.enabled": false }),
+			modelRegistry,
+			sideStreamFn: (requestedModel, context, options) => {
+				contexts.push(structuredClone(context.messages));
+				mock.push({ content: ["Native reasoning accepted."] });
+				return mock.stream(requestedModel, context, options);
+			},
+		});
+		const streaming = {
+			...priorUnsignedThinkingTurn(model),
+			content: [
+				{ type: "thinking" as const, thinking: "Live native reasoning." },
+				{ type: "text" as const, text: "Partial answer." },
+			],
+		};
+		agent.emitExternalEvent({ type: "message_start", message: streaming });
+		const result = await session.runEphemeralTurn({ promptText: "Check progress." });
+		expect(result.replyText).toBe("Native reasoning accepted.");
+		expect(contexts).toHaveLength(1);
+		expect(contexts[0]).toContainEqual(history);
+		expect(contexts[0]).toContainEqual(streaming);
+	});
 });
 
-/**
- * On a user-interrupted (Esc) abort mid-thinking-stream, `AgentSession` copies
- * the trailing unsigned thinking run into a hidden `interrupted-thinking`
- * continuity message for the next turn. That message used to ship the raw
- * reasoning text verbatim inside a "use it silently to resume" wrapper —
- * exactly the shape Anthropic's `reasoning_extraction` classifier flags. Every
- * other thinking-replay site in this codebase disguises reasoning through
- * `renderDemotedThinking` before it reaches a model; `#demoteInterruptedThinkingOnUserInterrupt`
- * was the one remaining unguarded site. These tests defend the fix: the
- * continuity message must carry `renderDemotedThinking`'s dialect-appropriate
- * disguise, never the raw reasoning strung directly into the template.
- */
-describe("AgentSession interrupted-thinking disguise on user interrupt", () => {
+/** Interrupted private reasoning stays local; official Anthropic receives a safe continuity marker. */
+describe("AgentSession interrupted-thinking privacy on user interrupt", () => {
 	let tempDir: TempDir;
 	let authStorage: AuthStorage;
 	let modelRegistry: ModelRegistry;
@@ -496,11 +590,7 @@ describe("AgentSession interrupted-thinking disguise on user interrupt", () => {
 	 * reached through the same `message_end` event path a live abort takes.
 	 */
 	async function runInterruptedThinkingTurn(model: Model): Promise<CustomMessage<InterruptedThinkingDetails>> {
-		// The mock's `stream()` method resolves the AssistantMessage's `model`/
-		// `provider` fields from the MockModel instance itself (it ignores the
-		// model argument `Agent` passes through the streamFn), so the mock must
-		// be constructed with the target model's real id/provider for
-		// `renderDemotedThinking(message.model, ...)` to resolve the correct dialect.
+		// Response metadata must identify the target provider for interruption policy selection.
 		const mock = createMockModel({ id: model.id, provider: model.provider });
 		mock.push({
 			content: [{ type: "thinking", thinking: RAW_REASONING }],
@@ -540,84 +630,13 @@ describe("AgentSession interrupted-thinking disguise on user interrupt", () => {
 		return continuity as CustomMessage<InterruptedThinkingDetails>;
 	}
 
-	it("disguises trailing unsigned thinking as markdown-italic prose for a Fable/Mythos target model", async () => {
-		const model = getBundledModel("anthropic", "claude-fable-5");
-		if (!model) throw new Error("Expected bundled claude-fable-5 to exist");
-
-		const continuity = await runInterruptedThinkingTurn(model);
-		expect(typeof continuity.content).toBe("string");
-		const content = continuity.content as string;
-
-		// Fable/Mythos disguise format: `_Hmm. <text>_` markdown-italic prose,
-		// never a `<thinking>`-tagged or otherwise labeled raw replay.
-		expect(content).toContain(`_Hmm. ${RAW_REASONING}_`);
-		expect(content.toLowerCase()).not.toContain("thinking:");
-
-		// Byte-exact: the wrapper the source code actually builds around the
-		// disguised reasoning must be present verbatim (proves the fix wires
-		// `renderDemotedThinking` into the same `{{reasoning}}` template slot,
-		// not just that *a* disguise-shaped string appears somewhere).
-		const expectedDisguised = renderDemotedThinking(model.id, RAW_REASONING).trimEnd();
-		const expectedContent = prompt.render(interruptedThinkingTemplate, { reasoning: expectedDisguised });
-		expect(content).toBe(expectedContent);
-	});
-
-	it("disguises trailing unsigned thinking through the dialect-appropriate fallback for a non-Fable/Mythos Anthropic model", async () => {
-		const model = getBundledModel("anthropic", "claude-opus-4-5");
-		if (!model) throw new Error("Expected bundled claude-opus-4-5 to exist");
-
-		const continuity = await runInterruptedThinkingTurn(model);
-		expect(typeof continuity.content).toBe("string");
-		const content = continuity.content as string;
-
-		// claude-opus-4-5 is Anthropic-family but not Fable/Mythos, so
-		// `renderDemotedThinking` falls through to the anthropic dialect's own
-		// `renderThinking`, which wraps in plain `<thinking>...</thinking>` —
-		// not the Fable `_Hmm._` prose, and not a `thinking:`-labeled raw dump.
-		expect(content).toContain(`<thinking>\n${RAW_REASONING}\n</thinking>`);
-		expect(content).not.toContain("_Hmm.");
-		expect(content.toLowerCase()).not.toContain("thinking:");
-
-		// Byte-exact against the production composition, same as the Fable case.
-		const expectedDisguised = renderDemotedThinking(model.id, RAW_REASONING).trimEnd();
-		const expectedContent = prompt.render(interruptedThinkingTemplate, { reasoning: expectedDisguised });
-		expect(content).toBe(expectedContent);
-	});
-
-	it("never ships the raw reasoning as an unwrapped replay — it is only ever present inside renderDemotedThinking's disguise markers", async () => {
-		// `renderDemotedThinking` disguises via wrap-only markers (`_Hmm. ..._` for
-		// Fable/Mythos, `<thinking>...</thinking>` for anthropic's own dialect,
-		// `<think>...</think>` for harmony/gemma, or another dialect's own inline
-		// thinking fence) — it does not rewrite/paraphrase/encode the reasoning
-		// text itself. So the raw reasoning IS still present as a substring of
-		// the constructed message for every dialect; the load-bearing property
-		// is that it is *never* present un-wrapped. The old bug shipped
-		// `demoted.reasoning` directly into `{{reasoning}}` with no wrapper at
-		// all, which is exactly what "unwrapped" would look like here.
-		for (const model of [
-			getBundledModel("anthropic", "claude-fable-5"),
-			getBundledModel("anthropic", "claude-opus-4-5"),
-		]) {
-			if (!model) throw new Error("Expected bundled test models to exist");
+	it.each(["claude-fable-5", "claude-opus-4-5", "claude-opus-5-5", "claude-sonnet-5-5"])(
+		"does not replay interrupted private reasoning as plaintext for official Anthropic %s",
+		async modelId => {
+			const model = getBundledModel("anthropic", modelId);
+			if (!model) throw new Error(`Expected bundled ${modelId}`);
 			const continuity = await runInterruptedThinkingTurn(model);
-			const content = continuity.content as string;
-
-			// The exact old-bug shape (raw reasoning with no disguise wrapper at
-			// all around it) must be absent.
-			const rawUnwrapped = prompt.render(interruptedThinkingTemplate, { reasoning: RAW_REASONING });
-			expect(content).not.toBe(rawUnwrapped);
-
-			// Every occurrence of the raw reasoning in the constructed message is
-			// immediately preceded and followed by this model's disguise markers —
-			// i.e. it always appears as part of `renderDemotedThinking`'s output,
-			// never bare.
-			const disguised = renderDemotedThinking(model.id, RAW_REASONING).trimEnd();
-			expect(disguised).not.toBe(RAW_REASONING);
-			expect(content.split(RAW_REASONING).length - 1).toBe(1);
-			expect(content).toContain(disguised);
-
-			await session?.dispose();
-			session = undefined;
-		}
-	});
+			expect(continuity.content).not.toContain(RAW_REASONING);
+		},
+	);
 });

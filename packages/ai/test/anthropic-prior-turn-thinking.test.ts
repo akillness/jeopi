@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { renderDemotedThinking } from "jeopi-ai/dialect";
 import { convertAnthropicMessages } from "jeopi-ai/providers/anthropic";
 import type { AssistantMessage, Message, Model, ModelSpec, ToolResultMessage, UserMessage } from "jeopi-ai/types";
 import { buildModel } from "jeopi-catalog/build";
@@ -214,11 +213,7 @@ describe("Anthropic prior-turn thinking preservation (#2257, #2265)", () => {
 	});
 
 	it("strips foreign signatures and drops redacted_thinking when the target is official Anthropic", () => {
-		// 3p → official Anthropic. The official endpoint rejects foreign
-		// signatures cryptographically, and `replayUnsignedThinking: false`
-		// demotes the unsigned visible thinking to text downstream, so the
-		// matching redacted sibling must not remain as a lone native
-		// redacted_thinking block.
+		// Foreign reasoning cannot be replayed as either native signed blocks or plaintext.
 		const target = makeAnthropicModel({
 			provider: "anthropic",
 			id: "claude-sonnet-4-6",
@@ -252,17 +247,12 @@ describe("Anthropic prior-turn thinking preservation (#2257, #2265)", () => {
 		const params = convertAnthropicMessages(messages, target, false);
 		const assistants = params.filter(p => p.role === "assistant");
 		const priorBlocks = assistants[0].content as WireBlock[];
-		const text = priorBlocks.find(b => b.type === "text") as WireTextBlock | undefined;
-		expect(text?.text).toBe(renderDemotedThinking(target.id, "visible reasoning"));
-		expect(priorBlocks.find(b => b.type === "thinking")).toBeUndefined();
-		expect(priorBlocks.find(b => b.type === "redacted_thinking")).toBeUndefined();
+		expect(priorBlocks).toEqual([
+			{ type: "tool_use", id: "toolu_prior", name: "read", input: { path: "README.md" } },
+		]);
 	});
 
-	it("demotes invalid official Anthropic prior signatures to Fable markdown prose after a model switch", () => {
-		// official Anthropic → official Fable, with the signed turn no longer
-		// latest. The source signature is bound to the issuing Anthropic model,
-		// so replaying it after the switch must not emit native thinking or
-		// Anthropic/Kimi-style thinking tags that Fable treats as visible text.
+	it("omits invalid official prior reasoning after a Fable model switch while preserving its tool call", () => {
 		const target = makeAnthropicModel({
 			provider: "anthropic",
 			id: "claude-fable-5",
@@ -292,14 +282,7 @@ describe("Anthropic prior-turn thinking preservation (#2257, #2265)", () => {
 		const assistants = params.filter(p => p.role === "assistant");
 		expect(assistants).toHaveLength(2);
 		const priorBlocks = assistants[0].content as WireBlock[];
-		const text = priorBlocks.find(b => b.type === "text") as WireTextBlock | undefined;
-		expect(text?.text).toBe(renderDemotedThinking("claude-fable-5", reasoning));
-		expect(text?.text).toBe(`_Hmm. ${reasoning}_\n`);
-		expect(text?.text).not.toContain("<thinking>");
-		expect(text?.text).not.toContain("</thinking>");
-		expect(text?.text).not.toContain("<think>");
-		expect(text?.text).not.toContain("</think>");
-		expect(priorBlocks.find(b => b.type === "thinking")).toBeUndefined();
+		expect(priorBlocks).toEqual([{ type: "tool_use", id: "toolu_prior", name: "read", input: { path: "NOTES.md" } }]);
 	});
 
 	it("strips official Anthropic source signatures on cross-model replay to a 3p target", () => {

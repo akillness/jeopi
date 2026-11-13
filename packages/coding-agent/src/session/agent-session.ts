@@ -112,6 +112,7 @@ import {
 } from "jeopi-ai";
 import { renderDemotedThinking } from "jeopi-ai/dialect";
 import * as AIError from "jeopi-ai/error";
+import { convertAnthropicMessages } from "jeopi-ai/providers/anthropic";
 import { toolWireSchema } from "jeopi-ai/utils/schema";
 import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "jeopi-ai/utils/thinking-loop";
 import { type ToolCallLoopDetection, ToolCallLoopGuard } from "jeopi-ai/utils/tool-call-loop-guard";
@@ -346,6 +347,7 @@ import {
 	demoteInterruptedThinking,
 	INTERRUPTED_THINKING_MESSAGE_TYPE,
 	type InterruptedThinkingDetails,
+	isAnthropicMessagesModel,
 	isUserInterruptAbort,
 	type PythonExecutionMessage,
 	readQueueChipText,
@@ -585,17 +587,8 @@ const RETRY_BACKOFF_MAX_DELAY_MS = 8_000;
 const REFUSAL_BACKOFF_BASE_MS = 2_000;
 const REFUSAL_BACKOFF_MAX_MS = 30_000;
 const REFUSAL_BACKOFF_BUDGET_MS = 30 * 60_000;
-/**
- * Consecutive-use cap on the `reasoning_extraction` fast-degrade path (strip
- * unsigned thinking, resend same-model, zero delay — see
- * `#reasoningExtractionDegradeStreak` below). Bounds the worst case where a
- * pathological classifier state (documented: 1,164 refusals over ~4 hours in
- * one incident) refuses every turn's fresh thinking in a row — after this
- * many back-to-back fast-degrades with no intervening success, fall through
- * to the Rung-4 ladder above, which already wall-clock-bounds via
- * {@link REFUSAL_BACKOFF_BUDGET_MS}.
- */
-const REASONING_EXTRACTION_DEGRADE_STREAK_CAP = 3;
+/** One request-context repair per refused turn; a successful turn resets it. */
+const REASONING_EXTRACTION_DEGRADE_STREAK_CAP = 1;
 
 function positiveEnvMs(name: string): number | undefined {
 	const raw = process.env[name];
@@ -1709,31 +1702,7 @@ export class AgentSession {
 	#retryAttempt = 0;
 	/** Rung-4 classifier-refusal resend streak (post fallback-ladder). */
 	#refusalBackoff: { startedAt: number; attempt: number } | undefined = undefined;
-	/**
-	 * `reasoning_extraction` classifier refusals are payload-shape-bound (see
-	 * advisor/runtime.ts `#includeThinking` degrade): resending the IDENTICAL
-	 * batch predictably re-refuses, so a bare retry can't help. But this is a
-	 * point-in-time strip of the CURRENT active context, not a persistent
-	 * setting — unlike the advisor's permanent-for-the-session
-	 * `includeThinking` flag, it does not prevent NEW unsigned thinking from a
-	 * LATER turn (a fresh advisor exchange, another interrupt, plain
-	 * continued conversation) from independently triggering its own,
-	 * genuinely-different refusal. A one-shot latch here previously left every
-	 * occurrence after the first to fall through to the generic Rung-4
-	 * backoff ladder unstripped — resending the same unstripped payload until
-	 * the wall-clock budget expired and the turn failed visibly.
-	 *
-	 * Fixed by gating on whether {@link #stripUnsignedThinkingForRefusalDegrade}
-	 * actually found something to strip THIS time (it already returns
-	 * `undefined` when there is nothing new to remove, which is itself proof
-	 * the resend would be payload-identical and degrading again cannot help)
-	 * rather than a permanent flag — each distinct occurrence gets its own
-	 * degrade attempt. Bounded by {@link REASONING_EXTRACTION_DEGRADE_STREAK_CAP}
-	 * consecutive uses (reset on any turn that actually succeeds) so a
-	 * pathological classifier state that refuses every turn's fresh thinking
-	 * in a row still falls through to the wall-clock-bounded ladder instead
-	 * of resending at zero delay indefinitely.
-	 */
+	/** A changed request may retry once; an unchanged reasoning-extraction refusal is terminal. */
 	#reasoningExtractionDegradeStreak = 0;
 	#retryPromise: Promise<void> | undefined = undefined;
 	#retryResolve: (() => void) | undefined = undefined;
@@ -2259,7 +2228,7 @@ export class AgentSession {
 			thunks.push(() => this.#takeMidRunTodoNudge());
 			return thunks;
 		});
-		this.#convertToLlm = config.convertToLlm ?? convertToLlm;
+		this.#convertToLlm = config.convertToLlm ?? (messages => convertToLlm(messages, this.model));
 		this.#rebuildSystemPrompt = config.rebuildSystemPrompt;
 		this.#getMcpServerInstructions = config.getMcpServerInstructions;
 		this.#reloadSshTool = config.reloadSshTool;
@@ -2932,7 +2901,7 @@ export class AgentSession {
 					undefined,
 					{
 						thinkingLevel: advisorCompactionThinkingLevel,
-						convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+						convertToLlm: messages => this.#convertToLlmForSideRequest(messages, candidate),
 						telemetry,
 						tools: agent.state.tools,
 						sessionId: advisorSessionId,
@@ -3476,21 +3445,10 @@ export class AgentSession {
 	}
 
 	/**
-	 * On a user-interrupted (`Esc`) abort, copy the trailing thinking run into a
-	 * hidden `display: false` continuity message for the next turn WITHOUT
-	 * mutating the assistant message. The original thinking stays on the message
-	 * so live render, reload, and Ctrl+L rebuilds keep showing it; `convertToLlm`
-	 * strips the run from the provider request (incomplete/unsigned thinking is
-	 * rejected on resend) when this continuity message follows the assistant turn.
-	 *
-	 * The reasoning text is rendered through {@link renderDemotedThinking} (keyed
-	 * off `message.model`, the model resuming the turn in the overwhelming
-	 * majority of cases) before it reaches the template — same disguise every
-	 * other thinking-replay site in this codebase already applies before
-	 * sending a model's own prior reasoning back to it as plaintext. Raw,
-	 * undisguised reasoning wrapped in a "your unfinished internal work state"
-	 * frame is exactly the shape Anthropic's `reasoning_extraction` classifier
-	 * flags; this was the one remaining site that still shipped it undisguised.
+	 * Preserve interrupted reasoning for providers that support text continuity.
+	 * Official Anthropic receives only an interruption marker: its converter uses
+	 * that marker to drop the incomplete unsigned run without replaying it as text.
+	 * The original assistant message remains intact for display and persistence.
 	 */
 	#demoteInterruptedThinkingOnUserInterrupt(
 		message: AssistantMessage,
@@ -3499,17 +3457,22 @@ export class AgentSession {
 		const demoted = demoteInterruptedThinking(message);
 		if (!demoted) return undefined;
 		const interruptedAt = Date.now();
-		const disguisedReasoning = renderDemotedThinking(message.model, demoted.reasoning).trimEnd();
+		const model = this.model;
+		const reasoning =
+			isAnthropicMessagesModel(model) && model.compat.officialEndpoint
+				? ""
+				: renderDemotedThinking(message.model, demoted.reasoning).trimEnd();
 		return {
 			role: "custom",
 			customType: INTERRUPTED_THINKING_MESSAGE_TYPE,
-			content: prompt.render(interruptedThinkingTemplate, { reasoning: disguisedReasoning }),
+			content: prompt.render(interruptedThinkingTemplate, { reasoning }),
 			display: false,
 			details: {
 				interruptedAt,
 				provider: message.provider,
 				model: message.model,
 				blockCount: demoted.blockCount,
+				reasoningIncluded: reasoning.length > 0,
 			},
 			attribution: "agent",
 			timestamp: interruptedAt,
@@ -3611,6 +3574,21 @@ export class AgentSession {
 		// extension delivery or persistence can stall this handler.
 		if (interruptedThinkingMessage) {
 			this.agent.appendMessage(interruptedThinkingMessage);
+		}
+
+		// Capture this before awaited extension delivery: terminal cleanup may remove
+		// the refused tool calls while this message_end handler is still pending.
+		let skipRefusedToolResult = false;
+		if (event.type === "message_end" && event.message.role === "toolResult") {
+			const toolCallId = event.message.toolCallId;
+			const origin = this.agent.state.messages.findLast(
+				(candidate): candidate is AssistantMessage => candidate.role === "assistant",
+			);
+			skipRefusedToolResult =
+				origin !== undefined &&
+				this.#isClassifierRefusal(origin) &&
+				origin.stopDetails?.category === "reasoning_extraction" &&
+				origin.content.some(block => block.type === "toolCall" && block.id === toolCallId);
 		}
 
 		const messageEndPersistence =
@@ -3749,6 +3727,7 @@ export class AgentSession {
 		// Handle session persistence
 		if (event.type === "message_end") {
 			const persistMessageEnd = () => {
+				if (skipRefusedToolResult) return;
 				// Check if this is a hook/custom message
 				if (event.message.role === "hookMessage" || event.message.role === "custom") {
 					// Persist as CustomMessageEntry
@@ -4083,13 +4062,36 @@ export class AgentSession {
 					return;
 				}
 			}
-			// Classifier refusals are persisted-skipped above; also prune the trailing
-			// stub from active context so the next turn's prompt does not replay it.
-			// Fall through to the standard error tail so `session_stop` hooks (block,
-			// continue, telemetry) still fire — matching the pre-fix flow for
-			// `stopReason === "error"`.
+			// Retain terminal reasoning-extraction diagnostics without incomplete
+			// output. Provider replay filtering omits the error on future requests.
+			// Other classifier-refusal stubs keep their existing cleanup policy.
 			if (this.#isClassifierRefusal(msg)) {
-				this.#removeAssistantMessageFromActiveContext(msg);
+				if (msg.stopDetails?.category === "reasoning_extraction") {
+					const terminalMessage: AssistantMessage = { ...msg, content: [] };
+					const retained: AgentMessage[] = [];
+					let afterRefusal = false;
+					for (const candidate of this.agent.state.messages) {
+						if (candidate.role === "assistant" && this.#isSameAssistantMessage(candidate, msg)) {
+							afterRefusal = true;
+							retained.push(terminalMessage);
+						} else if (
+							!(
+								afterRefusal &&
+								candidate.role === "toolResult" &&
+								msg.content.some(block => block.type === "toolCall" && block.id === candidate.toolCallId)
+							)
+						) {
+							// Omit synthetic failures for incomplete refused tool calls.
+							retained.push(candidate);
+						}
+					}
+					this.agent.replaceMessages(retained);
+					if (!this.#sessionMessageAlreadyPersisted(terminalMessage)) {
+						this.sessionManager.appendMessage(terminalMessage);
+					}
+				} else {
+					this.#removeAssistantMessageFromActiveContext(msg);
+				}
 			}
 			this.#resolveRetry();
 
@@ -6907,8 +6909,8 @@ export class AgentSession {
 		return deobfuscated.slice(0, pendingPlaceholderStart.index);
 	}
 
-	#convertToLlmForSideRequest(messages: AgentMessage[]): Message[] {
-		const converted = convertToLlm(messages);
+	#convertToLlmForSideRequest(messages: AgentMessage[], model: Model): Message[] {
+		const converted = convertToLlm(messages, model);
 		return this.#obfuscator?.hasSecrets() ? obfuscateMessages(this.#obfuscator, converted) : converted;
 	}
 
@@ -9905,7 +9907,6 @@ export class AgentSession {
 							promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
 							extraContext: compactionPrep.hookContext,
 							remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
-							convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
 						},
 						compactionCandidates,
 					);
@@ -11800,7 +11801,7 @@ export class AgentSession {
 					{
 						...options,
 						metadata: this.agent.metadataForProvider(candidate.provider),
-						convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+						convertToLlm: messages => this.#convertToLlmForSideRequest(messages, candidate),
 						telemetry,
 						// Honor the user's /model thinking selection (incl. `off`) on
 						// the manual `/compact` path. Clamped per-model inside compact()
@@ -12493,7 +12494,7 @@ export class AgentSession {
 									remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
 									metadata: this.agent.metadataForProvider(candidate.provider),
 									initiatorOverride: "agent",
-									convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+									convertToLlm: messages => this.#convertToLlmForSideRequest(messages, candidate),
 									telemetry,
 									// Honor the user's /model thinking selection on the
 									// auto-compaction path — the most-fired compaction
@@ -13049,25 +13050,37 @@ export class AgentSession {
 		return stopType === "refusal" || stopType === "sensitive";
 	}
 	/**
-	 * Strip unsigned `thinking` and every `redactedThinking` block from assistant
-	 * messages. Used once as a `reasoning_extraction` classifier-refusal degrade:
-	 * unlike {@link renderDemotedThinking}'s plain-text fallback (still a plaintext
-	 * reasoning replay for dialects outside the Fable/Mythos carve-out), dropping the
-	 * block outright removes the trigger instead of reformatting it. Signed thinking
-	 * is left untouched — it replays natively via the provider's structured thinking
-	 * block and is never demoted to plaintext.
-	 * @returns a rewritten array, or `undefined` if no message needed stripping.
+	 * Drop legacy interrupted-reasoning text, and optionally unsigned thinking.
+	 * Official Anthropic already drops unsigned blocks in its provider encoder;
+	 * removing those from session history alone cannot justify another request.
+	 * @returns a rewritten array, or `undefined` if nothing needed removing.
 	 */
-	#stripUnsignedThinkingForRefusalDegrade(messages: readonly AgentMessage[]): AgentMessage[] | undefined {
+	#stripReasoningReplay(
+		messages: readonly AgentMessage[],
+		stripUnsignedThinking: boolean,
+	): AgentMessage[] | undefined {
 		let changed = false;
 		const next: AgentMessage[] = [];
 		for (const message of messages) {
-			if (message.role !== "assistant") {
+			if (
+				message.role === "custom" &&
+				message.customType === INTERRUPTED_THINKING_MESSAGE_TYPE &&
+				!(
+					typeof message.details === "object" &&
+					message.details !== null &&
+					"reasoningIncluded" in message.details &&
+					message.details.reasoningIncluded === false
+				)
+			) {
+				changed = true;
+				continue;
+			}
+			if (message.role !== "assistant" || !stripUnsignedThinking) {
 				next.push(message);
 				continue;
 			}
 			const content = message.content.filter(
-				block => block.type !== "redactedThinking" && (block.type !== "thinking" || !!block.thinkingSignature),
+				block => block.type !== "thinking" || !!block.thinkingSignature?.trim(),
 			);
 			if (content.length === message.content.length) {
 				next.push(message);
@@ -13529,6 +13542,7 @@ export class AgentSession {
 				const attempt = this.#retryAttempt;
 				this.#retryAttempt = 0;
 				this.#refusalBackoff = undefined;
+				this.#reasoningExtractionDegradeStreak = 0;
 				await this.#emitSessionEvent({
 					type: "auto_retry_end",
 					success: false,
@@ -13604,42 +13618,59 @@ export class AgentSession {
 		}
 
 		const errorMessage = message.errorMessage || "Unknown error";
-		// `reasoning_extraction` is payload-shape-bound (see advisor/runtime.ts): resending
-		// the identical batch predictably re-refuses, unlike probabilistic classifier flags
-		// where backoff/fallback genuinely help. Strip unsigned thinking/redactedThinking
-		// from active context and resend immediately on the same model — before falling
-		// through to the generic fallback-pin / backoff ladder below, which would otherwise
-		// retry the unchanged, re-refusing payload. Gated on the strip itself finding
-		// something to remove THIS time (not a one-shot flag): a later turn can
-		// independently accumulate fresh unsigned thinking and trigger its own genuinely
-		// different refusal, and `#stripUnsignedThinkingForRefusalDegrade` already reports
-		// "nothing to strip" via `undefined` when the payload truly is unchanged — which is
-		// itself the correct signal to fall through instead of degrading again. Bounded by
-		// `REASONING_EXTRACTION_DEGRADE_STREAK_CAP` consecutive uses so a pathological
-		// classifier state refusing every turn's fresh thinking in a row still reaches the
-		// wall-clock-bounded ladder instead of resending at zero delay indefinitely.
-		if (
-			classifierRefusal &&
-			message.stopDetails?.category === "reasoning_extraction" &&
-			this.#reasoningExtractionDegradeStreak < REASONING_EXTRACTION_DEGRADE_STREAK_CAP
-		) {
-			const stripped = this.#stripUnsignedThinkingForRefusalDegrade(this.agent.state.messages);
-			if (stripped) {
-				this.#reasoningExtractionDegradeStreak++;
-				this.agent.replaceMessages(stripped);
-				this.#removeAssistantMessageFromActiveContext(message, "reasoning-extraction-degrade");
-				await this.#emitSessionEvent({
-					type: "auto_retry_start",
-					attempt: this.#retryAttempt,
-					maxAttempts: retrySettings.maxRetries,
-					delayMs: 0,
-					errorMessage,
-					errorId: message.errorId,
-				});
-				if (cancelled()) return false;
-				scheduleRetry();
-				return true;
+		// This category has no recommended fallback. Repair only reasoning that was
+		// actually in the refused request, never partial output from the refusal.
+		if (classifierRefusal && message.stopDetails?.category === "reasoning_extraction") {
+			if (
+				this.#reasoningExtractionDegradeStreak < REASONING_EXTRACTION_DEGRADE_STREAK_CAP &&
+				!this.#hasReplayUnsafeToolOutput(message)
+			) {
+				const requestMessages = this.agent.state.messages.filter(
+					candidate => candidate.role !== "assistant" || !this.#isSameAssistantMessage(candidate, message),
+				);
+				const model = this.model;
+				const stripUnsignedThinking = !(isAnthropicMessagesModel(model) && model.compat.officialEndpoint);
+				let stripped = this.#stripReasoningReplay(requestMessages, stripUnsignedThinking);
+				if (stripped && isAnthropicMessagesModel(model) && model.compat.officialEndpoint) {
+					const [original, repaired] = await Promise.all([
+						this.#convertToLlm(requestMessages),
+						this.#convertToLlm(stripped),
+					]);
+					if (cancelled()) return false;
+					// A model-aware converter may already have omitted the legacy note.
+					// Only a real change to the wire request can justify another billable attempt.
+					if (
+						Bun.deepEquals(
+							convertAnthropicMessages(original, model, false),
+							convertAnthropicMessages(repaired, model, false),
+						)
+					) {
+						stripped = undefined;
+					}
+				}
+				if (stripped) {
+					this.#reasoningExtractionDegradeStreak++;
+					this.agent.replaceMessages(stripped);
+					await this.#emitSessionEvent({
+						type: "auto_retry_start",
+						attempt: this.#retryAttempt,
+						maxAttempts: retrySettings.maxRetries,
+						delayMs: 0,
+						errorMessage,
+						errorId: message.errorId,
+					});
+					if (cancelled()) return false;
+					scheduleRetry();
+					return true;
+				}
 			}
+			const attempt = this.#retryAttempt - 1;
+			this.#retryAttempt = 0;
+			this.#refusalBackoff = undefined;
+			this.#reasoningExtractionDegradeStreak = 0;
+			await this.#emitSessionEvent({ type: "auto_retry_end", success: false, attempt, finalError: errorMessage });
+			this.#resolveRetry();
+			return false;
 		}
 
 		const id = this.#classifyRetryMessage(message);
@@ -14550,7 +14581,7 @@ export class AgentSession {
 			// `reasoning_content` and reject the request (HTTP 400) when the field
 			// goes missing on a turn that previously emitted thinking.
 			for (const c of streaming.content) {
-				if (c.type === "thinking") preservedBlocks.push(c);
+				if (c.type === "thinking" || c.type === "redactedThinking") preservedBlocks.push(c);
 			}
 			const streamingText = streaming.content
 				.filter((c): c is TextContent => c.type === "text")
@@ -14584,6 +14615,12 @@ export class AgentSession {
 			attribution: "agent",
 			timestamp: Date.now(),
 		});
+		const model = this.model;
+		if (isAnthropicMessagesModel(model) && model.compat.officialEndpoint) {
+			// The encoder handles native thinking. Historical interruption notes are
+			// already plain text, so remove those before converting custom messages.
+			return this.#stripReasoningReplay(messages, false) ?? messages;
+		}
 		return messages;
 	}
 
@@ -15143,7 +15180,7 @@ export class AgentSession {
 				customInstructions: this.#obfuscateTextForProvider(options.customInstructions),
 				reserveTokens: branchSummarySettings.reserveTokens,
 				metadata: this.agent.metadataForProvider(model.provider),
-				convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+				convertToLlm: messages => this.#convertToLlmForSideRequest(messages, model),
 				telemetry: resolveTelemetry(this.agent.telemetry, this.sessionId),
 				// Same per-provider concurrency cap rationale as the compaction
 				// path above (chatgpt-codex review on #3751).

@@ -12,8 +12,8 @@ import { buildModel } from "jeopi-catalog/build";
  * tool-call argument serialization (the upstream cause behind #2005's `todo`
  * renderer crash).
  *
- * Official Anthropic remains conservative: unsigned thinking is demoted to text
- * there because the first-party API enforces signature-based integrity.
+ * Official Anthropic omits unsigned private reasoning instead of replaying it
+ * as plaintext, while keeping native signed blocks and public tool history.
  */
 function makeModel(overrides: Partial<ModelSpec<"anthropic-messages">> = {}): Model<"anthropic-messages"> {
 	return buildModel({
@@ -224,23 +224,103 @@ describe("Anthropic-compatible unsigned thinking replay (#2005)", () => {
 		expect(blocks[0]?.type).toBe("thinking");
 	});
 
-	it("still degrades unsigned thinking to text for official Anthropic", () => {
-		const model = makeModel({ provider: "anthropic", baseUrl: "https://api.anthropic.com" });
-		const blocks = assistantWireBlocks([makeUser(), makeAssistantThinking("internal scratch")], model);
-		expect(blocks[0]?.type).toBe("text");
-		expect((blocks[0] as WireTextBlock).text).toBe(renderDemotedThinking(model.id, "internal scratch"));
-	});
+	it.each(
+		["claude-opus-5-5", "claude-sonnet-5-5"].flatMap(modelId =>
+			["same-model unsigned", "cross-model signed", "openai-responses", "openai-completions"].map(origin => ({
+				modelId,
+				origin,
+			})),
+		),
+	)(
+		"excludes private reasoning but preserves visible text and tool pairs: $modelId / $origin",
+		({ modelId, origin }) => {
+			const model = makeModel({ id: modelId, provider: "anthropic", baseUrl: "https://api.anthropic.com" });
+			const assistant = makeAssistantThinking("PRIVATE_REASONING_MUST_NOT_BE_PLAINTEXT", [
+				{ type: "text", text: "I inspected the license." },
+				{ type: "toolCall", id: "toolu_read_license", name: "read", arguments: { path: "LICENSE" } },
+			]);
+			assistant.provider = origin.startsWith("openai") ? "openai" : model.provider;
+			assistant.api = origin.startsWith("openai") ? origin : "anthropic-messages";
+			assistant.model = origin === "same-model unsigned" ? modelId : "previous-model";
+			if (origin === "cross-model signed") {
+				assistant.content[0] = {
+					type: "thinking",
+					thinking: "PRIVATE_REASONING_MUST_NOT_BE_PLAINTEXT",
+					thinkingSignature: "foreign-model-signature",
+				};
+			}
+			const result: ToolResultMessage = {
+				role: "toolResult",
+				toolCallId: "toolu_read_license",
+				toolName: "read",
+				content: [{ type: "text", text: "License allows the requested edit." }],
+				isError: false,
+				timestamp: 1,
+			};
+			const current = {
+				...makeAssistantThinking("unused"),
+				provider: model.provider,
+				model: modelId,
+				content: [{ type: "text" as const, text: "The tool result is ready." }],
+			};
+			const messages: Message[] = [
+				makeUser("Read the license."),
+				assistant,
+				result,
+				current,
+				makeUser("Continue the coding task."),
+			];
+			const before = structuredClone(messages);
+			const params = convertAnthropicMessages(messages, model, false);
+			expect(params.map(message => message.role)).toEqual(["user", "assistant", "user", "assistant", "user"]);
+			expect(params[1]!.content).toEqual([
+				{ type: "text", text: "I inspected the license." },
+				{ type: "tool_use", id: "toolu_read_license", name: "read", input: { path: "LICENSE" } },
+			]);
+			expect(params[2]!.content).toContainEqual(
+				expect.objectContaining({
+					type: "tool_result",
+					tool_use_id: "toolu_read_license",
+					content: "License allows the requested edit.",
+				}),
+			);
+			expect(messages).toEqual(before);
+		},
+	);
 
-	it("treats a missing baseUrl as official Anthropic (resolveAnthropicBaseUrl default)", () => {
-		// `isOfficialAnthropicApiUrl(undefined) === true` because the actual HTTP
-		// dispatch falls back to https://api.anthropic.com. Same-id custom
-		// overrides that only tweak model metadata (no baseUrl override) must
-		// not regress to native-thinking replay against the first-party API.
-		const model = makeModel({ provider: "anthropic", baseUrl: "" });
-		const blocks = assistantWireBlocks([makeUser(), makeAssistantThinking("internal scratch")], model);
-		expect(blocks[0]?.type).toBe("text");
-		expect((blocks[0] as WireTextBlock).text).toBe(renderDemotedThinking(model.id, "internal scratch"));
-	});
+	it.each(["claude-opus-5-5", "claude-sonnet-5-5"])(
+		"omits unsigned-thinking-only assistant envelopes on official %s",
+		modelId => {
+			const model = makeModel({ id: modelId, provider: "anthropic", baseUrl: "https://api.anthropic.com" });
+			const user = makeUser("Continue the coding task.");
+			const thinkingOnly = {
+				...makeAssistantThinking("PRIVATE_ONLY_REASONING"),
+				provider: model.provider,
+				model: modelId,
+			};
+			expect(convertAnthropicMessages([user, thinkingOnly], model, false)).toEqual([
+				{ role: "user", content: "Continue the coding task." },
+			]);
+		},
+	);
+
+	it.each(["claude-opus-5-5", "claude-sonnet-5-5"])(
+		"preserves same-model signed and opaque redacted thinking on official %s",
+		modelId => {
+			const model = makeModel({ id: modelId, provider: "anthropic", baseUrl: "https://api.anthropic.com" });
+			const assistant = { ...makeAssistantThinking("unused"), provider: model.provider, model: modelId };
+			assistant.content = [
+				{ type: "thinking", thinking: "Signed native reasoning.", thinkingSignature: "native-signature" },
+				{ type: "redactedThinking", data: "opaque-native-blob" },
+				{ type: "text", text: "Visible answer." },
+			];
+			expect(assistantWireBlocks([makeUser(), assistant], model)).toEqual([
+				{ type: "thinking", thinking: "Signed native reasoning.", signature: "native-signature" },
+				{ type: "redacted_thinking", data: "opaque-native-blob" },
+				{ type: "text", text: "Visible answer." },
+			]);
+		},
+	);
 
 	it("still degrades unsigned thinking to text for non-reasoning unknown endpoints", () => {
 		const model = makeModel({ reasoning: false, baseUrl: "https://plain.example.com/anthropic" });

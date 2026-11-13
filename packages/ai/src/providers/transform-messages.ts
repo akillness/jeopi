@@ -397,11 +397,14 @@ export function transformMessages<TApi extends Api>(
 				assistantMsg.content.some(b => b.type === "toolCall");
 			const lastBlockIndex = assistantMsg.content.length - 1;
 
-			const transformedContent = assistantMsg.content.flatMap((block, blockIndex) => {
+			const transformBlock = (
+				block: AssistantMessage["content"][number],
+				blockIndex: number,
+			): AssistantMessage["content"][number] | [] => {
 				if (block.type === "thinking") {
 					// Only an aborted/errored turn's final (mid-stream) block can hold a
-					// partial signature; abandoned tool-use turns strip all. Drop the
-					// untrustworthy signature so the encoder can downgrade the block to text.
+					// partial signature; abandoned tool-use turns strip all. The encoder
+					// applies the target's unsigned-reasoning policy afterward.
 					const signatureUntrustworthy = abandonedToolUse || (invalidStopReason && blockIndex === lastBlockIndex);
 					let sanitized: typeof block =
 						signatureUntrustworthy && block.thinkingSignature
@@ -414,8 +417,8 @@ export function transformMessages<TApi extends Api>(
 						// Cross-model prior turns crossing an official Anthropic endpoint
 						// must strip the source signature so the downstream encoder
 						// applies its `replayUnsignedThinking` policy (unsigned thinking
-						// is emitted natively on Anthropic-compatible reasoning endpoints
-						// and demoted to text on official Anthropic). 3p ↔ 3p replays
+						// is emitted natively on compatible reasoning endpoints and dropped
+						// on official Anthropic). 3p ↔ 3p replays
 						// keep the signature so the reasoning chain stays signed on
 						// continuation (#2265).
 						if (
@@ -426,6 +429,7 @@ export function transformMessages<TApi extends Api>(
 						) {
 							sanitized = { ...sanitized, thinkingSignature: undefined };
 						}
+						if (isOfficialAnthropicTarget && !sanitized.thinkingSignature?.trim()) return [];
 						// Drop blocks with neither a signature anchor nor any text —
 						// nothing for the next turn to replay.
 						if (!sanitized.thinkingSignature && (!sanitized.thinking || sanitized.thinking.trim() === "")) {
@@ -433,6 +437,9 @@ export function transformMessages<TApi extends Api>(
 						}
 						return sanitized;
 					}
+					// Foreign reasoning cannot be replayed natively on official Anthropic.
+					// Drop it before the generic cross-API path can demote it into text.
+					if (isOfficialAnthropicTarget) return [];
 					// Cross-API target: same-model replay keeps signatures untouched
 					// (the encoder needs them for native replay; an OpenAI encrypted
 					// reasoning blob has empty text but a load-bearing signature).
@@ -536,12 +543,19 @@ export function transformMessages<TApi extends Api>(
 				}
 
 				return block;
-			});
-
-			return {
-				...assistantMsg,
-				content: transformedContent,
 			};
+
+			// Copy only at the first changed block; native replay usually changes nothing.
+			let transformedContent: AssistantMessage["content"] | undefined;
+			for (let blockIndex = 0; blockIndex < assistantMsg.content.length; blockIndex++) {
+				const block = assistantMsg.content[blockIndex]!;
+				const transformedBlock = transformBlock(block, blockIndex);
+				if (transformedBlock !== block && !transformedContent) {
+					transformedContent = assistantMsg.content.slice(0, blockIndex);
+				}
+				if (transformedContent && !Array.isArray(transformedBlock)) transformedContent.push(transformedBlock);
+			}
+			return transformedContent ? { ...assistantMsg, content: transformedContent } : assistantMsg;
 		}
 		return msg;
 	});

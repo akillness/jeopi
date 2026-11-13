@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevented unsigned and cross-provider private thinking from being replayed as plain text to official Anthropic endpoints, including Opus 5.5 and Sonnet 5.5; valid native signed thinking and compatible third-party reasoning replay remain supported.
+
+### Improved
+
+- Avoid copying unchanged assistant messages and content arrays during conversation replay, reducing retained output memory and native replay conversion time without changing thinking or tool-result handling.
+
 ## [16.6.19] - 2026-11-10
 
 ### Fixed

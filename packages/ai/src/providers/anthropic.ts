@@ -3385,6 +3385,9 @@ export function convertAnthropicMessages(
 						text: block.text.toWellFormed(),
 					});
 				} else if (block.type === "thinking") {
+					// Official Anthropic accepts native signed reasoning, not private
+					// reasoning recast as ordinary response text.
+					if (model.compat.officialEndpoint && !block.thinkingSignature?.trim()) continue;
 					if (hasSignedThinking) {
 						if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
 							if (block.thinking.trim().length === 0) continue;

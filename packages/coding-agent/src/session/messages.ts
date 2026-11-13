@@ -10,7 +10,15 @@ import {
 	type CompactionSummaryMessage,
 	convertMessageToLlm,
 } from "jeopi-agent-core/compaction/messages";
-import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextContent, UserMessage } from "jeopi-ai";
+import type {
+	AssistantMessage,
+	ImageContent,
+	Message,
+	MessageAttribution,
+	Model,
+	TextContent,
+	UserMessage,
+} from "jeopi-ai";
 import * as AIError from "jeopi-ai/error";
 import { prompt } from "jeopi-utils";
 import userInterjectionTemplate from "../prompts/steering/user-interjection.md" with { type: "text" };
@@ -33,12 +41,18 @@ export const BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE = "background-tan-dispatch";
 /** Custom message type for hidden interrupted-thinking continuity context. */
 export const INTERRUPTED_THINKING_MESSAGE_TYPE = "interrupted-thinking";
 
+export function isAnthropicMessagesModel(model: Model | undefined): model is Model<"anthropic-messages"> {
+	return model?.api === "anthropic-messages";
+}
+
 /** Metadata persisted with a hidden interrupted-thinking continuity message. */
 export interface InterruptedThinkingDetails {
 	interruptedAt: number;
 	provider: AssistantMessage["provider"];
 	model: string;
 	blockCount: number;
+	/** Absent on legacy records, which included unfinished reasoning as text. */
+	reasoningIncluded?: boolean;
 }
 
 /** Pure helper result for persisting interrupted thinking outside the assistant turn. */
@@ -616,7 +630,7 @@ function convertImageBearingCustomMessage(message: CustomMessage | HookMessage):
  * - Compaction's generateSummary (for summarization)
  * - Custom extensions and tools
  */
-export function convertToLlm(messages: AgentMessage[]): Message[] {
+export function convertToLlm(messages: AgentMessage[], model?: Model): Message[] {
 	return messages.flatMap((m, index): Message[] => {
 		switch (m.role) {
 			case "bashExecution":
@@ -683,6 +697,19 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				return out;
 			}
 			case "custom": {
+				if (
+					isAnthropicMessagesModel(model) &&
+					model.compat.officialEndpoint &&
+					m.customType === INTERRUPTED_THINKING_MESSAGE_TYPE &&
+					!(
+						typeof m.details === "object" &&
+						m.details !== null &&
+						"reasoningIncluded" in m.details &&
+						m.details.reasoningIncluded === false
+					)
+				) {
+					return [];
+				}
 				if (isUserInvokedSkillPrompt(m)) {
 					return [
 						{
