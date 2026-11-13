@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.22] - 2026-11-13
+
 ### Fixed
 
 - Prevented legacy interrupted private reasoning from entering official Anthropic main and side requests. Unrepairable `reasoning_extraction` refusals now retain their original diagnostic and stop instead of cycling through fallback models or repeated billed requests; incomplete refused tool calls and their synthetic results are excluded from replay.

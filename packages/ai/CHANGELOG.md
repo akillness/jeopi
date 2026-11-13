@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.22] - 2026-11-13
+
 ### Fixed
 
 - Prevented unsigned and cross-provider private thinking from being replayed as plain text to official Anthropic endpoints, including Opus 5.5 and Sonnet 5.5; valid native signed thinking and compatible third-party reasoning replay remain supported.
