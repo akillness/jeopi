@@ -75,7 +75,15 @@ function buildHistory(stopReason: AssistantMessage["stopReason"], signature: str
 	return [user, assistant, toolResult];
 }
 
-type WireBlock = { type: string; signature?: string; thinking?: string; text?: string };
+type WireBlock = {
+	type: string;
+	signature?: string;
+	thinking?: string;
+	text?: string;
+	id?: string;
+	name?: string;
+	input?: unknown;
+};
 
 function assistantBlocks(messages: Message[]): WireBlock[] {
 	const params = convertAnthropicMessages(messages, model, false);

@@ -323,11 +323,11 @@ jeopi --model gpt-5 --smol gemini-2.5-flash
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.6.23]** (2026-11-13) — Updated interrupted-turn regression coverage to preserve native thinking in session history without copying it into hidden plaintext context for official Anthropic requests.
 - **[16.6.22]** (2026-11-13) — Prevented legacy interrupted private reasoning from entering official Anthropic main and side requests. Unrepairable `reasoning_extraction` refusals now retain their original diagnostic and stop…
 - **[16.6.18]** (2026-11-03) — Messenger requests now show a single refreshable progress line in Telegram topics and Slack threads as well as Discord threads, and remove it when the turn finishes.
 - **[16.6.17]** (2026-11-03) — New messenger sessions use the configured default model, while resumed sessions retain their previous model.
 - **[16.6.15]** (2026-11-02) — `jeopi messenger setup --config <file> [--service]` sets up a Discord bot from its token: it verifies the token, enables the Message Content Intent through the API when allowed, allowlists the…
-- **[16.6.14]** (2026-10-30) — `jeopi messenger run` gives every conversation (a Discord request thread or DM, a Telegram chat or topic, a Slack thread) its own jeopi session process, so separate conversations are answered…
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->

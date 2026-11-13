@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.23] - 2026-11-13
+
 ### Fixed
 
 - Updated interrupted-turn regression coverage to preserve native thinking in session history without copying it into hidden plaintext context for official Anthropic requests.
