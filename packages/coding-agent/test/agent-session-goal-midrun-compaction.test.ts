@@ -63,11 +63,12 @@ describe("AgentSession mid-run threshold compaction", () => {
 
 	async function createHarness(
 		settingsOverride: Record<string, unknown> = {},
-		options: { extensionRunner?: ExtensionRunner } = {},
+		options: { extensionRunner?: ExtensionRunner; toolOutput?: string } = {},
 	): Promise<{
 		session: AgentSession;
 		observedContexts: string[][];
 		sessionManager: SessionManager;
+		modelRegistry: ModelRegistry;
 	}> {
 		const observedContexts: string[][] = [];
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
@@ -95,7 +96,7 @@ describe("AgentSession mid-run threshold compaction", () => {
 			label: "Bash",
 			description: "Mock bash tool",
 			parameters: type({}),
-			execute: async () => ({ content: [{ type: "text" as const, text: "tool output" }] }),
+			execute: async () => ({ content: [{ type: "text" as const, text: options.toolOutput ?? "tool output" }] }),
 		};
 
 		let call = 0;
@@ -152,7 +153,7 @@ describe("AgentSession mid-run threshold compaction", () => {
 			await session.dispose();
 			authStorage.close();
 		});
-		return { session, sessionManager, observedContexts };
+		return { session, sessionManager, observedContexts, modelRegistry };
 	}
 
 	function mockCompaction(summary: string) {
@@ -164,6 +165,100 @@ describe("AgentSession mid-run threshold compaction", () => {
 			details: {},
 		}));
 	}
+
+	async function createCompactionRunner(onCompact?: () => void) {
+		const runtime = new ExtensionRuntime();
+		const extension = await loadExtensionFromFactory(
+			pi => {
+				pi.on("session_before_compact", event => {
+					onCompact?.();
+					return { compaction: {
+						summary: "COMPACTED",
+						firstKeptEntryId: event.preparation.firstKeptEntryId,
+						tokensBefore: event.preparation.tokensBefore,
+						details: {},
+					} };
+				});
+			},
+			tempDir.path(), new EventBus(), runtime, "compaction-fixture",
+		);
+		const auth = await AuthStorage.create(path.join(tempDir.path(), "extension-auth.db"));
+		cleanups.push(async () => auth.close());
+		return new ExtensionRunner([extension], runtime, tempDir.path(), SessionManager.inMemory(), new ModelRegistry(auth));
+	}
+
+	async function createCancelCompactionRunner() {
+		const runtime = new ExtensionRuntime();
+		const extension = await loadExtensionFromFactory(
+			pi => {
+				pi.on("session_before_compact", () => ({ cancel: true }));
+			},
+			tempDir.path(),
+			new EventBus(),
+			runtime,
+			"compaction-cancel-fixture",
+		);
+		const auth = await AuthStorage.create(path.join(tempDir.path(), `extension-auth-cancel-${cleanups.length}.db`));
+		cleanups.push(async () => auth.close());
+		return new ExtensionRunner([extension], runtime, tempDir.path(), SessionManager.inMemory(), new ModelRegistry(auth));
+	}
+
+	it("pauses before another provider call when a retained tool result leaves no headroom", async () => {
+		let session: AgentSession;
+		const runner = await createCompactionRunner();
+		const harness = await createHarness({}, { extensionRunner: runner, toolOutput: "oversized output ".repeat(3000) });
+		({ session } = harness);
+		const { observedContexts } = harness;
+		const notices: string[] = [];
+		let queued = false;
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+			if (event.type === "auto_compaction_start" && !queued) {
+				queued = true;
+				session.agent.steer({ role: "user", content: "queued steering", timestamp: Date.now() });
+				session.agent.followUp({ role: "user", content: "queued follow-up", timestamp: Date.now() });
+			}
+		});
+		await session.prompt("work on the release");
+		expect(notices.some(message => message.includes("Compaction freed too little context"))).toBe(true);
+		expect(observedContexts).toHaveLength(1);
+		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain("queued steering");
+		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain("queued follow-up");
+		const history = session.agent.state.messages.map(message => JSON.stringify(message));
+		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+		await session.prompt("new user request", { skipCompactionCheck: true });
+		expect(observedContexts[1].join("\n")).toContain("new user request");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued steering");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued follow-up");
+	});
+
+	it("continues with paired tool messages when compaction leaves headroom", async () => {
+		const runner = await createCompactionRunner();
+		const { session, observedContexts } = await createHarness({}, { extensionRunner: runner });
+		await session.prompt("work on the release");
+		expect(observedContexts).toHaveLength(2);
+		const context = observedContexts[1];
+		expect(context.join("\n")).toContain("COMPACTED");
+		const call = context.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = context.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+	});
+
+	it("does not issue another provider request after cancellation during mid-run compaction", async () => {
+		let session: AgentSession;
+		let cancellation: Promise<void> | undefined;
+		const runner = await createCompactionRunner(() => { cancellation = session.abort(); });
+		const harness = await createHarness({}, { extensionRunner: runner });
+		({ session } = harness);
+		await session.prompt("work on the release");
+		expect(cancellation).toBeDefined();
+		await cancellation;
+		expect(harness.observedContexts).toHaveLength(1);
+	});
 
 	it("compacts in place between tool-call turns outside goal mode", async () => {
 		const { session, observedContexts } = await createHarness();
@@ -321,5 +416,232 @@ describe("AgentSession mid-run threshold compaction", () => {
 		await session.prompt("work on the release");
 
 		expect(compactSpy).not.toHaveBeenCalled();
+	});
+
+	it("pauses mid-run and preserves queued steering when no compaction model is available and no headroom remains", async () => {
+		const { session, observedContexts, modelRegistry } = await createHarness();
+		vi.spyOn(modelRegistry, "getAvailable").mockReturnValue([]);
+		const compactionEnds: Array<{ skipped?: boolean; aborted?: boolean; errorMessage?: string }> = [];
+		let queued = false;
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_start" && !queued) {
+				queued = true;
+				session.agent.steer({ role: "user", content: "queued steering", timestamp: Date.now() });
+				session.agent.followUp({ role: "user", content: "queued follow-up", timestamp: Date.now() });
+			}
+			if (event.type === "auto_compaction_end") {
+				compactionEnds.push({
+					skipped: event.skipped,
+					aborted: event.aborted,
+					errorMessage: event.errorMessage,
+				});
+			}
+		});
+
+		await session.prompt("work on the release");
+
+		expect(compactionEnds).toEqual([expect.objectContaining({ skipped: true })]);
+		expect(observedContexts).toHaveLength(1);
+		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
+			"queued steering",
+		);
+		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
+			"queued follow-up",
+		);
+		const history = session.agent.state.messages.map(message => JSON.stringify(message));
+		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+
+		await session.prompt("new user request", { skipCompactionCheck: true });
+		expect(observedContexts[1].join("\n")).toContain("new user request");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued steering");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued follow-up");
+	});
+
+	it("pauses mid-run and preserves queued steering when summarizer fails and no headroom remains", async () => {
+		const { session, observedContexts } = await createHarness();
+		const compactSpy = vi.spyOn(compactionModule, "compact").mockRejectedValue(new Error("summarizer unavailable"));
+		const compactionEnds: Array<{ skipped?: boolean; aborted?: boolean; errorMessage?: string }> = [];
+		let queued = false;
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_start" && !queued) {
+				queued = true;
+				session.agent.steer({ role: "user", content: "queued steering", timestamp: Date.now() });
+				session.agent.followUp({ role: "user", content: "queued follow-up", timestamp: Date.now() });
+			}
+			if (event.type === "auto_compaction_end") {
+				compactionEnds.push({
+					skipped: event.skipped,
+					aborted: event.aborted,
+					errorMessage: event.errorMessage,
+				});
+			}
+		});
+
+		await session.prompt("work on the release");
+
+		expect(compactSpy).toHaveBeenCalled();
+		expect(compactionEnds).toEqual([
+			expect.objectContaining({ errorMessage: expect.stringContaining("summarizer unavailable") }),
+		]);
+		expect(observedContexts).toHaveLength(1);
+		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
+			"queued steering",
+		);
+		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
+			"queued follow-up",
+		);
+		const history = session.agent.state.messages.map(message => JSON.stringify(message));
+		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+
+		await session.prompt("new user request", { skipCompactionCheck: true });
+		expect(observedContexts[1].join("\n")).toContain("new user request");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued steering");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued follow-up");
+	});
+
+	it("pauses mid-run and preserves queued steering when hook cancels compaction and no headroom remains", async () => {
+		const runner = await createCancelCompactionRunner();
+		const { session, observedContexts } = await createHarness({}, { extensionRunner: runner });
+		const compactionEnds: Array<{ skipped?: boolean; aborted?: boolean; errorMessage?: string }> = [];
+		let queued = false;
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_start" && !queued) {
+				queued = true;
+				session.agent.steer({ role: "user", content: "queued steering", timestamp: Date.now() });
+				session.agent.followUp({ role: "user", content: "queued follow-up", timestamp: Date.now() });
+			}
+			if (event.type === "auto_compaction_end") {
+				compactionEnds.push({
+					skipped: event.skipped,
+					aborted: event.aborted,
+					errorMessage: event.errorMessage,
+				});
+			}
+		});
+
+		await session.prompt("work on the release");
+
+		expect(compactionEnds).toEqual([expect.objectContaining({ aborted: true })]);
+		expect(observedContexts).toHaveLength(1);
+		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
+			"queued steering",
+		);
+		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
+			"queued follow-up",
+		);
+		const history = session.agent.state.messages.map(message => JSON.stringify(message));
+		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+
+		await session.prompt("new user request", { skipCompactionCheck: true });
+		expect(observedContexts[1].join("\n")).toContain("new user request");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued steering");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued follow-up");
+	});
+
+	it("pauses mid-run and preserves queued steering when shake fails and no headroom remains", async () => {
+		const { session, observedContexts } = await createHarness({ "compaction.strategy": "shake" });
+		const shakeSpy = vi.spyOn(session, "shake").mockRejectedValue(new Error("shake unavailable"));
+		const compactionEnds: Array<{ skipped?: boolean; aborted?: boolean; errorMessage?: string }> = [];
+		let queued = false;
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_start" && !queued) {
+				queued = true;
+				session.agent.steer({ role: "user", content: "queued steering", timestamp: Date.now() });
+				session.agent.followUp({ role: "user", content: "queued follow-up", timestamp: Date.now() });
+			}
+			if (event.type === "auto_compaction_end") {
+				compactionEnds.push({
+					skipped: event.skipped,
+					aborted: event.aborted,
+					errorMessage: event.errorMessage,
+				});
+			}
+		});
+
+		await session.prompt("work on the release");
+
+		expect(shakeSpy).toHaveBeenCalledTimes(1);
+		expect(compactionEnds).toEqual([
+			expect.objectContaining({ errorMessage: expect.stringContaining("shake unavailable") }),
+		]);
+		expect(observedContexts).toHaveLength(1);
+		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
+			"queued steering",
+		);
+		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
+			"queued follow-up",
+		);
+		const history = session.agent.state.messages.map(message => JSON.stringify(message));
+		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+
+		await session.prompt("new user request", { skipCompactionCheck: true });
+		expect(observedContexts[1].join("\n")).toContain("new user request");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued steering");
+		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued follow-up");
+	});
+
+	it("continues mid-run and delivers queued steering alongside paired tool messages when compaction leaves headroom", async () => {
+		const runner = await createCompactionRunner();
+		const { session, observedContexts } = await createHarness({}, { extensionRunner: runner });
+		let queued = false;
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_start" && !queued) {
+				queued = true;
+				session.agent.steer({ role: "user", content: "queued steering", timestamp: Date.now() });
+			}
+		});
+
+		await session.prompt("work on the release");
+
+		expect(observedContexts).toHaveLength(2);
+		const context = observedContexts[1];
+		expect(context.join("\n")).toContain("COMPACTED");
+		expect(context.join("\n")).toContain("queued steering");
+		const call = context.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = context.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+		expect(session.agent.peekSteeringQueue()).toHaveLength(0);
+	});
+
+	it("continues mid-run and delivers queued steering when shake frees headroom", async () => {
+		const { session, observedContexts } = await createHarness({ "compaction.strategy": "shake" });
+		const shakeSpy = vi.spyOn(session, "shake").mockResolvedValue({
+			mode: "elide",
+			toolResultsDropped: 1,
+			blocksDropped: 0,
+			tokensFreed: 50_000,
+		});
+		let queued = false;
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_start" && !queued) {
+				queued = true;
+				session.agent.steer({ role: "user", content: "queued steering", timestamp: Date.now() });
+			}
+		});
+
+		await session.prompt("work on the release");
+
+		expect(shakeSpy).toHaveBeenCalledTimes(1);
+		expect(observedContexts).toHaveLength(2);
+		const context = observedContexts[1];
+		expect(context.join("\n")).toContain("queued steering");
+		const call = context.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = context.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+		expect(session.agent.peekSteeringQueue()).toHaveLength(0);
 	});
 });

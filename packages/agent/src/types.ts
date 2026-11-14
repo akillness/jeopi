@@ -393,8 +393,9 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * next iteration. `context` carries the just-finished turn; `context.willContinue`
 	 * is true when the current tool-loop batch is continuing without yielding to
 	 * post-turn steering.
+	 * Return `"stop"` to end this run before polling queues or calling the model again.
 	 */
-	onTurnEnd?: (messages: AgentMessage[], signal?: AbortSignal, context?: AgentTurnEndContext) => Promise<void> | void;
+	onTurnEnd?: (messages: AgentMessage[], signal?: AbortSignal, context?: AgentTurnEndContext) => Promise<void | "stop"> | void | "stop";
 
 	/**
 	 * Called once an assistant message is finalized from the model stream, before

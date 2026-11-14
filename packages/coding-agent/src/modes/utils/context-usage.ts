@@ -35,6 +35,10 @@ export interface ContextBreakdown {
 	contextWindow: number;
 	categories: CategoryInfo[];
 	usedTokens: number;
+	providerPromptTokens?: number | null;
+	providerPromptStatus?: "current" | "stale" | "unavailable";
+	contextEstimateKind?: "mixed" | "estimated";
+	estimatedTotalTokens?: number;
 	autoCompactBufferTokens: number;
 	freeTokens: number;
 	/** Estimated snapcompact wire savings; set when requested and a snapcompact.* setting is enabled. */
@@ -131,6 +135,9 @@ export function computeContextBreakdown(
 	let systemContextTokens = 0;
 	let systemPromptTokens = 0;
 	let usedTokens = 0;
+	let providerPromptTokens: number | null = null;
+	let providerPromptStatus: "current" | "stale" | "unavailable" = "unavailable";
+	let contextEstimateKind: "mixed" | "estimated" = "estimated";
 
 	if (breakdown) {
 		messagesTokens = breakdown.messagesTokens;
@@ -139,6 +146,9 @@ export function computeContextBreakdown(
 		systemContextTokens = breakdown.systemContextTokens;
 		systemPromptTokens = breakdown.systemPromptTokens;
 		usedTokens = breakdown.usedTokens;
+		providerPromptTokens = breakdown.providerPromptTokens;
+		providerPromptStatus = breakdown.providerPromptStatus;
+		contextEstimateKind = breakdown.contextEstimateKind;
 	} else {
 		const convo = session.messages;
 		if (convo) {
@@ -154,6 +164,7 @@ export function computeContextBreakdown(
 		usedTokens = skillsTokens + toolsTokens + systemContextTokens + systemPromptTokens + messagesTokens;
 	}
 
+	const estimatedTotalTokens = skillsTokens + toolsTokens + systemContextTokens + systemPromptTokens + messagesTokens;
 	const categories: CategoryInfo[] = [
 		{ id: "systemPrompt", label: "System prompt", tokens: systemPromptTokens, color: "accent", glyph: CELL_FILLED },
 		{ id: "systemTools", label: "System tools", tokens: toolsTokens, color: "warning", glyph: CELL_FILLED },
@@ -213,6 +224,10 @@ export function computeContextBreakdown(
 		contextWindow,
 		categories,
 		usedTokens,
+		providerPromptTokens,
+		providerPromptStatus,
+		contextEstimateKind,
+		estimatedTotalTokens,
 		autoCompactBufferTokens,
 		freeTokens,
 		snapcompact: snapcompactSavings,
@@ -308,13 +323,35 @@ function buildLegendLines(breakdown: ContextBreakdown, theme: typeof Theme): str
 
 	lines.push(theme.bold(`${modelName}`) + theme.fg("dim", ` (${windowLabel} context)`));
 	lines.push(theme.fg("muted", `${modelId}[${windowLabel}]`));
+	const usedKindSuffix =
+		breakdown.contextEstimateKind === "mixed"
+			? " · provider + est. tail"
+			: breakdown.contextEstimateKind === "estimated"
+				? " · estimated"
+				: "";
 	lines.push(
 		`${theme.bold(formatNumber(usedTokens))}${theme.fg("dim", `/${windowLabel} tokens`)}` +
-			theme.fg("muted", ` (${percentString(usedTokens, contextWindow)})`),
+			theme.fg("muted", ` (${percentString(usedTokens, contextWindow)}${usedKindSuffix})`),
 	);
+	if (breakdown.providerPromptStatus !== undefined) {
+		if (breakdown.providerPromptStatus === "unavailable" || breakdown.providerPromptTokens == null) {
+			lines.push(`${theme.fg("muted", "Provider prompt input:")} ${theme.fg("dim", "unavailable")}`);
+		} else {
+			const statusLabel = breakdown.providerPromptStatus === "stale" ? " (stale)" : "";
+			lines.push(
+				`${theme.fg("muted", `Provider prompt input${statusLabel}:`)} ${theme.bold(formatNumber(breakdown.providerPromptTokens))} ${theme.fg(
+					"dim",
+					`tokens (${percentString(breakdown.providerPromptTokens, contextWindow)})`,
+				)}`,
+			);
+		}
+	}
 	lines.push("");
-	lines.push(theme.fg("muted", "Estimated usage by category"));
-
+	const estHeader =
+		breakdown.estimatedTotalTokens !== undefined
+			? `Estimated usage by category (${formatNumber(breakdown.estimatedTotalTokens)} tokens, bytes/4)`
+			: "Estimated usage by category";
+	lines.push(theme.fg("muted", estHeader));
 	for (const category of categories) {
 		const dot = theme.fg(category.color, category.glyph);
 		const label = category.label;

@@ -98,6 +98,11 @@ async function saveBashOriginalArtifact(session: ToolSession, originalText: stri
 		const alloc = await session.allocateOutputArtifact?.("bash-original");
 		if (!alloc?.path || !alloc.id) return undefined;
 		await Bun.write(alloc.path, originalText);
+		const readback = await Bun.file(alloc.path).text();
+		if (readback !== originalText) {
+			await fs.promises.unlink(alloc.path).catch(() => {});
+			return undefined;
+		}
 		return alloc.id;
 	} catch {
 		return undefined;

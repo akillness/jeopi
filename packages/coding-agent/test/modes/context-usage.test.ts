@@ -13,6 +13,8 @@ import {
 	estimateToolSchemaTokens,
 	renderContextUsage,
 } from "jeopi-cli/modes/utils/context-usage";
+import { buildContextReportText } from "jeopi-cli/slash-commands/helpers/context-report";
+import type { SlashCommandRuntime } from "jeopi-cli/slash-commands/types";
 
 describe("estimateToolSchemaTokens", () => {
 	it("counts arktype tool schemas by their wire JSON Schema, not arktype internals", () => {
@@ -84,5 +86,143 @@ describe("renderContextUsage snapcompact section", () => {
 	it("omits the section entirely when no snapcompact setting is on", () => {
 		const output = renderContextUsage(breakdownWith(undefined), themeStub);
 		expect(output).not.toContain("Snapcompact");
+	});
+});
+
+describe("Step 3 provider vs estimated context rendering", () => {
+	const themeStub = {
+		fg: (_color: string, text: string) => text,
+		bold: (text: string) => text,
+	} as never;
+
+	function makePanelBreakdown(overrides: Partial<ContextBreakdown> = {}): ContextBreakdown {
+		return {
+			model: { id: "test-model", name: "Test Model", contextWindow: 200000 } as never,
+			contextWindow: 200000,
+			categories: [
+				{ id: "systemPrompt", label: "System prompt", tokens: 1200, color: "accent", glyph: "⛁" },
+				{ id: "messages", label: "Messages", tokens: 800, color: "userMessageText", glyph: "⛃" },
+			],
+			usedTokens: 2500,
+			providerPromptTokens: 2500,
+			providerPromptStatus: "current",
+			contextEstimateKind: "mixed",
+			estimatedTotalTokens: 2000,
+			autoCompactBufferTokens: 0,
+			freeTokens: 197500,
+			...overrides,
+		};
+	}
+
+	it("renders current, stale, and unavailable provider prompt status separately from estimated categories", () => {
+		const current = renderContextUsage(makePanelBreakdown(), themeStub);
+		expect(current).toContain("Provider prompt input:");
+		expect(current).toContain("2.5K");
+		expect(current).toContain("Estimated usage by category (2K tokens, bytes/4)");
+		expect(current).toContain("provider + est. tail");
+
+		const stale = renderContextUsage(
+			makePanelBreakdown({
+				providerPromptTokens: 1400,
+				providerPromptStatus: "stale",
+				contextEstimateKind: "estimated",
+				usedTokens: 2000,
+			}),
+			themeStub,
+		);
+		expect(stale).toContain("Provider prompt input (stale):");
+		expect(stale).toContain("1.4K");
+		expect(stale).toContain("Estimated usage by category (2K tokens, bytes/4)");
+
+		const unavailable = renderContextUsage(
+			makePanelBreakdown({
+				providerPromptTokens: null,
+				providerPromptStatus: "unavailable",
+				contextEstimateKind: "estimated",
+				usedTokens: 2000,
+			}),
+			themeStub,
+		);
+		expect(unavailable).toContain("Provider prompt input: unavailable");
+		expect(unavailable).toContain("Estimated usage by category (2K tokens, bytes/4)");
+	});
+
+	it("reports provider prompt input and local bytes/4 categories separately in buildContextReportText", () => {
+		const makeRuntime = (overrides: Record<string, unknown>, modelContextWindow = 10000): SlashCommandRuntime =>
+			({
+				session: {
+					model: { id: "test-model", name: "Test Model", contextWindow: modelContextWindow },
+					systemPrompt: ["system"],
+					agent: { state: { tools: [] } },
+					skills: [],
+					messages: [],
+					settings: {
+						getGroup: () => ({ enabled: false, strategy: "off", keepRecentTokens: 1000 }),
+						get: (key: string) => (key === "snapcompact.systemPrompt" ? "none" : false),
+					},
+					getContextBreakdown: () => ({
+						contextWindow: 10000,
+						anchored: true,
+						usedTokens: 3200,
+						providerPromptTokens: 3200,
+						providerPromptStatus: "current",
+						contextEstimateKind: "mixed",
+						systemPromptTokens: 300,
+						systemToolsTokens: 0,
+						systemContextTokens: 0,
+						skillsTokens: 0,
+						messagesTokens: 900,
+						...overrides,
+					}),
+				},
+			}) as unknown as SlashCommandRuntime;
+
+		const currentReport = buildContextReportText(makeRuntime({}));
+		expect(currentReport).toContain("Provider prompt input: 3200 tokens (current)");
+		expect(currentReport).toContain("Estimated categories (local bytes/4): 1200 tokens");
+		expect(currentReport).not.toContain("4400");
+
+		const staleReport = buildContextReportText(
+			makeRuntime({
+				anchored: false,
+				providerPromptTokens: 3200,
+				providerPromptStatus: "stale",
+				contextEstimateKind: "estimated",
+				usedTokens: 1200,
+			}),
+		);
+		expect(staleReport).toContain("Provider prompt input: 3200 tokens (stale)");
+		expect(staleReport).toContain("Estimated categories (local bytes/4): 1200 tokens");
+
+		const unavailableReport = buildContextReportText(
+			makeRuntime({
+				anchored: false,
+				providerPromptTokens: null,
+				providerPromptStatus: "unavailable",
+				contextEstimateKind: "estimated",
+				usedTokens: 1200,
+			}),
+		);
+		expect(unavailableReport).toContain("Provider prompt input: unavailable");
+		expect(unavailableReport).toContain("Estimated categories (local bytes/4): 1200 tokens");
+
+		const noModelReport = buildContextReportText(makeRuntime({ contextWindow: 0 }, 0));
+		expect(noModelReport).toBe("Context usage is unavailable: no model is selected for this session.");
+
+		const fallbackRuntime = {
+			session: {
+				model: { id: "test-model", name: "Test Model", contextWindow: 10000 },
+				getContextUsage: () => ({
+					tokens: 1200,
+					contextWindow: 10000,
+					percent: 12,
+					providerPromptTokens: 3200,
+					providerPromptStatus: "stale" as const,
+					estimateKind: "estimated" as const,
+				}),
+			},
+		} as unknown as SlashCommandRuntime;
+		const fallbackReport = buildContextReportText(fallbackRuntime);
+		expect(fallbackReport).toContain("Provider prompt input: 3200 (stale)");
 	});
 });

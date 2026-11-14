@@ -1,4 +1,5 @@
 import { type } from "arktype";
+import * as fs from "node:fs/promises";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "jeopi-agent-core";
 import type { ToolExample } from "jeopi-ai";
 import { prompt, untilAborted } from "jeopi-utils";
@@ -357,6 +358,11 @@ async function saveBrowserOutputArtifact(session: ToolSession, fullText: string)
 		const alloc = await session.allocateOutputArtifact?.("browser-original");
 		if (!alloc?.path || !alloc.id) return undefined;
 		await Bun.write(alloc.path, fullText);
+		const readback = await Bun.file(alloc.path).text();
+		if (readback !== fullText) {
+			await fs.unlink(alloc.path).catch(() => {});
+			return undefined;
+		}
 		return alloc.id;
 	} catch {
 		return undefined;

@@ -3,12 +3,14 @@ import * as path from "node:path";
 import { Agent, type AgentMessage } from "jeopi-agent-core";
 import { estimateTokens } from "jeopi-agent-core/compaction/compaction";
 import type { AssistantMessage, Message, Model } from "jeopi-ai";
-import { createMockModel } from "jeopi-ai/providers/mock";
+import { z } from "jeopi-ai";
+import { createMockModel, type MockModel } from "jeopi-ai/providers/mock";
 import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { Settings } from "jeopi-cli/config/settings";
 import { StatusLineComponent } from "jeopi-cli/modes/components/status-line";
 import { initTheme } from "jeopi-cli/modes/theme/theme";
-import { computeContextBreakdown } from "jeopi-cli/modes/utils/context-usage";
+import type { Skill } from "jeopi-cli/extensibility/skills";
+import { computeContextBreakdown, computeNonMessageTokens, renderContextUsage } from "jeopi-cli/modes/utils/context-usage";
 import { AgentSession } from "jeopi-cli/session/agent-session";
 import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import { SessionManager } from "jeopi-cli/session/session-manager";
@@ -18,7 +20,7 @@ describe("Context usage consolidation", () => {
 	let sharedDir: TempDir;
 	let authStorage: AuthStorage;
 	let modelRegistry: ModelRegistry;
-	let mockModel: Model;
+	let mockModel: MockModel;
 
 	beforeAll(async () => {
 		sharedDir = TempDir.createSync("@pi-context-shared-");
@@ -74,9 +76,7 @@ describe("Context usage consolidation", () => {
 				tools: [],
 				messages,
 			},
-			streamFn: (mockModel as unknown as { stream: unknown }).stream as unknown as NonNullable<
-				ConstructorParameters<typeof Agent>[0]
-			>["streamFn"],
+			streamFn: mockModel.stream,
 		});
 
 		const session = new AgentSession({
@@ -547,5 +547,528 @@ describe("Context usage consolidation", () => {
 		expect(typeof cu?.percent).toBe("number");
 
 		await tempDir.remove();
+	});
+	it("separates provider prompt input from estimated current categories and pending tail", async () => {
+		const tempDir = TempDir.createSync("@context-measurements-");
+		try {
+			const { session, sessionManager, agent } = createSession(tempDir);
+			const user = { role: "user", content: "A sufficiently long question about the project", timestamp: 1000 } as Message;
+			const assistant = {
+				role: "assistant", content: [{ type: "text", text: "answer" }], api: mockModel.api,
+				provider: mockModel.provider, model: mockModel.id, stopReason: "stop", timestamp: 2000,
+				usage: { input: 100, output: 20, cacheRead: 30, cacheWrite: 20, totalTokens: 170,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+			} as AssistantMessage;
+			sessionManager.appendMessage(user);
+			sessionManager.appendMessage(assistant);
+			syncSession(session, agent);
+			const pending = { role: "user", content: "a pending tail not yet sent".repeat(10), timestamp: 3000 } as Message;
+			const before = session.getContextBreakdown()!;
+			const after = session.getContextBreakdown({ pendingMessages: [pending] })!;
+			expect(before.providerPromptTokens).toBe(150);
+			expect(before.providerPromptStatus).toBe("current");
+			expect(after.providerPromptTokens).toBe(150);
+			expect(after.usedTokens - before.usedTokens).toBe(estimateTokens(pending));
+			expect(before.messagesTokens).toBe(estimateTokens(user) + estimateTokens(assistant));
+			const panel = computeContextBreakdown(session);
+			expect(panel.providerPromptTokens).toBe(150);
+			expect(panel.categories.find(category => category.id === "messages")?.tokens).toBe(before.messagesTokens);
+		} finally {
+			await tempDir.remove();
+		}
+	});
+
+	it("distinguishes absent provider usage from a successful zero-token report", async () => {
+		const tempDir = TempDir.createSync("@context-zero-");
+		try {
+			const { session, sessionManager, agent } = createSession(tempDir);
+			expect(session.getContextBreakdown()?.providerPromptTokens).toBeNull();
+			expect(session.getContextBreakdown()?.providerPromptStatus).toBe("unavailable");
+			sessionManager.appendMessage({
+				role: "assistant", content: [{ type: "text", text: "empty report" }], api: mockModel.api,
+				provider: mockModel.provider, model: mockModel.id, stopReason: "stop", timestamp: 1000,
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+			} as AssistantMessage);
+			syncSession(session, agent);
+			expect(session.getContextBreakdown()?.providerPromptTokens).toBe(0);
+			expect(session.getContextBreakdown()?.providerPromptStatus).toBe("current");
+		} finally {
+			await tempDir.remove();
+		}
+	});
+
+	it("marks an earlier provider measurement stale after compaction or model change and ignores failed records", async () => {
+		const tempDir = TempDir.createSync("@context-stale-");
+		try {
+			const { session, sessionManager, agent } = createSession(tempDir);
+			const response = (stopReason: AssistantMessage["stopReason"], input: number, timestamp: number) => ({
+				role: "assistant", content: [{ type: "text", text: "response" }], api: mockModel.api,
+				provider: mockModel.provider, model: mockModel.id, stopReason, timestamp,
+				usage: { input, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: input,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+			}) as AssistantMessage;
+			const anchor = sessionManager.appendMessage(response("stop", 400, 1000));
+			sessionManager.appendMessage(response("aborted", 900, 2000));
+			sessionManager.appendMessage(response("error", 800, 3000));
+			syncSession(session, agent);
+			expect(session.getContextBreakdown()?.providerPromptTokens).toBe(400);
+			agent.setModel({ ...mockModel, id: "different-model" });
+			expect(session.getContextBreakdown()?.providerPromptTokens).toBe(400);
+			expect(session.getContextBreakdown()?.providerPromptStatus).toBe("stale");
+			agent.setModel(mockModel);
+			sessionManager.appendCompaction("compact summary", "compact summary", anchor, 50);
+			syncSession(session, agent);
+			expect(session.getContextBreakdown()?.providerPromptTokens).toBe(400);
+			expect(session.getContextBreakdown()?.providerPromptStatus).toBe("stale");
+		} finally {
+			await tempDir.remove();
+		}
+	});
+
+	it("separates small or large provider prompt measurements from non-empty estimated categories and getContextUsage metadata", async () => {
+		const tempDir = TempDir.createSync("@context-separation-");
+		try {
+			const probeSchema = z.object({ query: z.string(), limit: z.number().optional() });
+			const probeTool = {
+				name: "probe_search",
+				label: "Probe Search",
+				description: "Search project symbols and documentation entries",
+				parameters: probeSchema,
+				async execute() {
+					return { content: [{ type: "text" as const, text: "ok" }] };
+				},
+			};
+			const skills: Skill[] = [
+				{
+					name: "context-probe-skill",
+					description: "Detailed skill description used solely for local non-message category estimation",
+					filePath: path.join(tempDir.path(), "SKILL.md"),
+					baseDir: tempDir.path(),
+					source: "test",
+				},
+			];
+			const sessionManager = SessionManager.create(tempDir.path(), tempDir.path());
+			const agent = new Agent({
+				getApiKey: () => "test-key",
+				initialState: {
+					model: mockModel,
+					systemPrompt: [
+						"Base system prompt with <skills>context-probe-skill</skills> instructions.",
+						"Additional dynamic system context block for repository state.",
+					],
+					tools: [probeTool],
+					messages: [],
+				},
+				streamFn: mockModel.stream,
+			});
+			const session = new AgentSession({
+				agent,
+				sessionManager,
+				settings: Settings.isolated({
+					"compaction.enabled": true,
+					"compaction.autoContinue": false,
+					"compaction.strategy": "context-full",
+					"compaction.thresholdTokens": 8000,
+				}),
+				modelRegistry,
+				skills,
+			});
+
+			const user = { role: "user", content: "Explain the context separation contract.", timestamp: 1000 } as Message;
+			// Intentionally smaller than non-message category estimates: old `usedTokens - categoryNonMessageTokens`
+			// would clamp messagesTokens to 0.
+			const smallAssistant: AssistantMessage = {
+				role: "assistant",
+				content: [{ type: "text", text: "short reply" }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason: "stop",
+				timestamp: 2000,
+				usage: {
+					input: 12,
+					output: 8,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 20,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+			};
+			sessionManager.appendMessage(user);
+			sessionManager.appendMessage(smallAssistant);
+			syncSession(session, agent);
+
+			const expectedMessagesTokens = estimateTokens(user) + estimateTokens(smallAssistant);
+			const smallBreakdown = session.getContextBreakdown()!;
+			expect(smallBreakdown.providerPromptTokens).toBe(12);
+			expect(smallBreakdown.providerPromptStatus).toBe("current");
+			expect(smallBreakdown.contextEstimateKind).toBe("mixed");
+			expect(smallBreakdown.messagesTokens).toBe(expectedMessagesTokens);
+			expect(smallBreakdown.systemToolsTokens).toBeGreaterThan(0);
+			expect(smallBreakdown.systemContextTokens).toBeGreaterThan(0);
+			expect(smallBreakdown.skillsTokens).toBeGreaterThan(0);
+
+			const smallUsage = session.getContextUsage()!;
+			expect(smallUsage.providerPromptTokens).toBe(12);
+			expect(smallUsage.providerPromptStatus).toBe("current");
+			expect(smallUsage.estimateKind).toBe("mixed");
+
+			// Provider measurement much larger than local estimates must not inflate messagesTokens either.
+			const largeAssistant: AssistantMessage = {
+				role: "assistant",
+				content: [{ type: "text", text: "ok" }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason: "stop",
+				timestamp: 3000,
+				usage: {
+					input: 5000,
+					output: 10,
+					cacheRead: 500,
+					cacheWrite: 0,
+					totalTokens: 5510,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+			};
+			sessionManager.appendMessage(largeAssistant);
+			syncSession(session, agent);
+
+			const largeBreakdown = session.getContextBreakdown()!;
+			expect(largeBreakdown.providerPromptTokens).toBe(5500);
+			expect(largeBreakdown.providerPromptStatus).toBe("current");
+			expect(largeBreakdown.contextEstimateKind).toBe("mixed");
+			expect(largeBreakdown.messagesTokens).toBe(expectedMessagesTokens + estimateTokens(largeAssistant));
+			const panel = computeContextBreakdown(session);
+			expect(panel.providerPromptTokens).toBe(5500);
+			expect(panel.providerPromptStatus).toBe("current");
+			expect(panel.contextEstimateKind).toBe("mixed");
+			expect(panel.categories.find(category => category.id === "messages")?.tokens).toBe(largeBreakdown.messagesTokens);
+		} finally {
+			await tempDir.remove();
+		}
+	});
+
+	it("never double-counts nonMessageTokens or output tokens on top of provider promptTokens", async () => {
+		const tempDir = TempDir.createSync("@context-no-double-count-");
+		try {
+			const firstSchema = z.object({ path: z.string() });
+			const firstTool = {
+				name: "read_file",
+				label: "Read File",
+				description: "Read a file from disk",
+				parameters: firstSchema,
+				async execute() {
+					return { content: [{ type: "text" as const, text: "ok" }] };
+				},
+			};
+			const { session, sessionManager, agent } = createSession(tempDir);
+			agent.setSystemPrompt([
+				"Detailed system prompt instructions for engineering tasks.",
+				"Repository context metadata.",
+			]);
+			agent.setTools([firstTool]);
+
+			const initialNonMessage = computeNonMessageTokens(session);
+			expect(initialNonMessage).toBeGreaterThan(20);
+
+			const user = { role: "user", content: "Inspect the file.", timestamp: 1000 } as Message;
+			const assistant: AssistantMessage = {
+				role: "assistant",
+				content: [{ type: "text", text: "Done inspecting." }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason: "stop",
+				timestamp: 2000,
+				usage: {
+					input: 700,
+					output: 150,
+					cacheRead: 200,
+					cacheWrite: 100,
+					totalTokens: 1150,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				contextSnapshot: {
+					promptTokens: 1000,
+					nonMessageTokens: initialNonMessage,
+				},
+			};
+			sessionManager.appendMessage(user);
+			sessionManager.appendMessage(assistant);
+			syncSession(session, agent);
+
+			const breakdown = session.getContextBreakdown()!;
+			// promptTokens (1000 = 700 + 200 + 100) already includes system prompt + tools + messages up to anchor.
+			expect(breakdown.providerPromptTokens).toBe(1000);
+			expect(breakdown.usedTokens).toBe(1000);
+
+			// Adding a new tool adds ONLY the delta of nonMessageTokens to usedTokens, and never mutates providerPromptTokens.
+			const secondSchema = z.object({ pattern: z.string(), limit: z.number() });
+			const secondTool = {
+				name: "grep_files",
+				label: "Grep Files",
+				description: "Search across files with regex patterns",
+				parameters: secondSchema,
+				async execute() {
+					return { content: [{ type: "text" as const, text: "ok" }] };
+				},
+			};
+			agent.setTools([firstTool, secondTool]);
+			const expandedNonMessage = computeNonMessageTokens(session);
+			expect(expandedNonMessage).toBeGreaterThan(initialNonMessage);
+
+			const afterToolAdd = session.getContextBreakdown()!;
+			expect(afterToolAdd.providerPromptTokens).toBe(1000);
+			expect(afterToolAdd.usedTokens).toBe(1000 + (expandedNonMessage - initialNonMessage));
+
+			const panel = computeContextBreakdown(session);
+			expect(panel.providerPromptTokens).toBe(1000);
+			expect(panel.usedTokens).toBe(afterToolAdd.usedTokens);
+		} finally {
+			await tempDir.remove();
+		}
+	});
+
+	it("re-anchors after compaction and ignores post-compaction aborted/error records", async () => {
+		const tempDir = TempDir.createSync("@context-compaction-reanchor-");
+		try {
+			const { session, sessionManager, agent } = createSession(tempDir);
+			const makeAssistant = (
+				stopReason: AssistantMessage["stopReason"],
+				input: number,
+				timestamp: number,
+			): AssistantMessage => ({
+				role: "assistant",
+				content: [{ type: "text", text: `reply-${timestamp}` }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason,
+				timestamp,
+				usage: {
+					input,
+					output: 10,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: input + 10,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+			});
+
+			const anchorId = sessionManager.appendMessage(makeAssistant("stop", 1200, 1000));
+			sessionManager.appendCompaction("compacted summary", "compacted summary", anchorId, 60);
+			syncSession(session, agent);
+
+			const rightAfterCompaction = session.getContextBreakdown()!;
+			expect(rightAfterCompaction.anchored).toBe(false);
+			expect(rightAfterCompaction.providerPromptTokens).toBe(1200);
+			expect(rightAfterCompaction.providerPromptStatus).toBe("stale");
+			expect(rightAfterCompaction.contextEstimateKind).toBe("estimated");
+			expect(rightAfterCompaction.usedTokens).toBe(
+				computeNonMessageTokens(session) + rightAfterCompaction.messagesTokens,
+			);
+
+			// Aborted/error turns after compaction must not clear stale status or steal the anchor.
+			sessionManager.appendMessage({ role: "user", content: "after compact", timestamp: 2000 } as Message);
+			sessionManager.appendMessage(makeAssistant("aborted", 9999, 2500));
+			sessionManager.appendMessage(makeAssistant("error", 8888, 2600));
+			syncSession(session, agent);
+
+			const afterPostCompactAbort = session.getContextBreakdown()!;
+			expect(afterPostCompactAbort.anchored).toBe(false);
+			expect(afterPostCompactAbort.providerPromptTokens).toBe(1200);
+			expect(afterPostCompactAbort.providerPromptStatus).toBe("stale");
+			expect(afterPostCompactAbort.contextEstimateKind).toBe("estimated");
+
+			// A successful post-compaction assistant turn establishes a fresh current anchor.
+			sessionManager.appendMessage(makeAssistant("stop", 240, 3000));
+			syncSession(session, agent);
+
+			const reanchored = session.getContextBreakdown()!;
+			expect(reanchored.anchored).toBe(true);
+			expect(reanchored.providerPromptTokens).toBe(240);
+			expect(reanchored.providerPromptStatus).toBe("current");
+			expect(reanchored.contextEstimateKind).toBe("mixed");
+			expect(reanchored.usedTokens).toBe(240);
+		} finally {
+			await tempDir.remove();
+		}
+	});
+
+	it("handles session.setModel switches, rejected switches, and re-anchoring on the new model", async () => {
+		const tempDir = TempDir.createSync("@context-model-switch-");
+		try {
+			const { session, sessionManager, agent } = createSession(tempDir);
+			const user = { role: "user", content: "hello", timestamp: 1000 } as Message;
+			const firstAssistant: AssistantMessage = {
+				role: "assistant",
+				content: [{ type: "text", text: "first model reply" }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason: "stop",
+				timestamp: 2000,
+				usage: {
+					input: 450,
+					output: 15,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 465,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+			};
+			sessionManager.appendMessage(user);
+			sessionManager.appendMessage(firstAssistant);
+			syncSession(session, agent);
+
+			expect(session.getContextBreakdown()?.providerPromptStatus).toBe("current");
+
+			// Rejected switch (target window smaller than currentContextTokens) must leave model & status current.
+			const tinyModel: Model = { ...mockModel, id: "gpt-tiny", contextWindow: 100 };
+			const rejected = await session.setModel(tinyModel, "default", { currentContextTokens: 450 });
+			expect(rejected.switched).toBe(false);
+			expect(session.getContextBreakdown()?.providerPromptStatus).toBe("current");
+			expect(session.getContextBreakdown()?.providerPromptTokens).toBe(450);
+
+			// Successful switch marks previous provider measurement stale and falls back to full local estimation.
+			const switchedModel: Model = { ...mockModel, id: "gpt-switched", contextWindow: 200_000 };
+			const switched = await session.setModel(switchedModel);
+			expect(switched.switched).toBe(true);
+
+			const staleAfterSwitch = session.getContextBreakdown()!;
+			expect(staleAfterSwitch.providerPromptTokens).toBe(450);
+			expect(staleAfterSwitch.providerPromptStatus).toBe("stale");
+			expect(staleAfterSwitch.anchored).toBe(false);
+			expect(staleAfterSwitch.contextEstimateKind).toBe("estimated");
+			expect(staleAfterSwitch.usedTokens).toBe(
+				computeNonMessageTokens(session) + staleAfterSwitch.messagesTokens,
+			);
+
+			// A completed response from the new model restores current provider measurement.
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "new model reply" }],
+				api: switchedModel.api,
+				provider: switchedModel.provider,
+				model: switchedModel.id,
+				stopReason: "stop",
+				timestamp: 3000,
+				usage: {
+					input: 620,
+					output: 20,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 640,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+			} as AssistantMessage);
+			syncSession(session, agent);
+
+			const afterNewTurn = session.getContextBreakdown()!;
+			expect(afterNewTurn.providerPromptTokens).toBe(620);
+			expect(afterNewTurn.providerPromptStatus).toBe("current");
+			expect(afterNewTurn.anchored).toBe(true);
+			expect(afterNewTurn.contextEstimateKind).toBe("mixed");
+		} finally {
+			await tempDir.remove();
+		}
+	});
+
+	it("ignores aborted-only turns and clears live pending snapshot on session.abort()", async () => {
+		const tempDir = TempDir.createSync("@context-aborted-");
+		try {
+			const { session, sessionManager, agent } = createSession(tempDir);
+			sessionManager.appendMessage({ role: "user", content: "initial", timestamp: 1000 } as Message);
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "aborted partial" }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason: "aborted",
+				timestamp: 2000,
+				usage: {
+					input: 950,
+					output: 5,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 955,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+			} as AssistantMessage);
+			syncSession(session, agent);
+
+			const abortedOnly = session.getContextBreakdown()!;
+			expect(abortedOnly.providerPromptTokens).toBeNull();
+			expect(abortedOnly.providerPromptStatus).toBe("unavailable");
+			expect(abortedOnly.anchored).toBe(false);
+			expect(abortedOnly.contextEstimateKind).toBe("estimated");
+
+			// Record a real anchor, then start a prompt and abort it mid-flight.
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "valid reply" }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason: "stop",
+				timestamp: 3000,
+				usage: {
+					input: 300,
+					output: 10,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 310,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+			} as AssistantMessage);
+			syncSession(session, agent);
+
+			const sl = new StatusLineComponent(session);
+			expect(sl.getCachedContextBreakdown().usedTokens).toBe(300);
+
+			const gate = Promise.withResolvers<void>();
+			const started = Promise.withResolvers<void>();
+			const promptSpy = vi.spyOn(agent, "prompt").mockImplementation(async () => {
+				started.resolve();
+				await gate.promise;
+			});
+			const revisionBeforePrompt = session.contextUsageRevision;
+			const bigQuestion = "in-flight question that will be aborted ".repeat(40);
+			const promptPromise = session.prompt(bigQuestion);
+			await started.promise;
+
+			expect(session.contextUsageRevision).toBeGreaterThan(revisionBeforePrompt);
+			const duringFlight = sl.getCachedContextBreakdown();
+			expect(duringFlight.usedTokens).toBeGreaterThan(350);
+			expect(session.getContextBreakdown()?.providerPromptTokens).toBe(300);
+
+			const revisionDuringFlight = session.contextUsageRevision;
+			gate.resolve();
+			await session.abort();
+			await promptPromise;
+			promptSpy.mockRestore();
+
+			expect(session.contextUsageRevision).toBeGreaterThan(revisionDuringFlight);
+			const afterAbort = session.getContextBreakdown()!;
+			expect(afterAbort.providerPromptTokens).toBe(300);
+			expect(afterAbort.providerPromptStatus).toBe("current");
+			expect(sl.getCachedContextBreakdown().usedTokens).toBe(afterAbort.usedTokens);
+
+			// Unknown / zero context window remains honest without throwing or emitting NaN.
+			const zeroWindow = session.getContextBreakdown({ contextWindow: 0 })!;
+			expect(zeroWindow.contextWindow).toBe(0);
+			const zeroUsage = session.getContextUsage({ contextWindow: 0 })!;
+			expect(zeroUsage.contextWindow).toBe(0);
+			expect(zeroUsage.percent).toBe(0);
+			expect(renderContextUsage({ ...computeContextBreakdown(session), contextWindow: 0 }, {
+				fg: (_color: string, text: string) => text,
+				bold: (text: string) => text,
+			} as never)).toContain("Context usage is unavailable: no model is selected for this session.");
+		} finally {
+			await tempDir.remove();
+		}
 	});
 });

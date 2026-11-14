@@ -69,9 +69,12 @@ import {
 	shouldUseOpenAiRemoteCompaction,
 } from "jeopi-agent-core/compaction";
 import {
+	applyRepeatedToolOutputReductions,
+	collectRepeatedToolOutputCandidates,
 	DEFAULT_PRUNE_CONFIG,
 	pruneSupersededToolResults,
 	pruneToolOutputs,
+	type RepeatedToolOutputCandidate,
 	readToolSupersedeKey,
 } from "jeopi-agent-core/compaction/pruning";
 import type { ProtectedToolMatcher } from "jeopi-agent-core/compaction/tool-protection";
@@ -637,6 +640,7 @@ type CompactionCheckResult = Readonly<{
 	continuationScheduled: boolean;
 	automaticContinuationBlocked?: boolean;
 	historyRewritten?: boolean;
+	headroomAvailable?: boolean;
 }>;
 
 interface RetryErrorOptions {
@@ -990,6 +994,9 @@ export interface ContextUsageBreakdown {
 	contextWindow: number;
 	anchored: boolean;
 	usedTokens: number;
+	providerPromptTokens: number | null;
+	providerPromptStatus: "current" | "stale" | "unavailable";
+	contextEstimateKind: "mixed" | "estimated";
 	systemPromptTokens: number;
 	systemToolsTokens: number;
 	systemContextTokens: number;
@@ -1695,6 +1702,7 @@ export class AgentSession {
 	// Handoff state
 	#handoffAbortController: AbortController | undefined = undefined;
 	#skipPostTurnMaintenanceAssistantTimestamp: number | undefined = undefined;
+	#midRunCompactionBlocked = false;
 
 	// Retry state
 	#retryAbortController: AbortController | undefined = undefined;
@@ -1895,6 +1903,7 @@ export class AgentSession {
 				promptTokens: number;
 				nonMessageTokens: number;
 				cutoffCount: number;
+				estimateKind: "mixed" | "estimated";
 		  }
 		| undefined = undefined;
 	#sessionStopContinuationCount = 0;
@@ -1975,7 +1984,7 @@ export class AgentSession {
 	 *  Runs whenever the session settles; the guard makes it a no-op when the
 	 *  queue was consumed normally or a new turn already started. */
 	#drainStrandedQueuedMessages(): void {
-		if (this.#abortInProgress) return;
+		if (this.#abortInProgress || this.#midRunCompactionBlocked) return;
 		// A concern steered into a resumed streaming run after a user interrupt can
 		// strand at the turn tail (steered past the loop's final boundary poll). While
 		// that interrupt's suppression is still in effect, reclaim such advisor steers
@@ -1998,7 +2007,7 @@ export class AgentSession {
 	 *  the agent responds to the peer. Skip only when a queued steer/follow-up will itself drive a
 	 *  resume turn whose aside poll already consumes these (no double-wake). */
 	#resumeStrandedIrcAsides(): void {
-		if (this.#isDisposed || this.isStreaming) return;
+		if (this.#isDisposed || this.isStreaming || this.#midRunCompactionBlocked) return;
 		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
 		if (this.#canAutoContinueForFollowUp() && this.agent.hasQueuedMessages()) return;
 		const records = [...this.#pendingIrcInterrupts, ...this.#pendingIrcAsides];
@@ -2194,7 +2203,7 @@ export class AgentSession {
 					await Promise.all(this.#advisors.map(a => a.runtime.waitForCatchup(30000, threshold, signal)));
 				}
 			}
-			await this.#maintainContextMidRun(messages, signal, context);
+			return await this.#maintainContextMidRun(messages, signal, context);
 		});
 		this.yieldQueue = new YieldQueue({
 			isStreaming: () => this.isStreaming,
@@ -4237,7 +4246,7 @@ export class AgentSession {
 					// streaming turn — agent.continue() here would race the handoff's session
 					// reset. The first-class fix is in #checkCompaction/the agent_end handler,
 					// but this guard catches anything that bypasses that path.
-					if (signal.aborted || this.#isDisposed || this.isCompacting || this.isGeneratingHandoff) {
+					if (signal.aborted || this.#isDisposed || this.isCompacting || this.isGeneratingHandoff || this.#midRunCompactionBlocked) {
 						this.#skipAgentContinue("session-unavailable", options);
 						return;
 					}
@@ -7526,6 +7535,7 @@ export class AgentSession {
 		// re-enables advisor auto-resume that a prior user interrupt suppressed.
 		// Agent-initiated synthetic prompts (auto-continue, plan, reminders) do not.
 		if (options?.userInitiated ?? !options?.synthetic) {
+			if (!this.isStreaming) this.#midRunCompactionBlocked = false;
 			this.#advisorAutoResumeSuppressed = false;
 			// The user regaining control is the only override for the critic gate:
 			// a fresh user message clears any engaged non-okay verdict.
@@ -7848,6 +7858,7 @@ export class AgentSession {
 				promptTokens,
 				nonMessageTokens,
 				cutoffCount: this.messages.length + messages.length,
+				estimateKind: breakdown?.contextEstimateKind ?? "estimated",
 			});
 			try {
 				await this.#promptAgentWithIdleRetry(messages, agentPromptOptions);
@@ -8090,6 +8101,7 @@ export class AgentSession {
 	 * Gate for idle-path queued-message auto-continue. See `#scheduleIdleQueueDrain` for rationale.
 	 */
 	#canAutoContinueForFollowUp(): boolean {
+		if (this.#midRunCompactionBlocked) return false;
 		if (this.isStreaming) return false;
 		if (this.isRetrying) return false;
 		// A queued steer resumes from ANY tail: Agent.continue() runs #runLoop(undefined),
@@ -8780,6 +8792,8 @@ export class AgentSession {
 		this.#planReferencePath = "local://PLAN.md";
 		this.#criticGateState = undefined;
 		this.#approvedPlanHash = undefined;
+		this.#midRunCompactionBlocked = false;
+		this.#skipPostTurnMaintenanceAssistantTimestamp = undefined;
 		this.#resetAdvisorSessionState();
 		this.#reconnectToAgent();
 
@@ -8930,6 +8944,9 @@ export class AgentSession {
 		// Re-apply thinking for the newly selected model. Prefer the model's
 		// configured defaultLevel; otherwise preserve the current level (or auto).
 		this.#reapplyThinkingLevel(targetModel.thinking?.defaultLevel);
+		if (!this.isStreaming) {
+			this.#midRunCompactionBlocked = false;
+		}
 		await this.#syncAfterModelChange(previousEditMode);
 		return { switched: true };
 	}
@@ -9527,6 +9544,142 @@ export class AgentSession {
 	}
 
 	/**
+	 * Reversible artifact-backed history reduction for repeated large completed
+	 * tool/task outputs. Verifies durable artifact write/readback (and task
+	 * `agent://` outputPath readback when present) before mutating any history;
+	 * on any verification failure the original tool result stays untouched.
+	 * Respects `keepBoundaryId` (compaction boundary) and warm prompt-cache
+	 * suffix limits.
+	 */
+	async reduceRepeatedToolOutputs(
+		options: {
+			minTokens?: number;
+			keepRecentPerTool?: number;
+			keepRecentRead?: number;
+			suffixTokenLimit?: number;
+			idleFlushMs?: number;
+			now?: number;
+		} = {},
+	): Promise<{ prunedCount: number; tokensSaved: number } | undefined> {
+		const branchEntries = this.sessionManager.getBranch();
+		const keepBoundaryId = getLatestCompactionEntry(branchEntries)?.firstKeptEntryId;
+		const candidates = collectRepeatedToolOutputCandidates(
+			branchEntries,
+			this.#withPlanProtection({
+				minTokens: options.minTokens,
+				keepRecentPerTool: options.keepRecentPerTool,
+				keepRecentRead: options.keepRecentRead,
+				suffixTokenLimit: options.suffixTokenLimit ?? PRUNE_CACHE_WARM_SUFFIX_TOKENS,
+				idleFlushMs: options.idleFlushMs ?? PRUNE_IDLE_FLUSH_MS,
+				now: options.now,
+				keepBoundaryId,
+				protectedTools: [...DEFAULT_PRUNE_CONFIG.protectedTools],
+			}),
+		);
+		if (candidates.length === 0) {
+			return undefined;
+		}
+
+		const verifiedItems: Array<{ candidate: RepeatedToolOutputCandidate; replacement: string }> = [];
+		for (const candidate of candidates) {
+			const replacement = await this.#verifyAndBuildReducedToolPlaceholder(candidate);
+			if (replacement !== undefined) {
+				verifiedItems.push({ candidate, replacement });
+			}
+		}
+		if (verifiedItems.length === 0) {
+			return undefined;
+		}
+
+		const result = applyRepeatedToolOutputReductions(verifiedItems);
+		if (result.prunedCount === 0) {
+			return undefined;
+		}
+
+		await this.sessionManager.rewriteEntries();
+		const sessionContext = this.buildDisplaySessionContext();
+		this.agent.replaceMessages(sessionContext.messages);
+		this.#resetAllAdvisorRuntimes();
+		this.#syncTodoPhasesFromBranch();
+		this.#closeCodexProviderSessionsForHistoryRewrite();
+		return result;
+	}
+
+	async #verifyAndBuildReducedToolPlaceholder(candidate: RepeatedToolOutputCandidate): Promise<string | undefined> {
+		// Verify any claimed task outputPath files on disk before referencing agent://<id>.
+		const verifiedAgentRefs: string[] = [];
+		if (candidate.taskOutputs && candidate.taskOutputs.length > 0) {
+			for (const taskRef of candidate.taskOutputs) {
+				let diskText: string | null = null;
+				try {
+					diskText = await Bun.file(taskRef.outputPath).text();
+				} catch {
+					diskText = null;
+				}
+				if (diskText === null) {
+					return undefined;
+				}
+				const matches = taskRef.truncated
+					? diskText.length >= taskRef.output.length && diskText.endsWith(taskRef.output)
+					: diskText === taskRef.output;
+				if (!matches) {
+					return undefined;
+				}
+				verifiedAgentRefs.push(`agent://${taskRef.id}`);
+			}
+		}
+
+		// Reuse an existing exact-matching artifact:// if already durably readable,
+		// otherwise persist the full inline text and verify readback.
+		let verifiedArtifactId: string | undefined;
+		let rawArtifactNote: string | undefined;
+		if (candidate.existingArtifactId) {
+			try {
+				const existingText = await this.sessionManager.readArtifact(candidate.existingArtifactId);
+				if (existingText === candidate.originalText) {
+					verifiedArtifactId = candidate.existingArtifactId;
+				} else if (existingText !== null && existingText.length > 0) {
+					rawArtifactNote = `raw: artifact://${candidate.existingArtifactId}`;
+				}
+			} catch {
+				// Fall through to fresh artifact persistence.
+			}
+		}
+
+		if (!verifiedArtifactId) {
+			try {
+				const savedId = await this.sessionManager.saveArtifact(candidate.originalText, candidate.toolName);
+				if (!savedId) return undefined;
+				const readback = await this.sessionManager.readArtifact(savedId);
+				if (readback !== candidate.originalText) {
+					logger.warn("Repeated-output artifact readback verification failed; preserving original result", {
+						tool: candidate.toolName,
+						artifactId: savedId,
+					});
+					return undefined;
+				}
+				verifiedArtifactId = savedId;
+			} catch (error) {
+				logger.warn("Failed to save repeated-output artifact; preserving original result", {
+					tool: candidate.toolName,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				return undefined;
+			}
+		}
+
+		const refs: string[] = [];
+		if (verifiedAgentRefs.length > 0) {
+			refs.push(verifiedAgentRefs.join(", "));
+		}
+		refs.push(`artifact://${verifiedArtifactId}`);
+		if (rawArtifactNote) {
+			refs.push(rawArtifactNote);
+		}
+		return `[reduced completed ${candidate.toolName} output (~${candidate.tokens} tokens) — recover: ${refs.join(" | ")}]`;
+	}
+
+	/**
 	 * Strip image content blocks from every message on the current branch and
 	 * persist the rewrite. Walks `SessionManager.getBranch()` in place — both
 	 * `SessionMessageEntry.message` and `CustomMessageEntry.content` arrays
@@ -9608,8 +9761,10 @@ export class AgentSession {
 		}
 
 		const artifactId = await this.#saveShakeArtifact(regions);
+		if (!artifactId) {
+			return { mode, toolResultsDropped: 0, blocksDropped: 0, tokensFreed: 0 };
+		}
 		const replacements = regions.map((region, index) => this.#shakeElidePlaceholder(region, index, artifactId));
-
 		let toolResultsDropped = 0;
 		let blocksDropped = 0;
 		let originalTokens = 0;
@@ -9628,6 +9783,7 @@ export class AgentSession {
 		await this.sessionManager.rewriteEntries();
 		const sessionContext = this.buildDisplaySessionContext();
 		this.agent.replaceMessages(sessionContext.messages);
+		this.#setPendingContextSnapshot(undefined);
 		this.#resetAllAdvisorRuntimes();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 
@@ -9659,9 +9815,20 @@ export class AgentSession {
 			const region = regions[i];
 			parts.push(`### region ${i + 1} (${region.label}, ~${region.tokens} tok)`, "", region.originalText, "");
 		}
+		const payload = parts.join("\n");
 		try {
-			return await this.sessionManager.saveArtifact(parts.join("\n"), "shake");
-		} catch {
+			const artifactId = await this.sessionManager.saveArtifact(payload, "shake");
+			if (!artifactId) return undefined;
+			const readback = await this.sessionManager.readArtifact(artifactId);
+			if (readback !== payload) {
+				logger.warn("Shake artifact readback verification failed; preserving original branch", { artifactId });
+				return undefined;
+			}
+			return artifactId;
+		} catch (error) {
+			logger.warn("Failed to save shake artifact; preserving original branch", {
+				error: error instanceof Error ? error.message : String(error),
+			});
 			return undefined;
 		}
 	}
@@ -9943,6 +10110,10 @@ export class AgentSession {
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
+			this.#setPendingContextSnapshot(undefined);
+			if (!this.isStreaming && this.#compactionCreatedHeadroom()) {
+				this.#midRunCompactionBlocked = false;
+			}
 			// Compaction discarded the conversation history that carried the approved
 			// plan reference. Clear the sent-flag so #buildPlanReferenceMessage re-reads
 			// the plan from disk and re-injects it on the next turn (issue #1246).
@@ -10217,6 +10388,7 @@ export class AgentSession {
 			// Rebuild agent messages from session
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
+			this.#setPendingContextSnapshot(undefined);
 			this.#resetAllAdvisorRuntimes();
 			this.#syncTodoPhasesFromBranch();
 
@@ -10313,7 +10485,7 @@ export class AgentSession {
 		activeMessages: AgentMessage[],
 		signal: AbortSignal | undefined,
 		context: AgentTurnEndContext | undefined,
-	): Promise<void> {
+	): Promise<void | "stop"> {
 		if (
 			signal?.aborted ||
 			this.#isDisposed ||
@@ -10364,17 +10536,32 @@ export class AgentSession {
 		}
 
 		const messagesBefore = activeMessages.length;
-		await this.#runAutoCompaction("threshold", false, false, false, {
+		const result = await this.#runAutoCompaction("threshold", false, false, false, {
 			autoContinue: false,
 			suppressContinuation: true,
 			suppressHandoff: true,
 			triggerContextTokens: contextTokens,
 		});
 
-		if (signal?.aborted) return;
+		if (signal?.aborted) {
+			this.#skipPostTurnMaintenanceAssistantTimestamp = lastAssistant.timestamp;
+			return "stop";
+		}
 		const compactedMessages = this.agent.state.messages;
 		if (compactedMessages !== activeMessages) {
 			activeMessages.splice(0, activeMessages.length, ...compactedMessages);
+		}
+		if (result.automaticContinuationBlocked || !result.headroomAvailable) {
+			this.#midRunCompactionBlocked = true;
+			this.#skipPostTurnMaintenanceAssistantTimestamp = lastAssistant.timestamp;
+			if (!result.automaticContinuationBlocked) {
+				this.emitNotice(
+					"warning",
+					"Mid-run compaction did not free context headroom — pausing tool loop to avoid context overflow.",
+					"compaction",
+				);
+			}
+			return "stop";
 		}
 		logger.debug("Mid-run compaction ran between provider calls", {
 			contextTokens,
@@ -10507,6 +10694,10 @@ export class AgentSession {
 		// cheap (bails when no candidate) and independent of the compaction
 		// setting.
 		const supersedeResult = await this.#pruneStaleToolResults();
+		const repeatedResult =
+			assistantMessage.stopReason !== "error" && assistantMessage.stopReason !== "aborted"
+				? await this.reduceRepeatedToolOutputs()
+				: undefined;
 
 		const compactionSettings = this.settings.getGroup("compaction");
 		if (!compactionSettings.enabled || compactionSettings.strategy === "off") return COMPACTION_CHECK_NONE;
@@ -10515,8 +10706,8 @@ export class AgentSession {
 		// Skip if this was an error (non-overflow errors don't have usage data)
 		if (assistantMessage.stopReason === "error") return COMPACTION_CHECK_NONE;
 		const pruneResult = await this.#pruneToolOutputs();
-		const maintenanceTokensFreed = (supersedeResult?.tokensSaved ?? 0) + (pruneResult?.tokensSaved ?? 0);
-		// `errorIsFromBeforeCompaction` (computed above) is the general
+		const maintenanceTokensFreed =
+			(supersedeResult?.tokensSaved ?? 0) + (repeatedResult?.tokensSaved ?? 0) + (pruneResult?.tokensSaved ?? 0);
 		// "this assistant message predates the latest compaction" predicate here,
 		// not just an error-specific one; alias it locally so the threshold intent
 		// reads clearly (#3412 review).
@@ -12265,6 +12456,7 @@ export class AgentSession {
 					return {
 						...(continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_NONE),
 						historyRewritten: true,
+						headroomAvailable: true,
 					};
 				}
 			}
@@ -12616,6 +12808,7 @@ export class AgentSession {
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
+			this.#setPendingContextSnapshot(undefined);
 			// Compaction discarded the conversation history that carried the approved
 			// plan reference. Clear the sent-flag so #buildPlanReferenceMessage re-reads
 			// the plan from disk and re-injects it on the next turn (issue #1246).
@@ -12658,6 +12851,7 @@ export class AgentSession {
 			// recoverable overflow only has to fit; the auto-continue thrash needs the
 			// stricter recovery band), so each branch evaluates its own below.
 			let continuationScheduled = false;
+			let headroomAvailable = reason === "idle";
 			// A non-idle pass that wanted to continue (retry or auto-continue) but freed
 			// too little for that path to proceed is a dead-end: warn once so the user
 			// understands why maintenance paused instead of silently looping.
@@ -12696,6 +12890,7 @@ export class AgentSession {
 				if (retryFits) {
 					this.#scheduleAgentContinue({ delayMs: 100, generation });
 					continuationScheduled = true;
+					headroomAvailable = true;
 				} else {
 					noProgressDeadEnd = true;
 				}
@@ -12716,6 +12911,7 @@ export class AgentSession {
 					}
 				}
 				if (hasHeadroom) {
+					headroomAvailable = true;
 					if (shouldAutoContinue) {
 						this.#scheduleAutoContinuePrompt(generation);
 						continuationScheduled = true;
@@ -12743,8 +12939,16 @@ export class AgentSession {
 					"compaction",
 				);
 			}
-			if (continuationScheduled) return COMPACTION_CHECK_CONTINUATION;
-			return noProgressDeadEnd ? COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION : COMPACTION_CHECK_NONE;
+			const baseResult = continuationScheduled
+				? COMPACTION_CHECK_CONTINUATION
+				: noProgressDeadEnd
+					? COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION
+					: COMPACTION_CHECK_NONE;
+			return {
+				...baseResult,
+				historyRewritten: true,
+				...(headroomAvailable ? { headroomAvailable: true } : {}),
+			};
 		} catch (error) {
 			if (autoCompactionSignal.aborted) {
 				await this.#emitSessionEvent({
@@ -12902,16 +13106,19 @@ export class AgentSession {
 				});
 				continuationScheduled = true;
 			}
+			const headroomField = !stillOverThreshold ? { headroomAvailable: true as const } : {};
 			if (!reclaimed) {
-				return willRetry && continuationScheduled
-					? { ...COMPACTION_CHECK_CONTINUATION, historyRewritten: true }
-					: continuationScheduled
-						? COMPACTION_CHECK_CONTINUATION
-						: COMPACTION_CHECK_NONE;
+				if (willRetry && continuationScheduled) {
+					return { ...COMPACTION_CHECK_CONTINUATION, historyRewritten: true, ...headroomField };
+				}
+				return continuationScheduled
+					? { ...COMPACTION_CHECK_CONTINUATION, ...headroomField }
+					: { ...COMPACTION_CHECK_NONE, ...headroomField };
 			}
 			return {
 				...(continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_NONE),
 				historyRewritten: true,
+				...headroomField,
 			};
 		} catch (error) {
 			if (signal.aborted) {
@@ -13992,7 +14199,10 @@ export class AgentSession {
 
 	async #saveBashOriginalArtifact(originalText: string): Promise<string | undefined> {
 		try {
-			return await this.sessionManager.saveArtifact(originalText, "bash-original");
+			const id = await this.sessionManager.saveArtifact(originalText, "bash-original");
+			if (!id) return undefined;
+			const readback = await this.sessionManager.readArtifact(id);
+			return readback === originalText ? id : undefined;
 		} catch {
 			return undefined;
 		}
@@ -14412,6 +14622,10 @@ export class AgentSession {
 				this.#pendingIrcInterrupts.push(record);
 			}
 			if (autoReply) void this.#runIrcAutoReply(msg);
+			return "injected";
+		}
+		if (this.#midRunCompactionBlocked) {
+			this.#pendingIrcInterrupts.push(record);
 			return "injected";
 		}
 		// Idle: wake a real turn so the recipient responds (shared with the stranded-aside resume).
@@ -14853,6 +15067,8 @@ export class AgentSession {
 			if (switchingToDifferentSession) {
 				await this.#resetMemoryContextForNewTranscript();
 			}
+			this.#midRunCompactionBlocked = false;
+			this.#skipPostTurnMaintenanceAssistantTimestamp = undefined;
 			this.#reconnectToAgent();
 			try {
 				await this.#sessionSwitchReconciler?.();
@@ -15392,48 +15608,147 @@ export class AgentSession {
 		const contextWindow = Number.isFinite(rawContextWindow) && rawContextWindow > 0 ? rawContextWindow : 0;
 
 		const { skillsTokens, toolsTokens, systemContextTokens, systemPromptTokens } = computeNonMessageBreakdown(this);
-		const categoryNonMessageTokens = skillsTokens + toolsTokens + systemContextTokens + systemPromptTokens;
 		const currentNonMessageTokens = computeNonMessageTokens(this);
 
 		const branchEntries = this.sessionManager.getBranch();
 		const latestCompaction = getLatestCompactionEntry(branchEntries);
 		const compactionIndex = latestCompaction ? branchEntries.lastIndexOf(latestCompaction) : -1;
 
-		let usedTokens = 0;
-		let anchored = false;
-
 		const pendingMessages = options?.pendingMessages ?? [];
-
 		const pending = this.#pendingContextSnapshot;
+		const resolvedActiveMessages = this.messages;
 
-		// Always locate the latest real assistant-usage anchor after the last
-		// compaction. Its provider-reported promptTokens is ground truth for
-		// everything up to that point; only the tail after it is estimated.
-		let anchorEntry: SessionMessageEntry | undefined;
-		for (let i = branchEntries.length - 1; i > compactionIndex; i--) {
-			const entry = branchEntries[i];
-			if (entry.type === "message" && entry.message.role === "assistant") {
-				const assistant = entry.message;
-				if (assistant.stopReason !== "aborted" && assistant.stopReason !== "error" && assistant.usage) {
-					anchorEntry = entry;
+		let activeMessagesTokens = 0;
+		for (const msg of resolvedActiveMessages) {
+			activeMessagesTokens += estimateTokens(msg);
+		}
+		const pendingMessagesTokens = pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+		const messagesTokens = activeMessagesTokens + pendingMessagesTokens;
+
+		const isValidProviderAssistant = (msg: AgentMessage | undefined): msg is AssistantMessage => {
+			if (!msg || msg.role !== "assistant") return false;
+			const assistant = msg as AssistantMessage;
+			if (assistant.stopReason === "aborted" || assistant.stopReason === "error") return false;
+			return assistant.usage !== undefined && assistant.usage !== null;
+		};
+
+		const readPromptTokens = (assistant: AssistantMessage): number | null => {
+			const value = assistant.contextSnapshot?.promptTokens ?? calculatePromptTokens(assistant.usage);
+			return Number.isFinite(value) && value >= 0 ? value : null;
+		};
+
+		interface AnchorCandidate {
+			assistant: AssistantMessage;
+			promptTokens: number;
+			resolvedIndex: number;
+		}
+
+		const resolveMessageIndex = (assistant: AssistantMessage): number => {
+			const direct = resolvedActiveMessages.indexOf(assistant);
+			if (direct !== -1) return direct;
+			return resolvedActiveMessages.findIndex(
+				msg => msg.role === "assistant" && msg.timestamp === assistant.timestamp,
+			);
+		};
+
+		let currentEpochAnchor: AnchorCandidate | undefined;
+		let staleCompactionAnchor: AnchorCandidate | undefined;
+
+		if (branchEntries.length > 0) {
+			for (let i = branchEntries.length - 1; i > compactionIndex; i--) {
+				const entry = branchEntries[i];
+				if (entry.type === "message" && isValidProviderAssistant(entry.message)) {
+					const promptTokens = readPromptTokens(entry.message);
+					if (promptTokens !== null) {
+						currentEpochAnchor = {
+							assistant: entry.message,
+							promptTokens,
+							resolvedIndex: resolveMessageIndex(entry.message),
+						};
+						break;
+					}
+				}
+			}
+			if (!currentEpochAnchor && compactionIndex >= 0) {
+				for (let i = compactionIndex - 1; i >= 0; i--) {
+					const entry = branchEntries[i];
+					if (entry.type === "message" && isValidProviderAssistant(entry.message)) {
+						const promptTokens = readPromptTokens(entry.message);
+						if (promptTokens !== null) {
+							staleCompactionAnchor = {
+								assistant: entry.message,
+								promptTokens,
+								resolvedIndex: -1,
+							};
+							break;
+						}
+					}
+				}
+			}
+		} else {
+			let compactionMsgIndex = -1;
+			for (let i = resolvedActiveMessages.length - 1; i >= 0; i--) {
+				if (resolvedActiveMessages[i]?.role === "compactionSummary") {
+					compactionMsgIndex = i;
 					break;
+				}
+			}
+			for (let i = resolvedActiveMessages.length - 1; i > compactionMsgIndex; i--) {
+				const msg = resolvedActiveMessages[i];
+				if (isValidProviderAssistant(msg)) {
+					const promptTokens = readPromptTokens(msg);
+					if (promptTokens !== null) {
+						currentEpochAnchor = {
+							assistant: msg,
+							promptTokens,
+							resolvedIndex: i,
+						};
+						break;
+					}
+				}
+			}
+			if (!currentEpochAnchor && compactionMsgIndex >= 0) {
+				for (let i = compactionMsgIndex - 1; i >= 0; i--) {
+					const msg = resolvedActiveMessages[i];
+					if (isValidProviderAssistant(msg)) {
+						const promptTokens = readPromptTokens(msg);
+						if (promptTokens !== null) {
+							staleCompactionAnchor = {
+								assistant: msg,
+								promptTokens,
+								resolvedIndex: -1,
+							};
+							break;
+						}
+					}
 				}
 			}
 		}
 
-		const resolvedActiveMessages = this.messages;
-		let resolvedAnchorIndex = -1;
-		let anchorAssistant: AssistantMessage | undefined;
-		if (anchorEntry) {
-			const a = anchorEntry.message as AssistantMessage;
-			anchorAssistant = a;
-			resolvedAnchorIndex = resolvedActiveMessages.indexOf(a);
-			if (resolvedAnchorIndex === -1) {
-				resolvedAnchorIndex = resolvedActiveMessages.findIndex(
-					msg => msg.role === "assistant" && msg.timestamp === a.timestamp,
-				);
+		let providerPromptTokens: number | null = null;
+		let providerPromptStatus: "current" | "stale" | "unavailable" = "unavailable";
+		let activeAnchor: AnchorCandidate | undefined;
+
+		if (currentEpochAnchor) {
+			providerPromptTokens = currentEpochAnchor.promptTokens;
+			const matchesCurrentModel =
+				model !== undefined &&
+				currentEpochAnchor.assistant.provider === model.provider &&
+				currentEpochAnchor.assistant.model === model.id;
+			if (matchesCurrentModel && currentEpochAnchor.resolvedIndex !== -1) {
+				providerPromptStatus = "current";
+				activeAnchor = currentEpochAnchor;
+			} else {
+				providerPromptStatus = "stale";
 			}
+		} else if (staleCompactionAnchor) {
+			providerPromptTokens = staleCompactionAnchor.promptTokens;
+			providerPromptStatus = "stale";
 		}
+
+		let usedTokens = 0;
+		let anchored = false;
+		let contextEstimateKind: "mixed" | "estimated" = "estimated";
 
 		// A real anchor supersedes the in-flight estimate only once a step of the
 		// CURRENT turn has produced provider usage — i.e. it resolves at or after
@@ -15443,26 +15758,25 @@ export class AgentSession {
 		// keeps a long tool turn from stacking an estimate of the entire tail on
 		// top of a stale turn-start prompt.
 		const useAnchor =
-			anchorAssistant !== undefined &&
-			resolvedAnchorIndex !== -1 &&
-			(!pending || resolvedAnchorIndex >= pending.cutoffCount);
+			activeAnchor !== undefined && (!pending || activeAnchor.resolvedIndex >= pending.cutoffCount);
 
-		if (useAnchor && anchorAssistant) {
-			const promptTokens =
-				anchorAssistant.contextSnapshot?.promptTokens ?? calculatePromptTokens(anchorAssistant.usage);
-			const nonMessageTokens = anchorAssistant.contextSnapshot?.nonMessageTokens ?? computeNonMessageTokens(this);
+		if (useAnchor && activeAnchor) {
+			const nonMessageTokens =
+				activeAnchor.assistant.contextSnapshot?.nonMessageTokens ?? currentNonMessageTokens;
 			anchored = true;
+			contextEstimateKind = "mixed";
 			let tailTokens = 0;
-			for (let i = resolvedAnchorIndex + 1; i < resolvedActiveMessages.length; i++) {
+			for (let i = activeAnchor.resolvedIndex + 1; i < resolvedActiveMessages.length; i++) {
 				tailTokens += estimateTokens(resolvedActiveMessages[i]);
 			}
 			usedTokens =
-				promptTokens +
+				activeAnchor.promptTokens +
 				Math.max(0, currentNonMessageTokens - nonMessageTokens) +
 				tailTokens +
-				pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+				pendingMessagesTokens;
 		} else if (pending) {
 			anchored = true;
+			contextEstimateKind = pending.estimateKind;
 			let tailTokens = 0;
 			if (resolvedActiveMessages.length > pending.cutoffCount) {
 				for (let i = pending.cutoffCount; i < resolvedActiveMessages.length; i++) {
@@ -15473,49 +15787,18 @@ export class AgentSession {
 				pending.promptTokens +
 				Math.max(0, currentNonMessageTokens - pending.nonMessageTokens) +
 				tailTokens +
-				pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+				pendingMessagesTokens;
+		} else {
+			usedTokens = currentNonMessageTokens + messagesTokens;
 		}
-
-		if (!anchored && !pending && branchEntries.length === 0) {
-			// Fallback: look for the latest assistant message with usage/snapshot in this.messages (for branchless/fake sessions in tests)
-			for (let i = resolvedActiveMessages.length - 1; i >= 0; i--) {
-				const msg = resolvedActiveMessages[i];
-				if (msg.role === "assistant" && msg.stopReason !== "aborted" && msg.stopReason !== "error" && msg.usage) {
-					const promptTokens = msg.contextSnapshot?.promptTokens ?? calculatePromptTokens(msg.usage);
-					const nonMessageTokens = msg.contextSnapshot?.nonMessageTokens ?? computeNonMessageTokens(this);
-
-					let tailTokens = 0;
-					for (let j = i + 1; j < resolvedActiveMessages.length; j++) {
-						tailTokens += estimateTokens(resolvedActiveMessages[j]);
-					}
-
-					usedTokens =
-						promptTokens +
-						Math.max(0, currentNonMessageTokens - nonMessageTokens) +
-						tailTokens +
-						pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
-					anchored = true;
-					break;
-				}
-			}
-		}
-		if (!anchored) {
-			let messagesTokens = 0;
-			for (const msg of resolvedActiveMessages) {
-				messagesTokens += estimateTokens(msg);
-			}
-			usedTokens =
-				currentNonMessageTokens +
-				messagesTokens +
-				pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
-		}
-
-		const messagesTokens = Math.max(0, usedTokens - categoryNonMessageTokens);
 
 		return {
 			contextWindow,
 			anchored,
 			usedTokens,
+			providerPromptTokens,
+			providerPromptStatus,
+			contextEstimateKind,
 			systemPromptTokens,
 			systemToolsTokens: toolsTokens,
 			systemContextTokens,
@@ -15531,6 +15814,9 @@ export class AgentSession {
 			tokens: breakdown.usedTokens,
 			contextWindow: breakdown.contextWindow,
 			percent: breakdown.contextWindow > 0 ? (breakdown.usedTokens / breakdown.contextWindow) * 100 : 0,
+			providerPromptTokens: breakdown.providerPromptTokens,
+			providerPromptStatus: breakdown.providerPromptStatus,
+			estimateKind: breakdown.contextEstimateKind,
 		};
 	}
 
@@ -15544,7 +15830,14 @@ export class AgentSession {
 	}
 
 	#setPendingContextSnapshot(
-		snapshot: { promptTokens: number; nonMessageTokens: number; cutoffCount: number } | undefined,
+		snapshot:
+			| {
+					promptTokens: number;
+					nonMessageTokens: number;
+					cutoffCount: number;
+					estimateKind: "mixed" | "estimated";
+			  }
+			| undefined,
 	): void {
 		this.#pendingContextSnapshot = snapshot;
 		this.#contextUsageRevision++;

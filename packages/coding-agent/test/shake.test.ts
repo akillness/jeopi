@@ -117,6 +117,255 @@ describe("AgentSession shake", () => {
 			expect(text).toContain("shaken");
 		});
 
+		it("recovers complete task output after resuming and keeps its paired call identity", async () => {
+			const original = Array.from({ length: 300 }, (_, i) => `task line ${i} é`).join("\n");
+			seedHeavyToolResult(original, "task");
+			const before = branchToolResults()[0];
+			const beforeBytes = Buffer.byteLength(JSON.stringify(before));
+			const callId = before.toolCallId;
+			const result = await session.shake("elide");
+			const after = branchToolResults()[0];
+			expect(after.toolCallId).toBe(callId);
+			expect(after.toolName).toBe("task");
+			expect(Buffer.byteLength(JSON.stringify(after))).toBeLessThan(beforeBytes);
+			if (!result.artifactId) throw new Error("Expected recoverable artifact");
+			await sessionManager.flush();
+			const file = sessionManager.getSessionFile();
+			if (!file) throw new Error("Expected persisted session");
+			await sessionManager.close();
+			const resumed = await SessionManager.open(file, tempDir.path());
+			try {
+				const messages = resumed.getBranch().filter(entry => entry.type === "message").map(entry => entry.message);
+				const call = messages.find(message => message.role === "assistant" && message.content.some(block => block.type === "toolCall" && block.id === callId));
+				const restored = messages.find(message => message.role === "toolResult" && message.toolCallId === callId);
+				expect(call).toBeDefined();
+				expect(restored).toEqual(after);
+				const artifactPath = await resumed.getArtifactPath(result.artifactId);
+				if (!artifactPath) throw new Error("Artifact unavailable after resume");
+				expect(await Bun.file(artifactPath).text()).toContain(original);
+			} finally {
+				await resumed.close();
+			}
+		});
+
+		for (const failure of ["undefined", "throw", "missing readback"] as const) {
+			it(`preserves the complete result when artifact ${failure}`, async () => {
+				seedHeavyToolResult("must survive é ".repeat(500));
+				const original = structuredClone(branchToolResults()[0]);
+				if (failure === "throw") vi.spyOn(sessionManager, "saveArtifact").mockRejectedValue(new Error("disk full"));
+				else if (failure === "undefined") vi.spyOn(sessionManager, "saveArtifact").mockResolvedValue(undefined);
+				else vi.spyOn(sessionManager, "saveArtifact").mockResolvedValue("999999999");
+				await session.shake("elide");
+				expect(branchToolResults()[0]).toEqual(original);
+			});
+		}
+
+		it("preserves error results and mixed image results", async () => {
+			seedHeavyToolResult("error details ".repeat(400), "bash");
+			const error = branchToolResults()[0];
+			error.isError = true;
+			seedHeavyToolResult("image description ".repeat(400), "read_image");
+			const mixed = branchToolResults()[1];
+			mixed.content.push({ type: "image", data: "iVBORw0KGgo", mimeType: "image/png" });
+			const originals = structuredClone(branchToolResults());
+			await session.shake("elide");
+			expect(branchToolResults()).toEqual(originals);
+		});
+
+		it("preserves branch and agent messages untouched when artifact readback is corrupted or mismatched", async () => {
+			seedHeavyToolResult("corrupt readback test ".repeat(400), "bash");
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: `notes\n\`\`\`ts\n${"const x = 1;\n".repeat(120)}\n\`\`\`` }],
+				...apiInfo,
+				stopReason: "stop",
+				usage,
+				timestamp: Date.now(),
+			});
+			session.agent.replaceMessages(session.buildDisplaySessionContext().messages);
+			const originalBranch = structuredClone(sessionManager.getBranch());
+			const originalAgentMessages = structuredClone(session.agent.state.messages);
+			const replaceSpy = vi.spyOn(session.agent, "replaceMessages");
+
+			const originalSave = sessionManager.saveArtifact.bind(sessionManager);
+			vi.spyOn(sessionManager, "saveArtifact").mockImplementation(async (content, toolType) => {
+				const id = await originalSave(content, toolType);
+				if (id) {
+					const artifactPath = await sessionManager.getArtifactPath(id);
+					if (artifactPath) {
+						await Bun.write(artifactPath, "CORRUPTED_TRUNCATED_BYTES");
+					}
+				}
+				return id;
+			});
+
+			const result = await session.shake("elide");
+
+			expect(result.toolResultsDropped).toBe(0);
+			expect(result.blocksDropped).toBe(0);
+			expect(result.tokensFreed).toBe(0);
+			expect(result.artifactId).toBeUndefined();
+			expect(replaceSpy).not.toHaveBeenCalled();
+			expect(sessionManager.getBranch()).toEqual(originalBranch);
+			expect(session.agent.state.messages).toEqual(originalAgentMessages);
+		});
+
+		it("preserves aborted tool results alongside error and mixed-image results", async () => {
+			seedHeavyToolResult("aborted run output ".repeat(400), "task");
+			const abortedEntry = branchToolResults()[0];
+			abortedEntry.details = { aborted: true };
+
+			const abortedCallId = "call-aborted-assistant";
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "toolCall", id: abortedCallId, name: "bash", arguments: { command: "sleep 10" } }],
+				...apiInfo,
+				stopReason: "aborted",
+				errorMessage: "Aborted by user",
+				usage,
+				timestamp: Date.now() - 2,
+			});
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: abortedCallId,
+				toolName: "bash",
+				content: [{ type: "text", text: "cancelled output ".repeat(300) }],
+				isError: false,
+				timestamp: Date.now() - 1,
+			});
+
+			const originals = structuredClone(branchToolResults());
+			const result = await session.shake("elide");
+			expect(result.toolResultsDropped).toBe(0);
+			expect(branchToolResults()).toEqual(originals);
+		});
+
+		it("reduces synthetic multi-turn session size, preserves pairing and protected/error/aborted/image items, and recovers after resume", async () => {
+			const ts0 = Date.now() - 10_000;
+			const repeatedOutputs = Array.from({ length: 4 }, (_, turn) =>
+				Array.from({ length: 220 }, (_, line) => `turn-${turn}-row-${line} payload alpha beta gamma é`).join("\n"),
+			);
+
+			// Turn 0..3: repeated long bash/task outputs + one large fenced block
+			for (let i = 0; i < repeatedOutputs.length; i++) {
+				seedHeavyToolResult(repeatedOutputs[i]!, i % 2 === 0 ? "bash" : "task");
+			}
+			const fencedBody = `\`\`\`ts\n${"export const item = computeLargeValue(1, 2, 3, 4);\n".repeat(160)}\n\`\`\``;
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: `Analysis:\n${fencedBody}\nDone.` }],
+				...apiInfo,
+				stopReason: "stop",
+				usage,
+				timestamp: ts0 + 50,
+			});
+
+			// Protected skill read + error + aborted + mixed image turn
+			const skillCallId = "call-skill-keep";
+			const errCallId = "call-err-keep";
+			const imgCallId = "call-img-keep";
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: skillCallId, name: "read", arguments: { path: "skill://testing" } },
+					{ type: "toolCall", id: errCallId, name: "bash", arguments: { command: "exit 1" } },
+					{ type: "toolCall", id: imgCallId, name: "read_image", arguments: { path: "a.png" } },
+				],
+				...apiInfo,
+				stopReason: "toolUse",
+				usage,
+				timestamp: ts0 + 60,
+			});
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: skillCallId,
+				toolName: "read",
+				content: [{ type: "text", text: "SKILL CONTENT ".repeat(200) }],
+				isError: false,
+				timestamp: ts0 + 61,
+			});
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: errCallId,
+				toolName: "bash",
+				content: [{ type: "text", text: "ERROR STACK ".repeat(200) }],
+				isError: true,
+				timestamp: ts0 + 62,
+			});
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: imgCallId,
+				toolName: "read_image",
+				content: [
+					{ type: "text", text: "IMG META ".repeat(200) },
+					{ type: "image", data: "iVBORw0KGgo", mimeType: "image/png" },
+				],
+				isError: false,
+				timestamp: ts0 + 63,
+			});
+
+			const beforeMessages = session.buildDisplaySessionContext().messages;
+			session.agent.replaceMessages(beforeMessages);
+			const beforeBytes = Buffer.byteLength(JSON.stringify(beforeMessages), "utf-8");
+			const beforeToolCallIds = beforeMessages
+				.filter((m): m is AssistantMessage => m.role === "assistant")
+				.flatMap(m => m.content.filter(b => b.type === "toolCall").map(b => b.id));
+			const beforeToolResultIds = beforeMessages
+				.filter((m): m is ToolResultMessage => m.role === "toolResult")
+				.map(m => m.toolCallId);
+			expect(beforeToolResultIds).toEqual(beforeToolCallIds);
+
+			const result = await session.shake("elide");
+
+			expect(result.toolResultsDropped).toBe(4);
+			expect(result.blocksDropped).toBe(1);
+			expect(result.tokensFreed).toBeGreaterThan(0);
+			if (!result.artifactId) throw new Error("Expected durable artifactId");
+
+			const afterMessages = session.agent.state.messages;
+			const afterBytes = Buffer.byteLength(JSON.stringify(afterMessages), "utf-8");
+			expect(afterBytes).toBeLessThan(Math.floor(beforeBytes * 0.5));
+
+			// Pairing preserved 1:1 in order
+			const afterToolCallIds = afterMessages
+				.filter((m): m is AssistantMessage => m.role === "assistant")
+				.flatMap(m => m.content.filter(b => b.type === "toolCall").map(b => b.id));
+			const afterToolResultIds = afterMessages
+				.filter((m): m is ToolResultMessage => m.role === "toolResult")
+				.map(m => m.toolCallId);
+			expect(afterToolCallIds).toEqual(beforeToolCallIds);
+			expect(afterToolResultIds).toEqual(beforeToolResultIds);
+
+			// Protected skill, error, and mixed-image results untouched
+			const keptSkill = branchToolResults().find(r => r.toolCallId === skillCallId);
+			const keptErr = branchToolResults().find(r => r.toolCallId === errCallId);
+			const keptImg = branchToolResults().find(r => r.toolCallId === imgCallId);
+			expect(keptSkill?.prunedAt).toBeUndefined();
+			expect(keptErr?.isError).toBe(true);
+			expect(keptErr?.prunedAt).toBeUndefined();
+			expect(keptImg?.prunedAt).toBeUndefined();
+			expect(keptImg?.content.some(b => b.type === "image")).toBe(true);
+
+			// Resume recovery
+			await sessionManager.flush();
+			const sessionFile = sessionManager.getSessionFile();
+			if (!sessionFile) throw new Error("Expected persisted session file");
+			await sessionManager.close();
+
+			const resumed = await SessionManager.open(sessionFile, tempDir.path());
+			try {
+				const artifactPath = await resumed.getArtifactPath(result.artifactId);
+				if (!artifactPath) throw new Error("Expected artifact file after resume");
+				const recovered = await Bun.file(artifactPath).text();
+				for (const text of repeatedOutputs) {
+					expect(recovered).toContain(text);
+				}
+				expect(recovered).toContain(fencedBody);
+			} finally {
+				await resumed.close();
+			}
+		});
+
 		it("returns zero counts for an empty branch", async () => {
 			const result = await session.shake("elide");
 			expect(result.toolResultsDropped).toBe(0);

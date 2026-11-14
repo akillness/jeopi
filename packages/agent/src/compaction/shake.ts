@@ -16,7 +16,9 @@ import type { AgentMessage } from "../types";
 import { estimateTokens } from "./compaction";
 import type { CustomMessageEntry, SessionEntry, SessionMessageEntry } from "./entries";
 import {
+	collectAssistantStopReasonsByToolCallId,
 	collectToolCallsById,
+	isPreservedToolResult,
 	isProtectedToolResult,
 	isSkillReadToolResult,
 	type ProtectedToolMatcher,
@@ -235,6 +237,7 @@ function collectBlockRegions(
 	if (entry.type === "message") {
 		const message = entry.message;
 		if (message.role === "assistant") {
+			if (message.stopReason === "error" || message.stopReason === "aborted") return;
 			for (let bi = 0; bi < message.content.length; bi++) {
 				const block = message.content[bi];
 				if (block.type === "text") pushBlockRegions(entry, bi, block.text, config, "assistant", out);
@@ -296,6 +299,7 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 	}
 
 	const toolCallsById = collectToolCallsById(entries);
+	const stopReasonsByCallId = collectAssistantStopReasonsByToolCallId(entries);
 
 	// Entries before the compaction boundary are summarized away and never sent —
 	// shaking them only churns persisted history (no prompt/cache effect).
@@ -312,12 +316,16 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 		const entry = entries[i];
 		if (i < boundaryIndex) continue;
 		const toolResult = getToolResultMessage(entry);
+		const preservedResult =
+			toolResult !== undefined &&
+			isPreservedToolResult(toolResult, stopReasonsByCallId.get(toolResult.toolCallId));
 		// Useless-flagged results carry no information once consumed; they are
 		// eligible even inside the protect-recent window.
-		const uselessResult = toolResult !== undefined && toolResult.useless === true && toolResult.isError !== true;
+		const uselessResult = toolResult !== undefined && toolResult.useless === true && !preservedResult;
 		if (!uselessResult && accumulatedAfter[i] < config.protectTokens) continue;
 		if (toolResult) {
 			if (toolResult.prunedAt !== undefined) continue;
+			if (preservedResult) continue;
 			if (isProtectedToolResult(toolResult, toolCallsById.get(toolResult.toolCallId), config.protectedTools))
 				continue;
 			const text = toolResultText(toolResult);

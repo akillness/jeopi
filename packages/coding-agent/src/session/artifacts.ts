@@ -113,8 +113,13 @@ export class ArtifactManager {
 	 * @returns Artifact ID (numeric string)
 	 */
 	async save(content: string, toolType: string): Promise<string> {
-		const { id, path } = await this.allocatePath(toolType);
-		await Bun.write(path, content);
+		const { id, path: artifactPath } = await this.allocatePath(toolType);
+		await Bun.write(artifactPath, content);
+		const readback = await Bun.file(artifactPath).text();
+		if (readback !== content) {
+			await fs.unlink(artifactPath).catch(() => {});
+			throw new Error(`Artifact ${id} readback mismatch after write`);
+		}
 		return id;
 	}
 

@@ -278,6 +278,7 @@ export type ReadonlySessionManager = Pick<
 	| "allocateArtifactPath"
 	| "saveArtifact"
 	| "getArtifactPath"
+	| "readArtifact"
 	| "getLeafId"
 	| "getLeafEntry"
 	| "getEntry"
@@ -1136,6 +1137,20 @@ export class SessionManager {
 
 	async getArtifactPath(id: string): Promise<string | null> {
 		return (await this.#artifactManagerForSession()?.getPath(id)) ?? null;
+	}
+
+	async readArtifact(id: string): Promise<string | null> {
+		const manager = this.#artifactManagerForSession();
+		if (manager) {
+			const artifactPath = await manager.getPath(id);
+			if (!artifactPath) return null;
+			try {
+				return await Bun.file(artifactPath).text();
+			} catch {
+				return null;
+			}
+		}
+		return this.#inMemoryArtifacts?.get(id) ?? null;
 	}
 
 	async saveDraft(text: string): Promise<void> {

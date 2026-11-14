@@ -156,9 +156,14 @@ interface ContextUsageMemo {
 	length: number;
 	lastFingerprint: string | undefined;
 	modelContextWindow: number;
+	modelProvider: string | undefined;
+	modelId: string | undefined;
 	contextUsageRevision: number;
 	usedTokens: number;
 	contextWindow: number;
+	providerPromptTokens: number | null | undefined;
+	providerPromptStatus: "current" | "stale" | "unavailable" | undefined;
+	estimateKind: "mixed" | "estimated" | undefined;
 	systemPromptRef: readonly string[] | undefined;
 	toolsRef: readonly any[] | undefined;
 	skillsRef: readonly any[] | undefined;
@@ -925,9 +930,17 @@ export class StatusLineComponent implements Component {
 	 * (right after compaction, before the next response). Exposed (non-private)
 	 * for unit tests and the collab host's state broadcast.
 	 */
-	getCachedContextBreakdown(): { usedTokens: number; contextWindow: number } {
+	getCachedContextBreakdown(): {
+		usedTokens: number;
+		contextWindow: number;
+		providerPromptTokens?: number | null;
+		providerPromptStatus?: "current" | "stale" | "unavailable";
+		estimateKind?: "mixed" | "estimated";
+	} {
 		const messages = this.session.messages ?? EMPTY_MESSAGES;
 		const modelContextWindow = this.session.model?.contextWindow ?? 0;
+		const modelProvider = this.session.model?.provider;
+		const modelId = this.session.model?.id;
 		const length = messages.length;
 		const lastFingerprint = length > 0 ? messageFingerprint(messages[length - 1]!) : undefined;
 		// Bumps when the in-flight pending snapshot is set/cleared. Without it a
@@ -946,30 +959,46 @@ export class StatusLineComponent implements Component {
 			cache.length === length &&
 			cache.lastFingerprint === lastFingerprint &&
 			cache.modelContextWindow === modelContextWindow &&
+			cache.modelProvider === modelProvider &&
+			cache.modelId === modelId &&
 			cache.contextUsageRevision === contextUsageRevision &&
 			cache.systemPromptRef === systemPrompt &&
 			cache.toolsRef === tools &&
 			cache.skillsRef === skills
 		) {
-			return { usedTokens: cache.usedTokens, contextWindow: cache.contextWindow };
+			return {
+				usedTokens: cache.usedTokens,
+				contextWindow: cache.contextWindow,
+				providerPromptTokens: cache.providerPromptTokens,
+				providerPromptStatus: cache.providerPromptStatus,
+				estimateKind: cache.estimateKind,
+			};
 		}
 
 		const usage = this.session.getContextUsage();
 		const usedTokens = usage?.tokens ?? 0;
 		const contextWindow = usage?.contextWindow ?? modelContextWindow;
+		const providerPromptTokens = usage?.providerPromptTokens;
+		const providerPromptStatus = usage?.providerPromptStatus;
+		const estimateKind = usage?.estimateKind;
 		this.#contextUsageCache = {
 			messagesRef: messages,
 			length,
 			lastFingerprint,
 			modelContextWindow,
+			modelProvider,
+			modelId,
 			contextUsageRevision,
 			usedTokens,
 			contextWindow,
+			providerPromptTokens,
+			providerPromptStatus,
+			estimateKind,
 			systemPromptRef: systemPrompt,
 			toolsRef: tools,
 			skillsRef: skills,
 		};
-		return { usedTokens, contextWindow };
+		return { usedTokens, contextWindow, providerPromptTokens, providerPromptStatus, estimateKind };
 	}
 
 	#buildSegmentContext(

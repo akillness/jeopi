@@ -236,3 +236,99 @@ describe("collectShakeRegions — useless results", () => {
 		expect(collectShakeRegions([entry], cfg({ protectTokens: 1_000_000 }))).toHaveLength(0);
 	});
 });
+
+describe("collectShakeRegions — error, aborted, mixed-image, and pairing preservation", () => {
+	test("never collects isError tool results even with aggressive config", () => {
+		const entry = messageEntry(toolResultMessage("bash", "fatal error details\n".repeat(120), { isError: true }));
+		expect(collectShakeRegions([entry], cfg())).toHaveLength(0);
+	});
+
+	test("never collects aborted tool results or results from aborted/errored assistant turns", () => {
+		const abortedDetailsResult = messageEntry(
+			toolResultMessage("task", "partial cancelled task output\n".repeat(100), {
+				details: { aborted: true },
+			}),
+		);
+		const abortedTurnCallId = "call-aborted-turn";
+		const abortedAssistant = messageEntry({
+			...assistantMessage([
+				{ type: "text", text: `partial\n${fencedBlock(120)}` },
+				{ type: "toolCall", id: abortedTurnCallId, name: "bash", arguments: { command: "sleep 99" } },
+			]),
+			stopReason: "aborted",
+			errorMessage: "Request aborted",
+		});
+		const abortedPairedResult = messageEntry(
+			toolResultMessage("bash", "Tool execution was aborted\n".repeat(80), {
+				toolCallId: abortedTurnCallId,
+				isError: false,
+			}),
+		);
+		const erroredAssistant = messageEntry({
+			...assistantMessage([{ type: "text", text: `error trace\n${fencedBlock(120)}` }]),
+			stopReason: "error",
+			errorMessage: "Provider failed",
+		});
+
+		const regions = collectShakeRegions(
+			[abortedDetailsResult, abortedAssistant, abortedPairedResult, erroredAssistant],
+			cfg(),
+		);
+		expect(regions).toHaveLength(0);
+	});
+
+	test("never collects mixed-image tool results so images are never dropped", () => {
+		const mixed = messageEntry({
+			role: "toolResult",
+			toolCallId: "call-mixed-img",
+			toolName: "read_image",
+			content: [
+				{ type: "text", text: "screenshot analysis ".repeat(150) },
+				{ type: "image", data: "iVBORw0KGgo", mimeType: "image/png" },
+			],
+			isError: false,
+			timestamp: Date.now(),
+		});
+		const textOnly = messageEntry(toolResultMessage("bash", "normal log output ".repeat(150)));
+
+		const regions = collectShakeRegions([mixed, textOnly], cfg());
+		expect(regions).toHaveLength(1);
+		expect(regions[0]?.entry).toBe(textOnly);
+	});
+
+	test("preserves toolCall/toolResult pairing in multi-tool turns when shaking eligible siblings", () => {
+		const errorCallId = "call-err";
+		const okCallId = "call-ok";
+		const assistantEntry = messageEntry(
+			assistantMessage([
+				{ type: "toolCall", id: errorCallId, name: "bash", arguments: { command: "false" } },
+				{ type: "toolCall", id: okCallId, name: "bash", arguments: { command: "cat big.log" } },
+			]),
+		);
+		const errEntry = messageEntry(
+			toolResultMessage("bash", "error output ".repeat(80), { toolCallId: errorCallId, isError: true }),
+		);
+		const okEntry = messageEntry(
+			toolResultMessage("bash", "large output ".repeat(120), { toolCallId: okCallId, isError: false }),
+		);
+
+		const regions = collectShakeRegions([assistantEntry, errEntry, okEntry], cfg());
+		expect(regions).toHaveLength(1);
+		expect(regions[0]?.entry).toBe(okEntry);
+
+		applyShakeRegions([{ region: regions[0]!, replacement: "[shaken — artifact://0]" }]);
+
+		const assistantCalls = (assistantEntry.message as AssistantMessage).content.filter(b => b.type === "toolCall");
+		expect(assistantCalls.map(c => c.id)).toEqual([errorCallId, okCallId]);
+		expect((errEntry.message as ToolResultMessage).toolCallId).toBe(errorCallId);
+		expect((errEntry.message as ToolResultMessage).content[0]).toEqual({
+			type: "text",
+			text: "error output ".repeat(80),
+		});
+		expect((okEntry.message as ToolResultMessage).toolCallId).toBe(okCallId);
+		expect((okEntry.message as ToolResultMessage).toolName).toBe("bash");
+		expect((okEntry.message as ToolResultMessage).content).toEqual([
+			{ type: "text", text: "[shaken — artifact://0]" },
+		]);
+	});
+});

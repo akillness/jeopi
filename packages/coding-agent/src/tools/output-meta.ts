@@ -4,13 +4,14 @@
  * Tools populate details.meta using the fluent OutputMetaBuilder.
  * The tool wrapper automatically formats and appends notices at message boundary.
  */
-import type {
-	AgentTool,
-	AgentToolContext,
-	AgentToolExecFn,
-	AgentToolResult,
-	AgentToolUpdateCallback,
+import {
+	type AgentTool,
+	type AgentToolContext,
+	type AgentToolExecFn,
+	type AgentToolResult,
+	type AgentToolUpdateCallback,
 } from "jeopi-agent-core";
+import { isAbortedOrFailedTaskResult } from "jeopi-agent-core/compaction/tool-protection";
 import type { ImageContent, TextContent } from "jeopi-ai";
 import { logger } from "jeopi-utils";
 import { getDefault, type Settings } from "../config/settings";
@@ -648,6 +649,23 @@ async function spillLargeResultToArtifact(
 	const sessionManager = context?.sessionManager;
 	if (!sessionManager) return result;
 	if (toolName === "read") return result;
+	if (result.isError === true) return result;
+	if (result.content.some(block => block.type !== "text")) return result;
+	const details = result.details as Record<string, unknown> | undefined;
+	if (
+		details?.aborted === true ||
+		isAbortedOrFailedTaskResult({
+			role: "toolResult",
+			toolCallId: "",
+			toolName,
+			content: result.content,
+			details: result.details,
+			isError: Boolean(result.isError),
+			timestamp: 0,
+		})
+	) {
+		return result;
+	}
 	const { threshold, tailBytes, tailLines, headBytes } = getSpillConfig(context?.settings);
 
 	// Skip if tool already saved an artifact
@@ -667,23 +685,38 @@ async function spillLargeResultToArtifact(
 	const totalBytes = Buffer.byteLength(fullText, "utf-8");
 	if (totalBytes <= threshold) return result;
 
-	// Save the full output as an artifact so the elided bytes stay recoverable.
-	// In a persistent session this hits `Bun.write`, which can throw (disk full,
-	// permissions). The spill wraps arbitrary tools (built-in, MCP, extension,
-	// RPC-host); a save failure must never convert a successful call into an
-	// error, nor re-expose the full (possibly context-blowing) output. Mirror
-	// `enforceInlineByteCap`: always truncate past the threshold, and only
-	// attach the `artifact://` recovery link when the save actually succeeded.
+	// Save the full output as an artifact and verify full readback before
+	// truncating. On any save or readback failure, return the original result
+	// untouched so no tool output is silently lost.
 	let artifactId: string | undefined;
 	try {
-		artifactId = await sessionManager.saveArtifact(fullText, toolName);
+		const candidateId = await sessionManager.saveArtifact(fullText, toolName);
+		if (candidateId) {
+			let readback: string | null = null;
+			if (typeof sessionManager.readArtifact === "function") {
+				readback = await sessionManager.readArtifact(candidateId);
+			} else if (typeof sessionManager.getArtifactPath === "function") {
+				const artifactPath = await sessionManager.getArtifactPath(candidateId);
+				readback = artifactPath ? await Bun.file(artifactPath).text().catch(() => null) : null;
+			}
+			if (readback === fullText) {
+				artifactId = candidateId;
+			} else {
+				logger.warn("Spilled artifact readback verification failed; preserving original tool result", {
+					tool: toolName,
+					artifactId: candidateId,
+				});
+			}
+		}
 	} catch (error) {
-		logger.warn("Failed to spill large tool result to artifact", {
+		logger.warn("Failed to spill large tool result to artifact; preserving original tool result", {
 			tool: toolName,
 			error: error instanceof Error ? error.message : String(error),
 		});
 	}
-
+	if (!artifactId) {
+		return result;
+	}
 	// Truncate: middle elision when a head budget is configured, otherwise tail-only.
 	const useMiddle = headBytes > 0;
 	const truncated = useMiddle

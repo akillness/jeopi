@@ -1026,7 +1026,7 @@ describe("AgentSession MCP discovery", () => {
 		expect(meta?.truncation?.artifactId).toBeDefined();
 	});
 
-	it("keeps an oversized MCP result successful and truncated when the artifact save fails", async () => {
+	it("preserves an oversized MCP result untouched when the artifact save fails", async () => {
 		const readTool = createBasicTool("read", "Read");
 		const toolRegistry = new Map([[readTool.name, readTool]]);
 		const agent = new Agent({
@@ -1057,10 +1057,9 @@ describe("AgentSession MCP discovery", () => {
 		const result = await registered!.execute("call-fail", {}, undefined, undefined, context);
 		const text = textOf(result);
 		expect(result.isError).toBeFalsy();
-		expect(Buffer.byteLength(text)).toBeLessThan(Buffer.byteLength(big));
+		expect(text).toBe(big);
 		expect(text).not.toContain("artifact://");
-		const meta = (result.details as { meta?: OutputMeta }).meta;
-		expect(meta?.truncation).toBeDefined();
-		expect(meta?.truncation?.artifactId).toBeUndefined();
+		const details = result.details as { meta?: OutputMeta } | undefined;
+		expect(details?.meta?.truncation).toBeUndefined();
 	});
 });

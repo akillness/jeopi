@@ -164,6 +164,23 @@ describe("StatusLineComponent context breakdown", () => {
 		expect(usageCalls()).toBe(2);
 	});
 
+	it("re-queries when model id or provider changes even with the same context window", () => {
+		const fake = makeSession({
+			messages: [userMessage("hi")],
+			contextWindow: 200_000,
+			usage: { tokens: 5000, contextWindow: 200_000, percent: 2.5 },
+		});
+		const comp = new StatusLineComponent(fake.session);
+		expect(comp.getCachedContextBreakdown().usedTokens).toBe(5000);
+
+		Object.assign(fake.session.model!, { id: "different-model", provider: "anthropic", contextWindow: 200_000 });
+		fake.setUsage({ tokens: 40, contextWindow: 200_000, percent: 0.02 });
+
+		const updated = comp.getCachedContextBreakdown();
+		expect(updated.usedTokens).toBe(40);
+		expect(fake.usageCalls()).toBe(2);
+	});
+
 	it("re-queries when only the in-flight pending revision changes (no message change)", () => {
 		const fake = makeSession({
 			messages: [userMessage("hi")],

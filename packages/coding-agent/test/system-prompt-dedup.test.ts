@@ -267,4 +267,25 @@ describe("SYSTEM.md prompt assembly", () => {
 		const matches = promptText.match(new RegExp(escapeRegExp(sharedContent), "g")) ?? [];
 		expect(matches).toHaveLength(1);
 	});
+
+	it("deduplicates identical always-apply rules loaded from both user and project roots", async () => {
+		const projectDir = path.join(tempDir, "dup-always-apply");
+		const ruleBody = "# Shared Workflow\n\nFollow the exact per-prompt order.";
+		const { systemPrompt } = await buildSystemPrompt({
+			cwd: projectDir,
+			customPrompt: "Base prompt",
+			contextFiles: [],
+			skills: [],
+			rules: [],
+			alwaysApplyRules: [
+				{ name: "jeo-workflows", path: "/user/.agents/rules/jeo-workflows.md", content: ruleBody },
+				{ name: "jeo-workflows", path: "/project/.agents/rules/jeo-workflows.md", content: ruleBody },
+			],
+			toolNames: [],
+		});
+
+		const promptText = systemPrompt.join("\n\n");
+		const matches = promptText.match(new RegExp(escapeRegExp(ruleBody), "g")) ?? [];
+		expect(matches).toHaveLength(1);
+	});
 });

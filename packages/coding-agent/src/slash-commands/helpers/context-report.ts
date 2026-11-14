@@ -14,7 +14,25 @@ export function buildContextReportText(runtime: SlashCommandRuntime): string {
 			return "Context usage is unavailable: no model is selected for this session.";
 		}
 		const usedPct = Math.round((breakdown.usedTokens / breakdown.contextWindow) * 100);
-		const lines = [`Context window: ${breakdown.contextWindow} tokens (${usedPct}% used)`];
+		const kindLabel =
+			breakdown.contextEstimateKind === "mixed"
+				? "mixed: provider + est. tail"
+				: breakdown.contextEstimateKind === "estimated"
+					? "estimated"
+					: undefined;
+		const lines = [
+			`Context window: ${breakdown.contextWindow} tokens (${usedPct}% used${kindLabel ? `, ${kindLabel}` : ""})`,
+		];
+		if (breakdown.providerPromptStatus === "unavailable" || breakdown.providerPromptTokens == null) {
+			lines.push("Provider prompt input: unavailable");
+		} else if (breakdown.providerPromptStatus === "stale") {
+			lines.push(`Provider prompt input: ${breakdown.providerPromptTokens} tokens (stale)`);
+		} else if (breakdown.providerPromptStatus === "current") {
+			lines.push(`Provider prompt input: ${breakdown.providerPromptTokens} tokens (current)`);
+		}
+		if (breakdown.estimatedTotalTokens !== undefined) {
+			lines.push(`Estimated categories (local bytes/4): ${breakdown.estimatedTotalTokens} tokens`);
+		}
 		for (const category of breakdown.categories) {
 			if (category.tokens === 0) continue;
 			const fraction = category.tokens / breakdown.contextWindow;
@@ -61,6 +79,14 @@ export function buildContextReportText(runtime: SlashCommandRuntime): string {
 	} catch {
 		const fallback = runtime.session.getContextUsage();
 		if (!fallback) return "Context usage is unavailable.";
-		return ["Context", `Window: ${fallback.contextWindow}`, `Used: ${fallback.tokens ?? 0}`].join("\n");
+		const lines = ["Context", `Window: ${fallback.contextWindow}`, `Used: ${fallback.tokens ?? 0}`];
+		if (fallback.providerPromptStatus === "unavailable" || fallback.providerPromptTokens === null) {
+			lines.push("Provider prompt input: unavailable");
+		} else if (fallback.providerPromptTokens !== undefined) {
+			lines.push(
+				`Provider prompt input: ${fallback.providerPromptTokens} (${fallback.providerPromptStatus ?? "current"})`,
+			);
+		}
+		return lines.join("\n");
 	}
 }

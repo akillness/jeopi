@@ -2,12 +2,14 @@
  * Tool output pruning utilities for compaction.
  */
 
-import type { ToolResultMessage } from "jeopi-ai";
+import type { TextContent, ToolResultMessage } from "jeopi-ai";
 import type { AgentMessage, AgentToolCall } from "../types";
 import { estimateTokens } from "./compaction";
 import type { SessionEntry, SessionMessageEntry } from "./entries";
 import {
+	collectAssistantStopReasonsByToolCallId,
 	collectToolCallsById,
+	isPreservedToolResult,
 	isProtectedToolResult,
 	isSkillReadToolResult,
 	type ProtectedToolMatcher,
@@ -181,6 +183,7 @@ interface SupersedeCandidate {
 function collectSupersededResults(
 	entries: readonly SessionEntry[],
 	toolCallsById: ReadonlyMap<string, AgentToolCall>,
+	stopReasonsByCallId: ReadonlyMap<string, string>,
 	supersedeKey: SupersedeKeyFn,
 	protectedTools: readonly ProtectedToolMatcher[],
 ): SupersedeCandidate[] {
@@ -190,6 +193,7 @@ function collectSupersededResults(
 		const entry = entries[i];
 		const message = getToolResultMessage(entry);
 		if (!message || message.prunedAt !== undefined) continue;
+		if (isPreservedToolResult(message, stopReasonsByCallId.get(message.toolCallId))) continue;
 		const toolCall = toolCallsById.get(message.toolCallId);
 		if (!toolCall) continue;
 		if (isProtectedToolResult(message, toolCall, protectedTools)) continue;
@@ -219,6 +223,7 @@ function collectSupersededResults(
 function collectUselessResults(
 	entries: readonly SessionEntry[],
 	toolCallsById: ReadonlyMap<string, AgentToolCall>,
+	stopReasonsByCallId: ReadonlyMap<string, string>,
 	protectedTools: readonly ProtectedToolMatcher[],
 	exclude: ReadonlySet<ToolResultMessage>,
 ): SupersedeCandidate[] {
@@ -226,7 +231,8 @@ function collectUselessResults(
 	for (let i = 0; i < entries.length; i++) {
 		const entry = entries[i];
 		const message = getToolResultMessage(entry);
-		if (message?.useless !== true || message.prunedAt !== undefined || message.isError === true) continue;
+		if (message?.useless !== true || message.prunedAt !== undefined) continue;
+		if (isPreservedToolResult(message, stopReasonsByCallId.get(message.toolCallId))) continue;
 		if (exclude.has(message)) continue;
 		if (isProtectedToolResult(message, toolCallsById.get(message.toolCallId), protectedTools)) continue;
 		const tokens = estimateTokens(message as AgentMessage);
@@ -247,12 +253,15 @@ function collectUselessResults(
  */
 export function pruneSupersededToolResults(entries: SessionEntry[], config: SupersedePruneConfig): PruneResult {
 	const toolCallsById = collectToolCallsById(entries);
+	const stopReasonsByCallId = collectAssistantStopReasonsByToolCallId(entries);
 	const candidates = config.supersedeKey
-		? collectSupersededResults(entries, toolCallsById, config.supersedeKey, config.protectedTools)
+		? collectSupersededResults(entries, toolCallsById, stopReasonsByCallId, config.supersedeKey, config.protectedTools)
 		: [];
 	if (config.pruneUseless) {
 		const exclude = new Set(candidates.map(candidate => candidate.message));
-		candidates.push(...collectUselessResults(entries, toolCallsById, config.protectedTools, exclude));
+		candidates.push(
+			...collectUselessResults(entries, toolCallsById, stopReasonsByCallId, config.protectedTools, exclude),
+		);
 		candidates.sort((a, b) => a.index - b.index);
 	}
 	if (candidates.length === 0) return { prunedCount: 0, tokensSaved: 0 };
@@ -307,11 +316,16 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 
 	const candidates: Array<{ entry: SessionMessageEntry; tokens: number; superseded: boolean; useless: boolean }> = [];
 	const toolCallsById = collectToolCallsById(entries);
+	const stopReasonsByCallId = collectAssistantStopReasonsByToolCallId(entries);
 	const supersededMessages = config.supersedeKey
 		? new Set(
-				collectSupersededResults(entries, toolCallsById, config.supersedeKey, config.protectedTools).map(
-					candidate => candidate.message,
-				),
+				collectSupersededResults(
+					entries,
+					toolCallsById,
+					stopReasonsByCallId,
+					config.supersedeKey,
+					config.protectedTools,
+				).map(candidate => candidate.message),
 			)
 		: undefined;
 	const uselessMessages =
@@ -320,12 +334,12 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 					collectUselessResults(
 						entries,
 						toolCallsById,
+						stopReasonsByCallId,
 						config.protectedTools,
 						supersededMessages ?? new Set(),
 					).map(candidate => candidate.message),
 				)
 			: undefined;
-
 	const boundaryIndex = resolveBoundaryIndex(entries, config.keepBoundaryId);
 	const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
 	// All-message suffix per index, only when the cache guard is armed.
@@ -352,12 +366,11 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 		// still-cached copy; compaction/shake reclaim those when they rebuild.
 		const inWarmPrefix =
 			messageSuffix !== undefined && cacheWarmSuffixTokens !== undefined && messageSuffix[i] > cacheWarmSuffixTokens;
-		if (inWarmPrefix || i < boundaryIndex) {
+		const preserved = isPreservedToolResult(message, stopReasonsByCallId.get(message.toolCallId));
+		if (inWarmPrefix || i < boundaryIndex || preserved) {
 			accumulatedTokens += tokens;
 			continue;
 		}
-
-		// Superseded and useless results bypass the age-based protect window
 		// (a stale re-read copy, or a result the tool flagged as uninformative,
 		// is dead weight at any age) — but only within the cache-warm tail: the
 		// guard above already excluded deeper, still-cached copies.
@@ -421,4 +434,225 @@ export function readToolSupersedeKey(toolName: string, args: Record<string, unkn
 	if (path.includes("://")) return undefined;
 	const { path: base, sel } = splitReadSelector(path);
 	return sel === undefined ? base : `${base}\u0000${sel}`;
+}
+
+// ============================================================================
+// Reversible repeated-output reduction (pure selection & application)
+// ============================================================================
+
+export interface RepeatedOutputReductionConfig {
+	/** Minimum estimated tokens for a completed tool result to be eligible. Default 300. */
+	minTokens?: number;
+	/** Number of most recent large completed results to keep inline per non-read tool. Default 1. */
+	keepRecentPerTool?: number;
+	/** Number of most recent large completed `read` results to keep inline. Default 2. */
+	keepRecentRead?: number;
+	/** Reduce a candidate now when all messages after it total at most this many estimated tokens. Default 8_000. */
+	suffixTokenLimit?: number;
+	/** Idle gap after which the provider prompt cache is cold and deep candidates may reduce. Default 30 min. */
+	idleFlushMs?: number;
+	/** Clock override for tests. */
+	now?: number;
+	/** Compaction boundary (`firstKeptEntryId`). Entries before it are skipped. */
+	keepBoundaryId?: string;
+	/** Tool-result protection matchers. */
+	protectedTools: ProtectedToolMatcher[];
+}
+
+export interface RepeatedTaskOutputRef {
+	id: string;
+	outputPath: string;
+	output: string;
+	truncated: boolean;
+}
+
+export interface RepeatedToolOutputCandidate {
+	entry: SessionMessageEntry;
+	message: ToolResultMessage;
+	index: number;
+	tokens: number;
+	originalText: string;
+	toolName: string;
+	reason: "repeated-tool" | "duplicate-content";
+	/** Existing artifact id if embedded in details.meta or notice text. */
+	existingArtifactId?: string;
+	/** Completed task output file refs from `details.results` when present. */
+	taskOutputs?: RepeatedTaskOutputRef[];
+}
+
+const DEFAULT_REPEATED_MIN_TOKENS = 300;
+const DEFAULT_KEEP_RECENT_PER_TOOL = 1;
+const DEFAULT_KEEP_RECENT_READ = 2;
+const EMBEDDED_ARTIFACT_ID_RE = /(?:\[raw output: |Read )artifact:\/\/(\d+)/;
+
+function toolResultTextContent(message: ToolResultMessage): string {
+	return message.content
+		.filter((block): block is TextContent => block.type === "text")
+		.map(block => block.text)
+		.join("\n");
+}
+
+function extractExistingArtifactId(message: ToolResultMessage, text: string): string | undefined {
+	const details = message.details as Record<string, unknown> | undefined;
+	const meta = details?.meta as { truncation?: { artifactId?: unknown } } | undefined;
+	if (typeof meta?.truncation?.artifactId === "string" && /^\d+$/.test(meta.truncation.artifactId)) {
+		return meta.truncation.artifactId;
+	}
+	const match = EMBEDDED_ARTIFACT_ID_RE.exec(text);
+	return match?.[1];
+}
+
+function extractTaskOutputs(message: ToolResultMessage): RepeatedTaskOutputRef[] | undefined {
+	if (message.toolName !== "task") return undefined;
+	const details = message.details as Record<string, unknown> | undefined;
+	if (!details || !Array.isArray(details.results) || details.results.length === 0) return undefined;
+	const refs: RepeatedTaskOutputRef[] = [];
+	for (const item of details.results) {
+		if (!item || typeof item !== "object") return undefined;
+		const record = item as Record<string, unknown>;
+		if (
+			typeof record.id !== "string" ||
+			typeof record.outputPath !== "string" ||
+			record.outputPath.length === 0 ||
+			typeof record.output !== "string"
+		) {
+			return undefined;
+		}
+		refs.push({
+			id: record.id,
+			outputPath: record.outputPath,
+			output: record.output,
+			truncated: record.truncated === true,
+		});
+	}
+	return refs.length > 0 ? refs : undefined;
+}
+
+/**
+ * Pure candidate selection for reversible artifact-backed reduction of repeated
+ * large completed tool/task outputs.
+ *
+ * - Respects `keepBoundaryId` (entries before latest compaction are skipped).
+ * - Preserves `isError`, aborted/failed tasks, mixed-image/non-text results,
+ *   protected tools, and already-pruned entries.
+ * - Respects prompt-cache economics: when warm (last message age < `idleFlushMs`),
+ *   only candidates inside the `suffixTokenLimit` tail are returned; when cold,
+ *   all candidates at/after `keepBoundaryId` are eligible.
+ * - Does NOT mutate entries; the caller must verify durable artifact write +
+ *   full readback before calling {@link applyRepeatedToolOutputReductions}.
+ */
+export function collectRepeatedToolOutputCandidates(
+	entries: readonly SessionEntry[],
+	config: RepeatedOutputReductionConfig,
+): RepeatedToolOutputCandidate[] {
+	if (entries.length === 0) return [];
+
+	const boundaryIndex = resolveBoundaryIndex(entries, config.keepBoundaryId);
+	const minTokens = Math.max(MIN_PRUNE_TOKENS, config.minTokens ?? DEFAULT_REPEATED_MIN_TOKENS);
+	const keepRecentPerTool = Math.max(1, config.keepRecentPerTool ?? DEFAULT_KEEP_RECENT_PER_TOOL);
+	const keepRecentRead = Math.max(1, config.keepRecentRead ?? DEFAULT_KEEP_RECENT_READ);
+	const toolCallsById = collectToolCallsById(entries);
+	const stopReasonsByCallId = collectAssistantStopReasonsByToolCallId(entries);
+
+	const eligible: Array<{
+		entry: SessionMessageEntry;
+		message: ToolResultMessage;
+		index: number;
+		tokens: number;
+		originalText: string;
+		toolName: string;
+	}> = [];
+
+	for (let i = boundaryIndex; i < entries.length; i++) {
+		const entry = entries[i];
+		const message = getToolResultMessage(entry);
+		if (!message || message.prunedAt !== undefined) continue;
+		if (isPreservedToolResult(message, stopReasonsByCallId.get(message.toolCallId))) continue;
+		if (isProtectedToolResult(message, toolCallsById.get(message.toolCallId), config.protectedTools)) continue;
+		const originalText = toolResultTextContent(message);
+		if (originalText.length === 0) continue;
+		const tokens = estimateTokens(message as AgentMessage);
+		if (tokens < minTokens) continue;
+		eligible.push({
+			entry: entry as SessionMessageEntry,
+			message,
+			index: i,
+			tokens,
+			originalText,
+			toolName: message.toolName,
+		});
+	}
+
+	if (eligible.length < 2) return [];
+
+	const seenByTool = new Map<string, number>();
+	const seenExactText = new Set<string>();
+	const repeated: RepeatedToolOutputCandidate[] = [];
+
+	for (let i = eligible.length - 1; i >= 0; i--) {
+		const item = eligible[i];
+		const countForTool = seenByTool.get(item.toolName) ?? 0;
+		const keepLimit = item.toolName === "read" ? keepRecentRead : keepRecentPerTool;
+		const isDuplicateText = seenExactText.has(item.originalText);
+		const isRepeatedTool = countForTool >= keepLimit;
+
+		seenExactText.add(item.originalText);
+		seenByTool.set(item.toolName, countForTool + 1);
+
+		if (!isDuplicateText && !isRepeatedTool) continue;
+		repeated.push({
+			entry: item.entry,
+			message: item.message,
+			index: item.index,
+			tokens: item.tokens,
+			originalText: item.originalText,
+			toolName: item.toolName,
+			reason: isDuplicateText ? "duplicate-content" : "repeated-tool",
+			existingArtifactId: extractExistingArtifactId(item.message, item.originalText),
+			taskOutputs: extractTaskOutputs(item.message),
+		});
+	}
+
+	if (repeated.length === 0) return [];
+	repeated.reverse();
+
+	const now = config.now ?? Date.now();
+	let lastMessageTimestamp: number | undefined;
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i];
+		if (entry.type !== "message") continue;
+		const timestamp = (entry.message as AgentMessage).timestamp;
+		if (typeof timestamp === "number") lastMessageTimestamp = timestamp;
+		break;
+	}
+	const idle =
+		lastMessageTimestamp !== undefined && now - lastMessageTimestamp >= (config.idleFlushMs ?? DEFAULT_IDLE_FLUSH_MS);
+	if (idle) return repeated;
+
+	const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
+	const suffixTokens = computeMessageSuffixTokens(entries);
+	return repeated.filter(candidate => suffixTokens[candidate.index] <= suffixTokenLimit);
+}
+
+/**
+ * Apply verified artifact-backed replacements to repeated tool-output candidates.
+ * Callers MUST only include items whose recovery artifact write + readback
+ * succeeded. Preserves `toolCallId`, `toolName`, `isError`, and `details`.
+ */
+export function applyRepeatedToolOutputReductions(
+	items: ReadonlyArray<{ candidate: RepeatedToolOutputCandidate; replacement: string }>,
+	prunedAt = Date.now(),
+): PruneResult {
+	if (items.length === 0) return { prunedCount: 0, tokensSaved: 0 };
+	let tokensSaved = 0;
+	let prunedCount = 0;
+	for (const { candidate, replacement } of items) {
+		const saved = estimatePrunedSavings(candidate.tokens, replacement);
+		if (saved <= 0) continue;
+		candidate.message.content = [{ type: "text", text: replacement }];
+		candidate.message.prunedAt = prunedAt;
+		tokensSaved += saved;
+		prunedCount++;
+	}
+	return { prunedCount, tokensSaved };
 }

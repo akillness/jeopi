@@ -537,6 +537,13 @@ export class CollabHost {
 				tokens,
 				contextWindow: breakdown.contextWindow,
 				percent: breakdown.contextWindow > 0 ? (tokens / breakdown.contextWindow) * 100 : 0,
+				...(breakdown.providerPromptTokens !== undefined
+					? { providerPromptTokens: breakdown.providerPromptTokens }
+					: {}),
+				...(breakdown.providerPromptStatus !== undefined
+					? { providerPromptStatus: breakdown.providerPromptStatus }
+					: {}),
+				...(breakdown.estimateKind !== undefined ? { estimateKind: breakdown.estimateKind } : {}),
 			},
 			participants: this.participants,
 		};

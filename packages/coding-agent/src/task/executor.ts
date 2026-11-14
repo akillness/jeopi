@@ -5,6 +5,7 @@
  */
 
 import path from "node:path";
+import * as fs from "node:fs/promises";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig, ThinkingLevel } from "jeopi-agent-core";
 import { recordHandoff, resolveTelemetry } from "jeopi-agent-core";
 import type { Api, Model, ServiceTierByFamily, Usage } from "jeopi-ai";
@@ -1671,22 +1672,43 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 	});
 
 	// Write output artifact (input and jsonl already written in real-time)
-	// Compute output metadata for agent:// URL integration
+	// Compute output metadata for agent:// URL integration only after durable
+	// write + full readback succeed so callers never receive a dangling handle.
 	let outputMeta: { lineCount: number; charCount: number } | undefined;
 	let outputPath: string | undefined;
+	let artifactWriteFailed = false;
 	if (args.artifactsDir) {
-		outputPath = path.join(args.artifactsDir, `${id}.md`);
+		const candidatePath = path.join(args.artifactsDir, `${id}.md`);
 		try {
-			await Bun.write(outputPath, rawOutput);
-			outputMeta = {
-				lineCount: rawOutput.split("\n").length,
-				charCount: rawOutput.length,
-			};
-		} catch {
-			// Non-fatal
+			await Bun.write(candidatePath, rawOutput);
+			const readback = await Bun.file(candidatePath).text();
+			if (readback === rawOutput) {
+				outputPath = candidatePath;
+				outputMeta = {
+					lineCount: rawOutput.split("\n").length,
+					charCount: rawOutput.length,
+				};
+			} else {
+				artifactWriteFailed = true;
+				logger.warn("Subagent output artifact readback mismatch; omitting outputPath", {
+					id,
+					outputPath: candidatePath,
+				});
+				await fs.unlink(candidatePath).catch(() => {});
+			}
+		} catch (error) {
+			artifactWriteFailed = true;
+			logger.warn("Failed to write subagent output artifact; omitting outputPath", {
+				id,
+				outputPath: candidatePath,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			outputPath = undefined;
+			outputMeta = undefined;
 		}
 	}
-
+	const finalOutput = artifactWriteFailed ? rawOutput : truncatedOutput;
+	const finalTruncated = artifactWriteFailed ? false : Boolean(truncated);
 	// Update final progress. A wall-clock timeout always wins: if the runtime
 	// limit fired we report aborted/failed regardless of whether a yield landed
 	// while we were tearing the session down. The yield data is still surfaced
@@ -1734,9 +1756,9 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 		description: args.description,
 		lastIntent: progress.lastIntent,
 		exitCode,
-		output: truncatedOutput,
+		output: finalOutput,
 		stderr,
-		truncated: Boolean(truncated),
+		truncated: finalTruncated,
 		durationMs: Date.now() - args.startTime,
 		tokens: progress.tokens,
 		requests: progress.requests,

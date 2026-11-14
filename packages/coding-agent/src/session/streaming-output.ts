@@ -1215,8 +1215,16 @@ export class OutputSink {
 		const totalLines = this.#sawData ? this.#totalLines + 1 : 0;
 
 		if (this.#file) {
-			this.#flushArtifactTailIfCapped();
-			await this.#file.sink.end();
+			try {
+				this.#flushArtifactTailIfCapped();
+				await this.#file.sink.end();
+				const exists = await Bun.file(this.#file.path).exists();
+				if (!exists) {
+					this.#file = undefined;
+				}
+			} catch {
+				this.#file = undefined;
+			}
 		}
 
 		// Compose the visible output. With head retention, splice head + marker

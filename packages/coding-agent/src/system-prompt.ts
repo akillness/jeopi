@@ -73,9 +73,13 @@ function dedupeAlwaysApplyRules(
 ): AlwaysApplyRule[] {
 	if (!alwaysApplyRules || alwaysApplyRules.length === 0) return [];
 
-	return alwaysApplyRules.filter(
-		rule => !promptSources.some(source => promptSourceContainsRule(source, rule.content)),
-	);
+	const kept: AlwaysApplyRule[] = [];
+	for (const rule of alwaysApplyRules) {
+		if (promptSources.some(source => promptSourceContainsRule(source, rule.content))) continue;
+		if (kept.some(prev => promptSourceContainsRule(prev.content, rule.content))) continue;
+		kept.push(rule);
+	}
+	return kept;
 }
 
 function dedupePromptSource(source: string | null | undefined, otherSources: Array<string | null | undefined>): string {

@@ -2410,13 +2410,21 @@ function formatSearchReposResults(query: string, items: GhSearchRepoResult[]): s
 }
 
 async function saveArtifactText(session: ToolSession, toolType: string, text: string): Promise<string | undefined> {
-	const { path: artifactPath, id: artifactId } = (await session.allocateOutputArtifact?.(toolType)) ?? {};
-	if (!artifactPath || !artifactId) {
+	try {
+		const { path: artifactPath, id: artifactId } = (await session.allocateOutputArtifact?.(toolType)) ?? {};
+		if (!artifactPath || !artifactId) {
+			return undefined;
+		}
+		await Bun.write(artifactPath, text);
+		const readback = await Bun.file(artifactPath).text();
+		if (readback !== text) {
+			await fs.unlink(artifactPath).catch(() => {});
+			return undefined;
+		}
+		return artifactId;
+	} catch {
 		return undefined;
 	}
-
-	await Bun.write(artifactPath, text);
-	return artifactId;
 }
 
 function appendArtifactReference(text: string, artifactId: string | undefined, label: string): string {

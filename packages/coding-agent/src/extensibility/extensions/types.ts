@@ -280,11 +280,17 @@ export interface ExtensionUIContext {
 // ============================================================================
 
 export interface ContextUsage {
-	/** Estimated context tokens. */
+	/** Context tokens (provider-anchored mixed estimate when current, or local bytes/4 estimate). */
 	tokens: number;
 	contextWindow: number;
 	/** Context usage as percentage of context window. */
 	percent: number;
+	/** Last valid provider-reported prompt input tokens, separate from local estimates. */
+	providerPromptTokens?: number | null;
+	/** Freshness of providerPromptTokens against current model and compaction state. */
+	providerPromptStatus?: "current" | "stale" | "unavailable";
+	/** Whether tokens mixes provider usage with local estimates or is purely estimated. */
+	estimateKind?: "mixed" | "estimated";
 }
 
 export interface CompactOptions {
