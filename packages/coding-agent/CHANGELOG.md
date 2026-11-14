@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.24] - 2026-11-14
+
 ### Added
 
 - Separated provider-reported `providerPromptTokens` (`current | stale | unavailable`) from local `bytes/4` category estimates across `getContextBreakdown`, `getContextUsage`, `/context`, and the status line without double counting.

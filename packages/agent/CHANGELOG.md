@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.24] - 2026-11-14
+
 ### Fixed
 
 - Propagated explicit `"stop"` outcomes from `onTurnEnd` back into the agent loop so mid-run compaction blocks cannot dispatch extra tool-loop provider requests when no headroom remains.
