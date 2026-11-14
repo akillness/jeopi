@@ -782,10 +782,18 @@ const defaultUsageRankingStrategy: CredentialRankingStrategy = {
 	windowDefaults: { primaryMs: 24 * 60 * 60 * 1000, secondaryMs: 7 * 24 * 60 * 60 * 1000 },
 };
 
+const DEFAULT_USAGE_RANKED_PROVIDERS: ReadonlySet<Provider> = new Set([
+	"google-gemini-cli",
+	"kimi-code",
+	"cursor",
+	"zai",
+	"ollama-cloud",
+]);
+
 function resolveDefaultRankingStrategy(provider: Provider): CredentialRankingStrategy | undefined {
 	return (
 		DEFAULT_RANKING_STRATEGIES.get(provider) ??
-		(DEFAULT_USAGE_PROVIDER_MAP.has(provider) ? defaultUsageRankingStrategy : undefined)
+		(DEFAULT_USAGE_RANKED_PROVIDERS.has(provider) ? defaultUsageRankingStrategy : undefined)
 	);
 }
 
@@ -2094,33 +2102,33 @@ export class AuthStorage {
 	 * refresh override can address the row. Mirrors the matching logic in
 	 * {@link AuthStorage.#persistRefreshedUsageCredential}.
 	 */
+	#matchesUsageCredentialRow(entryCredential: AuthCredential, previous: UsageCredential): boolean {
+		if (entryCredential.type !== "oauth") return false;
+		if (previous.refreshToken && entryCredential.refresh === previous.refreshToken) return true;
+		if (previous.accessToken && entryCredential.access === previous.accessToken) return true;
+		const hasIdentity = Boolean(
+			(previous.accountId && entryCredential.accountId) ||
+				(previous.email && entryCredential.email) ||
+				(previous.projectId && entryCredential.projectId),
+		);
+		if (!hasIdentity) return false;
+		return (
+			entryCredential.accountId === previous.accountId &&
+			entryCredential.email === previous.email &&
+			entryCredential.projectId === previous.projectId &&
+			entryCredential.enterpriseUrl === previous.enterpriseUrl
+		);
+	}
+
 	#findStoredCredentialIdForUsageCredential(provider: Provider, previous: UsageCredential): number | undefined {
 		const entries = this.#getStoredCredentials(provider);
-		const match = entries.find(entry => {
-			if (entry.credential.type !== "oauth") return false;
-			if (previous.refreshToken && entry.credential.refresh === previous.refreshToken) return true;
-			if (previous.accessToken && entry.credential.access === previous.accessToken) return true;
-			return (
-				entry.credential.accountId === previous.accountId &&
-				entry.credential.email === previous.email &&
-				entry.credential.projectId === previous.projectId
-			);
-		});
+		const match = entries.find(entry => this.#matchesUsageCredentialRow(entry.credential, previous));
 		return match?.id;
 	}
 
 	#persistRefreshedUsageCredential(provider: Provider, previous: UsageCredential, next: UsageCredential): void {
 		const entries = this.#getStoredCredentials(provider);
-		const index = entries.findIndex(entry => {
-			if (entry.credential.type !== "oauth") return false;
-			if (previous.refreshToken && entry.credential.refresh === previous.refreshToken) return true;
-			if (previous.accessToken && entry.credential.access === previous.accessToken) return true;
-			return (
-				entry.credential.accountId === previous.accountId &&
-				entry.credential.email === previous.email &&
-				entry.credential.projectId === previous.projectId
-			);
-		});
+		const index = entries.findIndex(entry => this.#matchesUsageCredentialRow(entry.credential, previous));
 		if (index === -1) return;
 		const existing = entries[index]!.credential;
 		if (existing.type !== "oauth") return;

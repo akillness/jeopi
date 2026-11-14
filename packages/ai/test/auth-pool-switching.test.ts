@@ -133,4 +133,35 @@ describe("Antigravity per-model quota scoping and switching", () => {
 		// acc-1 is already exhausted for Argon, so no Argon sibling is available
 		expect(markResult.switched).toBe(false);
 	});
+	test("keeps distinct OAuth credentials without email/accountId isolated during usage refresh", async () => {
+		if (!store) throw new Error("test setup failed");
+		authStorage = new AuthStorage(store);
+		await authStorage.set("github-copilot", [
+			{
+				type: "oauth",
+				access: "ghu_individual_token_123",
+				refresh: "ghu_individual_token_123",
+				expires: Date.now() + 60_000,
+			},
+			{
+				type: "oauth",
+				access: "ghu_enterprise_token_456",
+				refresh: "ghu_enterprise_token_456",
+				expires: Date.now() + 60_000,
+				enterpriseUrl: "ghe.example.com",
+			},
+		]);
+		const first = await authStorage.getApiKey("github-copilot", undefined, {
+			baseUrl: "https://api.githubcopilot.com",
+			modelId: "gpt-4o",
+		});
+		const second = await authStorage.getApiKey("github-copilot", undefined, {
+			baseUrl: "https://api.githubcopilot.com",
+			modelId: "gpt-4o",
+		});
+		expect(JSON.parse(first!).token).toBe("ghu_individual_token_123");
+		expect(JSON.parse(first!).enterpriseUrl).toBeUndefined();
+		expect(JSON.parse(second!).token).toBe("ghu_enterprise_token_456");
+		expect(JSON.parse(second!).enterpriseUrl).toBe("ghe.example.com");
+	});
 });
