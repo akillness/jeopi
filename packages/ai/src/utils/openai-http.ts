@@ -17,6 +17,7 @@
 import { fetchWithRetry, readSseJson, type SseEventObserver } from "jeopi-utils";
 import * as AIError from "../error";
 import { OpenAIHttpError } from "../error";
+import { isUsageLimitOutcome } from "../error/rate-limit";
 
 export { OpenAIHttpError };
 
@@ -72,6 +73,7 @@ export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): P
 		signal: init.signal,
 		fetch: init.fetch,
 		maxAttempts: init.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+		shouldRetryResponse: (response, body) => response.status !== 429 || !isUsageLimitOutcome(response.status, body),
 		// Bun's native fetch enforces a hard ~300s pre-response timeout (issue #2422).
 		// Cold large-context streams legitimately exceed it; the caller's
 		// `firstEventTimeoutMs`/`AbortSignal` already govern stuck requests.

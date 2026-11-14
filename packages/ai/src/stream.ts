@@ -15,7 +15,7 @@ import {
 import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "jeopi-catalog/provider-models";
 import { $env, $pickenv, getConfigRootDir, isEnoent, logger, withExtraCaFetch } from "jeopi-utils";
 import { getCustomApi } from "./api-registry";
-import { AUTH_RETRY_STEPS, isApiKeyResolver, resolveRetryKey } from "./auth-retry";
+import { isApiKeyResolver, resolveRetryKey } from "./auth-retry";
 import * as AIError from "./error";
 import { ProviderHttpError } from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
@@ -1036,23 +1036,36 @@ export function streamSimple<TApi extends Api>(
 				outer.fail(new AIError.MissingApiKeyError(model.provider));
 				return;
 			}
+			const triedKeys = new Set<string>([lastKey]);
 			let failure = await runAttempt(lastKey, true);
 			if (!failure) return;
-			// a/b/c policy: refresh the same account (lastChance=false), then
-			// switch to a sibling (lastChance=true). A step is skipped when the
-			// resolver yields the same key it just tried or `undefined`; the
-			// final step's attempt clears the capture flag so it emits directly.
-			for (let step = 0; step < AUTH_RETRY_STEPS.length; step++) {
-				// Caller aborted between attempts: don't mint a fresh token or fire
-				// another doomed request — emit the captured failure instead.
+			const extractFailureStatus = (err: AuthRetryFailure): number | undefined =>
+				err.terminalEvent ? extractStatusFromAssistantError(err.terminalEvent.error) : AIError.status(err.error);
+			const extractFailureMessage = (err: AuthRetryFailure): string | undefined =>
+				err.terminalEvent
+					? err.terminalEvent.error.errorMessage
+					: err.error instanceof Error
+						? err.error.message
+						: undefined;
+			const maxRotations = 8;
+			let refreshedSame = false;
+			for (let rotation = 0; rotation < maxRotations; rotation++) {
 				if (signal?.aborted) break;
-				const nextKey = await resolveRetryKey(apiKeyResolver, AUTH_RETRY_STEPS[step]!, failure.error, signal);
-				if (nextKey === undefined || nextKey === lastKey) continue;
+				const isUsageLimit = isUsageLimitOutcome(extractFailureStatus(failure), extractFailureMessage(failure));
+				const lastChance = isUsageLimit || refreshedSame;
+				if (!lastChance) refreshedSame = true;
+				const nextKey = await resolveRetryKey(apiKeyResolver, lastChance, failure.error, signal);
+				if (nextKey === undefined || triedKeys.has(nextKey)) {
+					if (!lastChance) continue;
+					break;
+				}
+				triedKeys.add(nextKey);
 				lastKey = nextKey;
-				const isLastStep = step === AUTH_RETRY_STEPS.length - 1;
-				const next = await runAttempt(nextKey, !isLastStep);
+				const isLastAttempt = rotation === maxRotations - 1;
+				const next = await runAttempt(nextKey, !isLastAttempt);
 				if (!next) return;
 				failure = next;
+				if (lastChance) refreshedSame = false;
 			}
 			emitFailure(failure);
 		})();

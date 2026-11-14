@@ -2,6 +2,7 @@ import { parseGeminiModel } from "jeopi-catalog/identity";
 import { calculateCost } from "jeopi-catalog/models";
 import { fetchWithRetry, readSseJson } from "jeopi-utils";
 import * as AIError from "../error";
+import { isUsageLimitOutcome } from "../error/rate-limit";
 import type {
 	AssistantMessage,
 	Context,
@@ -542,6 +543,8 @@ export function streamGoogleInteractions<T extends GoogleInteractionsApi>(args: 
 				body: JSON.stringify(requestBody),
 				signal: options?.signal,
 				fetch: plan.fetch,
+				shouldRetryResponse: (response, body) =>
+					response.status !== 429 || !isUsageLimitOutcome(response.status, body),
 			});
 			if (!response.ok) {
 				const errorText = await response.text().catch(() => "");

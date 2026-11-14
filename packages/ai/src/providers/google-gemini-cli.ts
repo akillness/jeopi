@@ -15,7 +15,7 @@ import {
 } from "jeopi-catalog/wire/gemini-headers";
 import { extractHttpStatusFromError, fetchWithRetry, readSseJson } from "jeopi-utils";
 import * as AIError from "../error";
-import { parseRateLimitReason } from "../error/rate-limit";
+import { isUsageLimitOutcome, parseRateLimitReason } from "../error/rate-limit";
 import type {
 	Api,
 	AssistantMessage,
@@ -1082,7 +1082,9 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
 							maxDelayMs: options?.maxRetryDelayMs ?? RATE_LIMIT_BUDGET_MS,
 							shouldRetryResponse: (response, body) =>
-								response.status !== 429 || extractCloudCodeAssistQuotaDetails(body) === undefined,
+								response.status !== 429 ||
+								(extractCloudCodeAssistQuotaDetails(body) === undefined &&
+									!isUsageLimitOutcome(response.status, body)),
 							fetch: options?.fetch,
 							timeout: false,
 						});

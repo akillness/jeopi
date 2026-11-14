@@ -15,6 +15,7 @@ import {
 } from "jeopi-utils";
 import packageJson from "../../package.json" with { type: "json" };
 import * as AIError from "../error";
+import { isUsageLimitOutcome } from "../error/rate-limit";
 import { getEnvApiKey } from "../stream";
 import type {
 	Api,
@@ -3010,6 +3011,8 @@ async function openCodexSseEventStream(
 			maxAttempts: CODEX_MAX_RETRIES + 1,
 			defaultDelayMs: attempt => CODEX_RETRY_DELAY_MS * (attempt + 1),
 			maxDelayMs: CODEX_RATE_LIMIT_BUDGET_MS,
+			shouldRetryResponse: (response, body) =>
+				response.status !== 429 || !isUsageLimitOutcome(response.status, body),
 			fetch: fetchOverride,
 			timeout: false,
 		});

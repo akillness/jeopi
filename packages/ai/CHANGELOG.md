@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Scoped Antigravity quota limits and `blockScope` per model/bucket (`gemini-4-argon-*` weekly vs other `gemini-*` daily) and ran window inference across all models so exhausting one model family no longer blocks healthy sibling accounts or other model families.
+- Enabled default usage-based credential ranking and availability checking for all usage-capable providers (`google-gemini-cli`, `github-copilot`, `cursor`, `kimi-code`, `zai`, `ollama`, `ollama-cloud`, `opencode-go`) in addition to `openai-codex`, `anthropic`, and `google-antigravity`.
+- Skipped `forceRefresh` on usage-limit errors in `streamSimple`, `withAuth`, and `withOAuthAccess`, added multi-sibling rotation across up to 8 untried credentials, and stopped `fetchWithRetry` from sleeping on 429 usage-limit responses so failover happens immediately.
+- Preserved `blockScope` and session stickiness in `rotateSessionCredential` and `#selectCredentialByType`, and returned `undefined` from `AuthStorage.resolver` when no unblocked sibling remains.
+
 ## [16.6.23] - 2026-11-13
 
 ### Fixed

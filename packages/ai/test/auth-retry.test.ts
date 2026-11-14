@@ -236,12 +236,7 @@ describe("withOAuthAccess", () => {
 		expect(result).toBe("ok");
 		// "dead" must not be re-attempted after the no-op force refresh.
 		expect(attempts).toEqual(["dead", "sibling"]);
-		expect(storage.calls).toEqual([
-			{ forceRefresh: undefined },
-			{ forceRefresh: true },
-			"rotate",
-			{ forceRefresh: undefined },
-		]);
+		expect(storage.calls).toEqual([{ forceRefresh: undefined }, "rotate", { forceRefresh: undefined }]);
 	});
 
 	it("propagates non-auth errors immediately and surfaces the last auth error when exhausted", async () => {

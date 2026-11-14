@@ -1,6 +1,7 @@
 import type { OAuthAccess } from "./auth-storage";
 import * as AIError from "./error";
 import { isAuthRetryableError } from "./error/auth-classify";
+import { isUsageLimitOutcome } from "./error/rate-limit";
 
 /**
  * Context passed to an {@link ApiKeyResolver} on each resolution attempt.
@@ -135,15 +136,28 @@ export async function withAuth<T>(
 		lastError = error;
 	}
 
-	for (let i = 0; i < AUTH_RETRY_STEPS.length; i++) {
-		const nextKey = await resolveRetryKey(resolver, AUTH_RETRY_STEPS[i]!, lastError, signal);
-		if (nextKey === undefined || nextKey === lastKey) continue;
+	const triedKeys = new Set<string>([lastKey]);
+	const maxRotations = 8;
+	let refreshedSame = false;
+	for (let i = 0; i < maxRotations; i++) {
+		const status = AIError.status(lastError);
+		const message =
+			lastError instanceof Error ? lastError.message : typeof lastError === "string" ? lastError : undefined;
+		const lastChance = isUsageLimitOutcome(status, message) || refreshedSame;
+		if (!lastChance) refreshedSame = true;
+		const nextKey = await resolveRetryKey(resolver, lastChance, lastError, signal);
+		if (nextKey === undefined || triedKeys.has(nextKey)) {
+			if (!lastChance) continue;
+			break;
+		}
+		triedKeys.add(nextKey);
 		lastKey = nextKey;
 		try {
 			return await attempt(nextKey);
 		} catch (error) {
 			if (!isAuthError(error)) throw error;
 			lastError = error;
+			if (lastChance) refreshedSame = false;
 		}
 	}
 
@@ -219,7 +233,8 @@ export async function withOAuthAccess<T>(
 	const resolveStep = async (lastChance: boolean, error: unknown): Promise<OAuthAccess | undefined> => {
 		try {
 			if (!lastChance) return await storage.getOAuthAccess(provider, sessionId, { forceRefresh: true, signal });
-			await storage.rotateSessionCredential(provider, sessionId, { error, signal });
+			const switched = await storage.rotateSessionCredential(provider, sessionId, { error, signal });
+			if (!switched) return undefined;
 			return await storage.getOAuthAccess(provider, sessionId, { signal });
 		} catch {
 			return undefined;
@@ -234,15 +249,28 @@ export async function withOAuthAccess<T>(
 		lastError = error;
 	}
 
-	for (const lastChance of AUTH_RETRY_STEPS) {
+	const triedTokens = new Set<string>([lastAccess.accessToken]);
+	const maxRotations = 8;
+	let refreshedSame = false;
+	for (let i = 0; i < maxRotations; i++) {
+		const status = AIError.status(lastError);
+		const message =
+			lastError instanceof Error ? lastError.message : typeof lastError === "string" ? lastError : undefined;
+		const lastChance = isUsageLimitOutcome(status, message) || refreshedSame;
+		if (!lastChance) refreshedSame = true;
 		const next = await resolveStep(lastChance, lastError);
-		if (!next || next.accessToken === lastAccess.accessToken) continue;
+		if (!next || triedTokens.has(next.accessToken)) {
+			if (!lastChance) continue;
+			break;
+		}
+		triedTokens.add(next.accessToken);
 		lastAccess = next;
 		try {
 			return await attempt(next);
 		} catch (error) {
 			if (!isAuthError(error)) throw error;
 			lastError = error;
+			if (lastChance) refreshedSame = false;
 		}
 	}
 

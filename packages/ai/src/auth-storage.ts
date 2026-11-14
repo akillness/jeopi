@@ -769,8 +769,24 @@ const DEFAULT_RANKING_STRATEGIES = new Map<Provider, CredentialRankingStrategy>(
 	["google-antigravity", antigravityRankingStrategy],
 ]);
 
+const defaultUsageRankingStrategy: CredentialRankingStrategy = {
+	findWindowLimits(report) {
+		if (report.limits.length === 0) return {};
+		const sorted = [...report.limits].sort((a, b) => {
+			const aUsed = a.amount.usedFraction ?? 0;
+			const bUsed = b.amount.usedFraction ?? 0;
+			return bUsed - aUsed;
+		});
+		return { primary: sorted[0] };
+	},
+	windowDefaults: { primaryMs: 24 * 60 * 60 * 1000, secondaryMs: 7 * 24 * 60 * 60 * 1000 },
+};
+
 function resolveDefaultRankingStrategy(provider: Provider): CredentialRankingStrategy | undefined {
-	return DEFAULT_RANKING_STRATEGIES.get(provider);
+	return (
+		DEFAULT_RANKING_STRATEGIES.get(provider) ??
+		(DEFAULT_USAGE_PROVIDER_MAP.has(provider) ? defaultUsageRankingStrategy : undefined)
+	);
 }
 
 function parseUsageCacheEntry<T>(raw: string): UsageCacheEntry<T> | undefined {
@@ -1444,6 +1460,7 @@ export class AuthStorage {
 		provider: string,
 		type: T,
 		sessionId?: string,
+		blockScope?: string,
 	): { credential: Extract<AuthCredential, { type: T }>; index: number } | undefined {
 		const credentials = this.#getCredentialsForProvider(provider)
 			.map((credential, index) => ({ credential, index }))
@@ -1456,12 +1473,19 @@ export class AuthStorage {
 		if (credentials.length === 1) return credentials[0];
 
 		const providerKey = this.#getProviderTypeKey(provider, type);
+		const sessionCredential = this.#getSessionCredential(provider, sessionId);
+		if (sessionCredential?.type === type) {
+			const sticky = credentials.find(entry => entry.index === sessionCredential.index);
+			if (sticky && !this.#isCredentialBlocked(providerKey, sticky.index, blockScope)) {
+				return sticky;
+			}
+		}
 		const order = this.#getCredentialOrder(providerKey, sessionId, credentials.length);
 		const fallback = credentials[order[0]];
 
 		for (const idx of order) {
 			const candidate = credentials[idx];
-			if (!this.#isCredentialBlocked(providerKey, candidate.index)) {
+			if (!this.#isCredentialBlocked(providerKey, candidate.index, blockScope)) {
 				return candidate;
 			}
 		}
@@ -4288,13 +4312,15 @@ export class AuthStorage {
 		}
 
 		const providerKey = this.#getProviderTypeKey(provider, sessionCredential.type);
+		const strategy = this.#rankingStrategyResolver?.(provider);
+		const blockScope = strategy?.blockScope?.({ modelId: options?.modelId });
 		// Snapshot sibling availability before mutating so a soft-deleting
 		// suspect hook can't reindex the answer out from under us.
 		const hasSibling = this.#getCredentialsForProvider(provider).some(
 			(credential, index) =>
 				credential.type === sessionCredential.type &&
 				index !== sessionCredential.index &&
-				!this.#isCredentialBlocked(providerKey, index),
+				!this.#isCredentialBlocked(providerKey, index, blockScope),
 		);
 		const target = this.#getStoredCredentials(provider)[sessionCredential.index];
 		this.#clearSessionCredential(provider, sessionId);
@@ -4335,7 +4361,8 @@ export class AuthStorage {
 				return this.getApiKey(provider, sessionId, { baseUrl, modelId, signal });
 			}
 			if (lastChance) {
-				await this.rotateSessionCredential(provider, sessionId, { error, modelId, signal });
+				const switched = await this.rotateSessionCredential(provider, sessionId, { error, modelId, signal });
+				if (!switched) return undefined;
 				return this.getApiKey(provider, sessionId, { baseUrl, modelId, signal });
 			}
 			return this.getApiKey(provider, sessionId, { baseUrl, modelId, forceRefresh: true, signal });

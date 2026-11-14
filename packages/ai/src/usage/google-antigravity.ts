@@ -327,9 +327,19 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 	>();
 	let earliestReset: number | undefined;
 
-	for (const [_modelId, modelInfo] of Object.entries(data.models ?? {})) {
+	const modelEntries = Object.entries(data.models ?? {});
+	const allQuotaInfos: AntigravityQuotaInfo[] = [];
+	const perModelQuotaInfos: Array<{ modelId: string; quotaInfos: AntigravityQuotaInfo[] }> = [];
+	for (const [modelId, modelInfo] of modelEntries) {
 		const quotaInfos = normalizeQuotaInfos(modelInfo);
-		const inferredDescriptors = inferWindowDescriptors(quotaInfos, nowMs);
+		allQuotaInfos.push(...quotaInfos);
+		perModelQuotaInfos.push({ modelId, quotaInfos });
+	}
+	const inferredDescriptors = inferWindowDescriptors(allQuotaInfos, nowMs);
+	const modelLimits: Record<string, string[]> = {};
+
+	for (const { modelId, quotaInfos } of perModelQuotaInfos) {
+		const modelLimitIds = new Set<string>();
 		for (const quotaInfo of quotaInfos) {
 			const amount = buildAmount(quotaInfo);
 			const window = parseWindow(quotaInfo, inferredDescriptors.get(quotaInfo));
@@ -344,6 +354,7 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 			// weeklyQuotaInfo entries.
 			const windowId = window?.id ?? quotaInfo.windowId ?? "default";
 			const key = `${counterKey}|${tierKey}|${windowId}`;
+			modelLimitIds.add(`${params.provider}:${counterKey}:${tierKey}:${windowId}`);
 			const existing = deduped.get(key);
 			if (!existing) {
 				deduped.set(key, { amount, window, tier: quotaInfo.tier, tierKey, windowId, counterName, counterKey });
@@ -382,6 +393,9 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 				counterKey: existing.counterKey,
 			});
 		}
+		if (modelLimitIds.size > 0) {
+			modelLimits[modelId.toLowerCase()] = [...modelLimitIds];
+		}
 	}
 
 	const limits: UsageLimit[] = [];
@@ -412,8 +426,8 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 	const metadata: UsageReport["metadata"] = {
 		endpoint: successfulEndpoint,
 		projectId: credential.projectId,
+		...(Object.keys(modelLimits).length > 0 ? { modelLimits } : {}),
 	};
-	if (credential.email) metadata.email = credential.email;
 	if (credential.accountId) metadata.accountId = credential.accountId;
 
 	const report: UsageReport = {
@@ -454,10 +468,28 @@ function scopeAntigravityLimitsForModel(
 	report: UsageReport,
 	context: CredentialRankingContext | undefined,
 ): UsageLimit[] {
+	const modelId = context?.modelId?.toLowerCase();
+	const rawModelLimits = report.metadata?.modelLimits;
+	if (modelId && rawModelLimits && typeof rawModelLimits === "object" && !Array.isArray(rawModelLimits)) {
+		const mappedIds = (rawModelLimits as Record<string, unknown>)[modelId];
+		if (Array.isArray(mappedIds) && mappedIds.length > 0) {
+			const idSet = new Set(mappedIds.filter((id): id is string => typeof id === "string"));
+			const exact = report.limits.filter(limit => idSet.has(limit.id));
+			if (exact.length > 0) return exact;
+		}
+	}
 	const counterKey = getAntigravityCounterKeyForModel(context);
 	if (!counterKey) return [];
 	const backendLimits = getAntigravityCounterLimits(report, counterKey);
-	if (backendLimits.length > 0) return backendLimits;
+	if (backendLimits.length > 0) {
+		if (counterKey === "google" && modelId) {
+			const isArgon = modelId.startsWith("gemini-4-argon");
+			const windowSuffix = isArgon ? ":weekly" : ":daily";
+			const windowMatched = backendLimits.filter(limit => limit.id.toLowerCase().endsWith(windowSuffix));
+			if (windowMatched.length > 0) return windowMatched;
+		}
+		return backendLimits;
+	}
 	return getAntigravityCounterLimits(report, "default");
 }
 
@@ -488,6 +520,9 @@ export const antigravityRankingStrategy: CredentialRankingStrategy = {
 	// cannot fall through to AuthStorage's provider-wide block bucket.
 	blockScope(context) {
 		const counterKey = getAntigravityCounterKeyForModel(context);
+		if (counterKey === "google" && context?.modelId?.toLowerCase().startsWith("gemini-4-argon")) {
+			return "counter:google:argon";
+		}
 		return `counter:${counterKey ?? "unknown"}`;
 	},
 	// Antigravity windows carry `durationMs` when the response identifies them
