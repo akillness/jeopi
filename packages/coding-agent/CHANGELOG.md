@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Separated provider-reported `providerPromptTokens` (`current | stale | unavailable`) from local `bytes/4` category estimates across `getContextBreakdown`, `getContextUsage`, `/context`, and the status line without double counting.
+- Added durable artifact readback verification for tool spill and subagent `agent://` outputs plus reversible reduction for repeated historical large tool/task outputs while preserving errors, mixed images, and warm prompt-cache boundaries.
+
+### Fixed
+
+- Blocked automatic mid-run continuation whenever mid-run compaction or shake fails to leave headroom (including missing model, hook cancellation, and summarizer errors) while preserving queued steering and paired tool results.
+- Deduplicated identical `alwaysApply` rules loaded from both user and project rule roots in `buildSystemPrompt`.
+
 ## [16.6.23] - 2026-11-13
 
 ### Fixed

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Propagated explicit `"stop"` outcomes from `onTurnEnd` back into the agent loop so mid-run compaction blocks cannot dispatch extra tool-loop provider requests when no headroom remains.
+- Verified durable artifact readback before `/shake` elides tool outputs and preserved full original text, mixed-image blocks, and error/aborted tool results when artifact storage fails.
+
 ## [16.6.7] - 2026-10-17
 
 ### Added
