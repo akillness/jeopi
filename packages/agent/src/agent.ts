@@ -389,7 +389,11 @@ export class Agent {
 	#onAssistantMessageEvent?: (message: AssistantMessage, event: AssistantMessageEvent) => void;
 	#onHarmonyLeak?: (event: HarmonyAuditEvent) => void | Promise<void>;
 	#onBeforeYield?: () => Promise<void> | void;
-	#onTurnEnd?: (messages: AgentMessage[], signal?: AbortSignal, context?: AgentTurnEndContext) => Promise<void | "stop"> | void | "stop";
+	#onTurnEnd?: (
+		messages: AgentMessage[],
+		signal?: AbortSignal,
+		context?: AgentTurnEndContext,
+	) => Promise<undefined | "stop"> | Promise<void> | void | "stop";
 	#asideMessageProvider?: () => AsideMessage[] | Promise<AsideMessage[]>;
 	#telemetry?: AgentLoopConfig["telemetry"];
 	#appendOnlyContext?: AppendOnlyContextManager;
@@ -758,7 +762,11 @@ export class Agent {
 	}
 	setOnTurnEnd(
 		fn:
-			| ((messages: AgentMessage[], signal?: AbortSignal, context?: AgentTurnEndContext) => Promise<void | "stop"> | void | "stop")
+			| ((
+					messages: AgentMessage[],
+					signal?: AbortSignal,
+					context?: AgentTurnEndContext,
+			  ) => Promise<undefined | "stop"> | Promise<void> | void | "stop")
 			| undefined,
 	): void {
 		this.#onTurnEnd = fn;

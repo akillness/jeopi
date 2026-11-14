@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as path from "node:path";
-import { type AgentTool, type AgentToolContext, type AgentToolResult } from "jeopi-agent-core";
 import { type } from "arktype";
+import type { AgentTool, AgentToolContext, AgentToolResult } from "jeopi-agent-core";
 import { Settings } from "jeopi-cli/config/settings";
 import { ArtifactProtocolHandler } from "jeopi-cli/internal-urls/artifact-protocol";
 import { registerArtifactsDir, resetRegisteredArtifactDirsForTests } from "jeopi-cli/internal-urls/registry-helpers";
@@ -9,10 +8,7 @@ import { SessionManager } from "jeopi-cli/session/session-manager";
 import { type OutputMeta, wrapToolWithMetaNotice } from "jeopi-cli/tools/output-meta";
 import { TempDir } from "jeopi-utils";
 
-function makeWrappedTool(
-	name: string,
-	executeImpl: () => Promise<AgentToolResult>,
-): AgentTool {
+function makeWrappedTool(name: string, executeImpl: () => Promise<AgentToolResult>): AgentTool {
 	return wrapToolWithMetaNotice({
 		name,
 		label: name,
@@ -106,7 +102,13 @@ describe("spillLargeResultToArtifact durability", () => {
 
 		// Case 3: missing readback (id returned, no file on disk)
 		vi.spyOn(sessionManager, "saveArtifact").mockResolvedValueOnce("999999999");
-		const onMissing = await tool.execute("call-missing", {}, undefined, undefined, createSpillContext(sessionManager));
+		const onMissing = await tool.execute(
+			"call-missing",
+			{},
+			undefined,
+			undefined,
+			createSpillContext(sessionManager),
+		);
 		expect(textOf(onMissing)).toBe(big);
 		expect((onMissing.details as { meta?: OutputMeta } | undefined)?.meta?.truncation).toBeUndefined();
 
@@ -120,7 +122,13 @@ describe("spillLargeResultToArtifact durability", () => {
 			}
 			return id;
 		});
-		const onCorrupt = await tool.execute("call-corrupt", {}, undefined, undefined, createSpillContext(sessionManager));
+		const onCorrupt = await tool.execute(
+			"call-corrupt",
+			{},
+			undefined,
+			undefined,
+			createSpillContext(sessionManager),
+		);
 		expect(textOf(onCorrupt)).toBe(big);
 		expect((onCorrupt.details as { meta?: OutputMeta } | undefined)?.meta?.truncation).toBeUndefined();
 	});

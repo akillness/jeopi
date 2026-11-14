@@ -473,8 +473,20 @@ describe("InteractiveMode plan review rendering", () => {
 	});
 
 	it("ignores aborted zero-usage assistant messages when estimating context usage", () => {
-		session.agent.appendMessage(assistantWithUsage({ usage: usageWithInput(7320), stopReason: "stop" }));
-		session.agent.appendMessage(assistantWithUsage({ usage: usageWithInput(0), stopReason: "aborted" }));
+		session.agent.appendMessage(
+			assistantWithUsage({
+				model: session.model?.id ?? "claude-sonnet-4-5",
+				usage: usageWithInput(7320),
+				stopReason: "stop",
+			}),
+		);
+		session.agent.appendMessage(
+			assistantWithUsage({
+				model: session.model?.id ?? "claude-sonnet-4-5",
+				usage: usageWithInput(0),
+				stopReason: "aborted",
+			}),
+		);
 
 		expect(session.getContextUsage({ contextWindow: 10000 })).toMatchObject({
 			tokens: 7320,

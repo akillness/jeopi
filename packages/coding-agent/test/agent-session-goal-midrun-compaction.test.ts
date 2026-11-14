@@ -172,19 +172,30 @@ describe("AgentSession mid-run threshold compaction", () => {
 			pi => {
 				pi.on("session_before_compact", event => {
 					onCompact?.();
-					return { compaction: {
-						summary: "COMPACTED",
-						firstKeptEntryId: event.preparation.firstKeptEntryId,
-						tokensBefore: event.preparation.tokensBefore,
-						details: {},
-					} };
+					return {
+						compaction: {
+							summary: "COMPACTED",
+							firstKeptEntryId: event.preparation.firstKeptEntryId,
+							tokensBefore: event.preparation.tokensBefore,
+							details: {},
+						},
+					};
 				});
 			},
-			tempDir.path(), new EventBus(), runtime, "compaction-fixture",
+			tempDir.path(),
+			new EventBus(),
+			runtime,
+			"compaction-fixture",
 		);
 		const auth = await AuthStorage.create(path.join(tempDir.path(), "extension-auth.db"));
 		cleanups.push(async () => auth.close());
-		return new ExtensionRunner([extension], runtime, tempDir.path(), SessionManager.inMemory(), new ModelRegistry(auth));
+		return new ExtensionRunner(
+			[extension],
+			runtime,
+			tempDir.path(),
+			SessionManager.inMemory(),
+			new ModelRegistry(auth),
+		);
 	}
 
 	async function createCancelCompactionRunner() {
@@ -200,13 +211,22 @@ describe("AgentSession mid-run threshold compaction", () => {
 		);
 		const auth = await AuthStorage.create(path.join(tempDir.path(), `extension-auth-cancel-${cleanups.length}.db`));
 		cleanups.push(async () => auth.close());
-		return new ExtensionRunner([extension], runtime, tempDir.path(), SessionManager.inMemory(), new ModelRegistry(auth));
+		return new ExtensionRunner(
+			[extension],
+			runtime,
+			tempDir.path(),
+			SessionManager.inMemory(),
+			new ModelRegistry(auth),
+		);
 	}
 
 	it("pauses before another provider call when a retained tool result leaves no headroom", async () => {
 		let session: AgentSession;
 		const runner = await createCompactionRunner();
-		const harness = await createHarness({}, { extensionRunner: runner, toolOutput: "oversized output ".repeat(3000) });
+		const harness = await createHarness(
+			{},
+			{ extensionRunner: runner, toolOutput: "oversized output ".repeat(3000) },
+		);
 		({ session } = harness);
 		const { observedContexts } = harness;
 		const notices: string[] = [];
@@ -222,8 +242,18 @@ describe("AgentSession mid-run threshold compaction", () => {
 		await session.prompt("work on the release");
 		expect(notices.some(message => message.includes("Compaction freed too little context"))).toBe(true);
 		expect(observedContexts).toHaveLength(1);
-		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain("queued steering");
-		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain("queued follow-up");
+		expect(
+			session.agent
+				.peekSteeringQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued steering");
+		expect(
+			session.agent
+				.peekFollowUpQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued follow-up");
 		const history = session.agent.state.messages.map(message => JSON.stringify(message));
 		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
 		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
@@ -251,7 +281,9 @@ describe("AgentSession mid-run threshold compaction", () => {
 	it("does not issue another provider request after cancellation during mid-run compaction", async () => {
 		let session: AgentSession;
 		let cancellation: Promise<void> | undefined;
-		const runner = await createCompactionRunner(() => { cancellation = session.abort(); });
+		const runner = await createCompactionRunner(() => {
+			cancellation = session.abort();
+		});
 		const harness = await createHarness({}, { extensionRunner: runner });
 		({ session } = harness);
 		await session.prompt("work on the release");
@@ -442,12 +474,18 @@ describe("AgentSession mid-run threshold compaction", () => {
 
 		expect(compactionEnds).toEqual([expect.objectContaining({ skipped: true })]);
 		expect(observedContexts).toHaveLength(1);
-		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
-			"queued steering",
-		);
-		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
-			"queued follow-up",
-		);
+		expect(
+			session.agent
+				.peekSteeringQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued steering");
+		expect(
+			session.agent
+				.peekFollowUpQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued follow-up");
 		const history = session.agent.state.messages.map(message => JSON.stringify(message));
 		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
 		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
@@ -487,12 +525,18 @@ describe("AgentSession mid-run threshold compaction", () => {
 			expect.objectContaining({ errorMessage: expect.stringContaining("summarizer unavailable") }),
 		]);
 		expect(observedContexts).toHaveLength(1);
-		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
-			"queued steering",
-		);
-		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
-			"queued follow-up",
-		);
+		expect(
+			session.agent
+				.peekSteeringQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued steering");
+		expect(
+			session.agent
+				.peekFollowUpQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued follow-up");
 		const history = session.agent.state.messages.map(message => JSON.stringify(message));
 		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
 		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
@@ -529,12 +573,18 @@ describe("AgentSession mid-run threshold compaction", () => {
 
 		expect(compactionEnds).toEqual([expect.objectContaining({ aborted: true })]);
 		expect(observedContexts).toHaveLength(1);
-		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
-			"queued steering",
-		);
-		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
-			"queued follow-up",
-		);
+		expect(
+			session.agent
+				.peekSteeringQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued steering");
+		expect(
+			session.agent
+				.peekFollowUpQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued follow-up");
 		const history = session.agent.state.messages.map(message => JSON.stringify(message));
 		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
 		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));
@@ -574,12 +624,18 @@ describe("AgentSession mid-run threshold compaction", () => {
 			expect.objectContaining({ errorMessage: expect.stringContaining("shake unavailable") }),
 		]);
 		expect(observedContexts).toHaveLength(1);
-		expect(session.agent.peekSteeringQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
-			"queued steering",
-		);
-		expect(session.agent.peekFollowUpQueue().map(message => JSON.stringify(message)).join("\n")).toContain(
-			"queued follow-up",
-		);
+		expect(
+			session.agent
+				.peekSteeringQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued steering");
+		expect(
+			session.agent
+				.peekFollowUpQueue()
+				.map(message => JSON.stringify(message))
+				.join("\n"),
+		).toContain("queued follow-up");
 		const history = session.agent.state.messages.map(message => JSON.stringify(message));
 		const call = history.findIndex(message => message.includes('"id":"tc-0"'));
 		const result = history.findIndex(message => message.includes('"toolCallId":"tc-0"'));

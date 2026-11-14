@@ -4,8 +4,8 @@
  * Runs each subagent on the main thread and forwards AgentEvents for progress tracking.
  */
 
-import path from "node:path";
 import * as fs from "node:fs/promises";
+import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig, ThinkingLevel } from "jeopi-agent-core";
 import { recordHandoff, resolveTelemetry } from "jeopi-agent-core";
 import type { Api, Model, ServiceTierByFamily, Usage } from "jeopi-ai";

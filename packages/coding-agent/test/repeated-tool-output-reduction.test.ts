@@ -213,7 +213,7 @@ describe("AgentSession repeated tool output reduction", () => {
 				.find(m => m.toolCallId === oldBash1);
 			expect(resumedMsg).toBeDefined();
 			const firstBlock = resumedMsg!.content[0];
-			if (!firstBlock || firstBlock.type !== "text") throw new Error("Expected text block");
+			if (firstBlock?.type !== "text") throw new Error("Expected text block");
 			const match = firstBlock.text.match(/artifact:\/\/(\d+)/);
 			expect(match).not.toBeNull();
 			const artifactPath = await resumed.getArtifactPath(match![1]!);

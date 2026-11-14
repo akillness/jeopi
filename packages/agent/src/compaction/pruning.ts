@@ -255,7 +255,13 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 	const toolCallsById = collectToolCallsById(entries);
 	const stopReasonsByCallId = collectAssistantStopReasonsByToolCallId(entries);
 	const candidates = config.supersedeKey
-		? collectSupersededResults(entries, toolCallsById, stopReasonsByCallId, config.supersedeKey, config.protectedTools)
+		? collectSupersededResults(
+				entries,
+				toolCallsById,
+				stopReasonsByCallId,
+				config.supersedeKey,
+				config.protectedTools,
+			)
 		: [];
 	if (config.pruneUseless) {
 		const exclude = new Set(candidates.map(candidate => candidate.message));

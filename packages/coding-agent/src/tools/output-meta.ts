@@ -4,12 +4,12 @@
  * Tools populate details.meta using the fluent OutputMetaBuilder.
  * The tool wrapper automatically formats and appends notices at message boundary.
  */
-import {
-	type AgentTool,
-	type AgentToolContext,
-	type AgentToolExecFn,
-	type AgentToolResult,
-	type AgentToolUpdateCallback,
+import type {
+	AgentTool,
+	AgentToolContext,
+	AgentToolExecFn,
+	AgentToolResult,
+	AgentToolUpdateCallback,
 } from "jeopi-agent-core";
 import { isAbortedOrFailedTaskResult } from "jeopi-agent-core/compaction/tool-protection";
 import type { ImageContent, TextContent } from "jeopi-ai";
@@ -697,7 +697,11 @@ async function spillLargeResultToArtifact(
 				readback = await sessionManager.readArtifact(candidateId);
 			} else if (typeof sessionManager.getArtifactPath === "function") {
 				const artifactPath = await sessionManager.getArtifactPath(candidateId);
-				readback = artifactPath ? await Bun.file(artifactPath).text().catch(() => null) : null;
+				readback = artifactPath
+					? await Bun.file(artifactPath)
+							.text()
+							.catch(() => null)
+					: null;
 			}
 			if (readback === fullText) {
 				artifactId = candidateId;

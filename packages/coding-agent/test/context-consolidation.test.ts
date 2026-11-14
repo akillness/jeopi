@@ -7,10 +7,14 @@ import { z } from "jeopi-ai";
 import { createMockModel, type MockModel } from "jeopi-ai/providers/mock";
 import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { Settings } from "jeopi-cli/config/settings";
+import type { Skill } from "jeopi-cli/extensibility/skills";
 import { StatusLineComponent } from "jeopi-cli/modes/components/status-line";
 import { initTheme } from "jeopi-cli/modes/theme/theme";
-import type { Skill } from "jeopi-cli/extensibility/skills";
-import { computeContextBreakdown, computeNonMessageTokens, renderContextUsage } from "jeopi-cli/modes/utils/context-usage";
+import {
+	computeContextBreakdown,
+	computeNonMessageTokens,
+	renderContextUsage,
+} from "jeopi-cli/modes/utils/context-usage";
 import { AgentSession } from "jeopi-cli/session/agent-session";
 import { AuthStorage } from "jeopi-cli/session/auth-storage";
 import { SessionManager } from "jeopi-cli/session/session-manager";
@@ -552,17 +556,36 @@ describe("Context usage consolidation", () => {
 		const tempDir = TempDir.createSync("@context-measurements-");
 		try {
 			const { session, sessionManager, agent } = createSession(tempDir);
-			const user = { role: "user", content: "A sufficiently long question about the project", timestamp: 1000 } as Message;
+			const user = {
+				role: "user",
+				content: "A sufficiently long question about the project",
+				timestamp: 1000,
+			} as Message;
 			const assistant = {
-				role: "assistant", content: [{ type: "text", text: "answer" }], api: mockModel.api,
-				provider: mockModel.provider, model: mockModel.id, stopReason: "stop", timestamp: 2000,
-				usage: { input: 100, output: 20, cacheRead: 30, cacheWrite: 20, totalTokens: 170,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				role: "assistant",
+				content: [{ type: "text", text: "answer" }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason: "stop",
+				timestamp: 2000,
+				usage: {
+					input: 100,
+					output: 20,
+					cacheRead: 30,
+					cacheWrite: 20,
+					totalTokens: 170,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
 			} as AssistantMessage;
 			sessionManager.appendMessage(user);
 			sessionManager.appendMessage(assistant);
 			syncSession(session, agent);
-			const pending = { role: "user", content: "a pending tail not yet sent".repeat(10), timestamp: 3000 } as Message;
+			const pending = {
+				role: "user",
+				content: "a pending tail not yet sent".repeat(10),
+				timestamp: 3000,
+			} as Message;
 			const before = session.getContextBreakdown()!;
 			const after = session.getContextBreakdown({ pendingMessages: [pending] })!;
 			expect(before.providerPromptTokens).toBe(150);
@@ -585,10 +608,21 @@ describe("Context usage consolidation", () => {
 			expect(session.getContextBreakdown()?.providerPromptTokens).toBeNull();
 			expect(session.getContextBreakdown()?.providerPromptStatus).toBe("unavailable");
 			sessionManager.appendMessage({
-				role: "assistant", content: [{ type: "text", text: "empty report" }], api: mockModel.api,
-				provider: mockModel.provider, model: mockModel.id, stopReason: "stop", timestamp: 1000,
-				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				role: "assistant",
+				content: [{ type: "text", text: "empty report" }],
+				api: mockModel.api,
+				provider: mockModel.provider,
+				model: mockModel.id,
+				stopReason: "stop",
+				timestamp: 1000,
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
 			} as AssistantMessage);
 			syncSession(session, agent);
 			expect(session.getContextBreakdown()?.providerPromptTokens).toBe(0);
@@ -602,12 +636,24 @@ describe("Context usage consolidation", () => {
 		const tempDir = TempDir.createSync("@context-stale-");
 		try {
 			const { session, sessionManager, agent } = createSession(tempDir);
-			const response = (stopReason: AssistantMessage["stopReason"], input: number, timestamp: number) => ({
-				role: "assistant", content: [{ type: "text", text: "response" }], api: mockModel.api,
-				provider: mockModel.provider, model: mockModel.id, stopReason, timestamp,
-				usage: { input, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: input,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-			}) as AssistantMessage;
+			const response = (stopReason: AssistantMessage["stopReason"], input: number, timestamp: number) =>
+				({
+					role: "assistant",
+					content: [{ type: "text", text: "response" }],
+					api: mockModel.api,
+					provider: mockModel.provider,
+					model: mockModel.id,
+					stopReason,
+					timestamp,
+					usage: {
+						input,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: input,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+				}) as AssistantMessage;
 			const anchor = sessionManager.appendMessage(response("stop", 400, 1000));
 			sessionManager.appendMessage(response("aborted", 900, 2000));
 			sessionManager.appendMessage(response("error", 800, 3000));
@@ -744,7 +790,9 @@ describe("Context usage consolidation", () => {
 			expect(panel.providerPromptTokens).toBe(5500);
 			expect(panel.providerPromptStatus).toBe("current");
 			expect(panel.contextEstimateKind).toBe("mixed");
-			expect(panel.categories.find(category => category.id === "messages")?.tokens).toBe(largeBreakdown.messagesTokens);
+			expect(panel.categories.find(category => category.id === "messages")?.tokens).toBe(
+				largeBreakdown.messagesTokens,
+			);
 		} finally {
 			await tempDir.remove();
 		}
@@ -942,9 +990,7 @@ describe("Context usage consolidation", () => {
 			expect(staleAfterSwitch.providerPromptStatus).toBe("stale");
 			expect(staleAfterSwitch.anchored).toBe(false);
 			expect(staleAfterSwitch.contextEstimateKind).toBe("estimated");
-			expect(staleAfterSwitch.usedTokens).toBe(
-				computeNonMessageTokens(session) + staleAfterSwitch.messagesTokens,
-			);
+			expect(staleAfterSwitch.usedTokens).toBe(computeNonMessageTokens(session) + staleAfterSwitch.messagesTokens);
 
 			// A completed response from the new model restores current provider measurement.
 			sessionManager.appendMessage({
@@ -1063,10 +1109,12 @@ describe("Context usage consolidation", () => {
 			const zeroUsage = session.getContextUsage({ contextWindow: 0 })!;
 			expect(zeroUsage.contextWindow).toBe(0);
 			expect(zeroUsage.percent).toBe(0);
-			expect(renderContextUsage({ ...computeContextBreakdown(session), contextWindow: 0 }, {
-				fg: (_color: string, text: string) => text,
-				bold: (text: string) => text,
-			} as never)).toContain("Context usage is unavailable: no model is selected for this session.");
+			expect(
+				renderContextUsage({ ...computeContextBreakdown(session), contextWindow: 0 }, {
+					fg: (_color: string, text: string) => text,
+					bold: (text: string) => text,
+				} as never),
+			).toContain("Context usage is unavailable: no model is selected for this session.");
 		} finally {
 			await tempDir.remove();
 		}

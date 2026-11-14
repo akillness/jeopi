@@ -395,7 +395,11 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * post-turn steering.
 	 * Return `"stop"` to end this run before polling queues or calling the model again.
 	 */
-	onTurnEnd?: (messages: AgentMessage[], signal?: AbortSignal, context?: AgentTurnEndContext) => Promise<void | "stop"> | void | "stop";
+	onTurnEnd?: (
+		messages: AgentMessage[],
+		signal?: AbortSignal,
+		context?: AgentTurnEndContext,
+	) => Promise<undefined | "stop"> | Promise<void> | void | "stop";
 
 	/**
 	 * Called once an assistant message is finalized from the model stream, before

@@ -4246,7 +4246,13 @@ export class AgentSession {
 					// streaming turn — agent.continue() here would race the handoff's session
 					// reset. The first-class fix is in #checkCompaction/the agent_end handler,
 					// but this guard catches anything that bypasses that path.
-					if (signal.aborted || this.#isDisposed || this.isCompacting || this.isGeneratingHandoff || this.#midRunCompactionBlocked) {
+					if (
+						signal.aborted ||
+						this.#isDisposed ||
+						this.isCompacting ||
+						this.isGeneratingHandoff ||
+						this.#midRunCompactionBlocked
+					) {
 						this.#skipAgentContinue("session-unavailable", options);
 						return;
 					}
@@ -10485,7 +10491,7 @@ export class AgentSession {
 		activeMessages: AgentMessage[],
 		signal: AbortSignal | undefined,
 		context: AgentTurnEndContext | undefined,
-	): Promise<void | "stop"> {
+	): Promise<undefined | "stop"> {
 		if (
 			signal?.aborted ||
 			this.#isDisposed ||
@@ -15626,7 +15632,7 @@ export class AgentSession {
 		const messagesTokens = activeMessagesTokens + pendingMessagesTokens;
 
 		const isValidProviderAssistant = (msg: AgentMessage | undefined): msg is AssistantMessage => {
-			if (!msg || msg.role !== "assistant") return false;
+			if (msg?.role !== "assistant") return false;
 			const assistant = msg as AssistantMessage;
 			if (assistant.stopReason === "aborted" || assistant.stopReason === "error") return false;
 			return assistant.usage !== undefined && assistant.usage !== null;
@@ -15757,12 +15763,10 @@ export class AgentSession {
 		// only thing accounting for the just-submitted prompt, so it wins. This
 		// keeps a long tool turn from stacking an estimate of the entire tail on
 		// top of a stale turn-start prompt.
-		const useAnchor =
-			activeAnchor !== undefined && (!pending || activeAnchor.resolvedIndex >= pending.cutoffCount);
+		const useAnchor = activeAnchor !== undefined && (!pending || activeAnchor.resolvedIndex >= pending.cutoffCount);
 
 		if (useAnchor && activeAnchor) {
-			const nonMessageTokens =
-				activeAnchor.assistant.contextSnapshot?.nonMessageTokens ?? currentNonMessageTokens;
+			const nonMessageTokens = activeAnchor.assistant.contextSnapshot?.nonMessageTokens ?? currentNonMessageTokens;
 			anchored = true;
 			contextEstimateKind = "mixed";
 			let tailTokens = 0;

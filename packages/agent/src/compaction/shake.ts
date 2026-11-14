@@ -317,8 +317,7 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 		if (i < boundaryIndex) continue;
 		const toolResult = getToolResultMessage(entry);
 		const preservedResult =
-			toolResult !== undefined &&
-			isPreservedToolResult(toolResult, stopReasonsByCallId.get(toolResult.toolCallId));
+			toolResult !== undefined && isPreservedToolResult(toolResult, stopReasonsByCallId.get(toolResult.toolCallId));
 		// Useless-flagged results carry no information once consumed; they are
 		// eligible even inside the protect-recent window.
 		const uselessResult = toolResult !== undefined && toolResult.useless === true && !preservedResult;

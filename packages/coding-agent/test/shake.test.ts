@@ -135,8 +135,15 @@ describe("AgentSession shake", () => {
 			await sessionManager.close();
 			const resumed = await SessionManager.open(file, tempDir.path());
 			try {
-				const messages = resumed.getBranch().filter(entry => entry.type === "message").map(entry => entry.message);
-				const call = messages.find(message => message.role === "assistant" && message.content.some(block => block.type === "toolCall" && block.id === callId));
+				const messages = resumed
+					.getBranch()
+					.filter(entry => entry.type === "message")
+					.map(entry => entry.message);
+				const call = messages.find(
+					message =>
+						message.role === "assistant" &&
+						message.content.some(block => block.type === "toolCall" && block.id === callId),
+				);
 				const restored = messages.find(message => message.role === "toolResult" && message.toolCallId === callId);
 				expect(call).toBeDefined();
 				expect(restored).toEqual(after);
