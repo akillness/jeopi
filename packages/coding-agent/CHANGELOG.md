@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.25] - 2026-11-14
+
 ### Fixed
 
 - Stopped `createApiKeyResolver` from re-resolving a blocked credential when `rotateSessionCredential` reports no unblocked sibling is available.

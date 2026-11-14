@@ -372,11 +372,11 @@ jeopi --model gpt-5 --smol gemini-2.5-flash
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.6.25]** (2026-11-14) — Stopped `createApiKeyResolver` from re-resolving a blocked credential when `rotateSessionCredential` reports no unblocked sibling is available.
 - **[16.6.24]** (2026-11-14) — Separated provider-reported `providerPromptTokens` (`current | stale | unavailable`) from local `bytes/4` category estimates across `getContextBreakdown`, `getContextUsage`, `/context`, and the…
 - **[16.6.23]** (2026-11-13) — Updated interrupted-turn regression coverage to preserve native thinking in session history without copying it into hidden plaintext context for official Anthropic requests.
 - **[16.6.22]** (2026-11-13) — Prevented legacy interrupted private reasoning from entering official Anthropic main and side requests. Unrepairable `reasoning_extraction` refusals now retain their original diagnostic and stop…
 - **[16.6.18]** (2026-11-03) — Messenger requests now show a single refreshable progress line in Telegram topics and Slack threads as well as Discord threads, and remove it when the turn finishes.
-- **[16.6.17]** (2026-11-03) — New messenger sessions use the configured default model, while resumed sessions retain their previous model.
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->

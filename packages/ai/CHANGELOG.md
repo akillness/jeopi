@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.25] - 2026-11-14
+
 ### Fixed
 
 - Scoped Antigravity quota limits and `blockScope` per model/bucket (`gemini-4-argon-*` weekly vs other `gemini-*` daily) and ran window inference across all models so exhausting one model family no longer blocks healthy sibling accounts or other model families.
