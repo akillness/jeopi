@@ -1039,20 +1039,11 @@ export function streamSimple<TApi extends Api>(
 			const triedKeys = new Set<string>([lastKey]);
 			let failure = await runAttempt(lastKey, true);
 			if (!failure) return;
-			const extractFailureStatus = (err: AuthRetryFailure): number | undefined =>
-				err.terminalEvent ? extractStatusFromAssistantError(err.terminalEvent.error) : AIError.status(err.error);
-			const extractFailureMessage = (err: AuthRetryFailure): string | undefined =>
-				err.terminalEvent
-					? err.terminalEvent.error.errorMessage
-					: err.error instanceof Error
-						? err.error.message
-						: undefined;
 			const maxRotations = 8;
 			let refreshedSame = false;
 			for (let rotation = 0; rotation < maxRotations; rotation++) {
 				if (signal?.aborted) break;
-				const isUsageLimit = isUsageLimitOutcome(extractFailureStatus(failure), extractFailureMessage(failure));
-				const lastChance = isUsageLimit || refreshedSame;
+				const lastChance = refreshedSame;
 				if (!lastChance) refreshedSame = true;
 				const nextKey = await resolveRetryKey(apiKeyResolver, lastChance, failure.error, signal);
 				if (nextKey === undefined || triedKeys.has(nextKey)) {

@@ -428,6 +428,7 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 		projectId: credential.projectId,
 		...(Object.keys(modelLimits).length > 0 ? { modelLimits } : {}),
 	};
+	if (credential.email) metadata.email = credential.email;
 	if (credential.accountId) metadata.accountId = credential.accountId;
 
 	const report: UsageReport = {

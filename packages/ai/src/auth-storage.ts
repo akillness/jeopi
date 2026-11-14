@@ -4365,6 +4365,8 @@ export class AuthStorage {
 				if (!switched) return undefined;
 				return this.getApiKey(provider, sessionId, { baseUrl, modelId, signal });
 			}
+			const message = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
+			if (isUsageLimitOutcome(AIError.status(error), message)) return undefined;
 			return this.getApiKey(provider, sessionId, { baseUrl, modelId, forceRefresh: true, signal });
 		};
 	}

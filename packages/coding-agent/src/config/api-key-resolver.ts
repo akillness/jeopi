@@ -1,6 +1,6 @@
-import type { Api, ApiKeyResolver, AuthStorage, Model } from "jeopi-ai";
+import { type Api, type ApiKeyResolver, type AuthStorage, isUsageLimitOutcome, type Model } from "jeopi-ai";
+import { extractHttpStatusFromError } from "jeopi-utils";
 
-/** Model slice accepted by the model-form `resolver(model, sessionId)` overload. */
 export type ApiKeyResolverModel = Pick<Model<Api>, "provider" | "baseUrl" | "id">;
 
 export interface ApiKeyResolverOptions {
@@ -67,6 +67,8 @@ export function createApiKeyResolver(
 			if (!switched) return undefined;
 			return registry.getApiKeyForProvider(provider, sessionId, { baseUrl, modelId });
 		}
+		const message = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
+		if (isUsageLimitOutcome(extractHttpStatusFromError(error), message)) return undefined;
 		return registry.getApiKeyForProvider(provider, sessionId, { baseUrl, modelId, forceRefresh: true, signal });
 	};
 }

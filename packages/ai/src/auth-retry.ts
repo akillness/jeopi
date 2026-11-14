@@ -1,7 +1,6 @@
 import type { OAuthAccess } from "./auth-storage";
 import * as AIError from "./error";
 import { isAuthRetryableError } from "./error/auth-classify";
-import { isUsageLimitOutcome } from "./error/rate-limit";
 
 /**
  * Context passed to an {@link ApiKeyResolver} on each resolution attempt.
@@ -140,10 +139,7 @@ export async function withAuth<T>(
 	const maxRotations = 8;
 	let refreshedSame = false;
 	for (let i = 0; i < maxRotations; i++) {
-		const status = AIError.status(lastError);
-		const message =
-			lastError instanceof Error ? lastError.message : typeof lastError === "string" ? lastError : undefined;
-		const lastChance = isUsageLimitOutcome(status, message) || refreshedSame;
+		const lastChance = refreshedSame;
 		if (!lastChance) refreshedSame = true;
 		const nextKey = await resolveRetryKey(resolver, lastChance, lastError, signal);
 		if (nextKey === undefined || triedKeys.has(nextKey)) {
@@ -248,15 +244,11 @@ export async function withOAuthAccess<T>(
 		if (!isAuthError(error)) throw error;
 		lastError = error;
 	}
-
 	const triedTokens = new Set<string>([lastAccess.accessToken]);
 	const maxRotations = 8;
 	let refreshedSame = false;
 	for (let i = 0; i < maxRotations; i++) {
-		const status = AIError.status(lastError);
-		const message =
-			lastError instanceof Error ? lastError.message : typeof lastError === "string" ? lastError : undefined;
-		const lastChance = isUsageLimitOutcome(status, message) || refreshedSame;
+		const lastChance = refreshedSame;
 		if (!lastChance) refreshedSame = true;
 		const next = await resolveStep(lastChance, lastError);
 		if (!next || triedTokens.has(next.accessToken)) {
