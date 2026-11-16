@@ -89,6 +89,7 @@
 		"puppeteer-core": "catalog:",
 		"turndown": "catalog:",
 		"turndown-plugin-gfm": "catalog:",
+		"typescript": "catalog:",
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {

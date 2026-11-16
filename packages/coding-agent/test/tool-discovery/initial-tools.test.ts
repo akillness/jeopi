@@ -18,6 +18,7 @@ import {
 const allToolsSettings = Settings.isolated({
 	"astGrep.enabled": true,
 	"astEdit.enabled": true,
+	"jeox.enabled": true,
 	"debug.enabled": true,
 	"glob.enabled": true,
 	"grep.enabled": true,

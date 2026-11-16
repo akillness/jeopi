@@ -3,9 +3,9 @@ import { dirname, join } from "node:path";
 import { DEFAULT_DB_FILENAME, dataDir } from "./config";
 import { BankManager } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";
-import { impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
+import { impact, indexDir, search, stats, whatCalls, whereDefined, whoCalls } from "./core/code";
 import { addTriple, queryTriples } from "./core/triples";
-import { openDatabase } from "./db";
+import { closeQuietly, defaultCodeDbPath, openCodeDatabase } from "./db";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -405,6 +405,7 @@ export const CODE_TOOLS: readonly ToolDefinition[] = [
 			properties: {
 				name: { type: "string", description: "Symbol name" },
 				limit: { type: "integer", default: 5 },
+				root: { type: "string", description: "Workspace root directory (defaults to process.cwd())" },
 			},
 			required: ["name"],
 		},
@@ -418,6 +419,7 @@ export const CODE_TOOLS: readonly ToolDefinition[] = [
 				name: { type: "string", description: "Symbol name" },
 				limit: { type: "integer", default: 5 },
 				strict: { type: "boolean", default: false },
+				root: { type: "string", description: "Workspace root directory (defaults to process.cwd())" },
 			},
 			required: ["name"],
 		},
@@ -431,6 +433,7 @@ export const CODE_TOOLS: readonly ToolDefinition[] = [
 				name: { type: "string", description: "Caller symbol name" },
 				limit: { type: "integer", default: 5 },
 				strict: { type: "boolean", default: false },
+				root: { type: "string", description: "Workspace root directory (defaults to process.cwd())" },
 			},
 			required: ["name"],
 		},
@@ -446,6 +449,7 @@ export const CODE_TOOLS: readonly ToolDefinition[] = [
 				depth: { type: "integer", default: 3 },
 				limit: { type: "integer", default: 20 },
 				strict: { type: "boolean", default: false },
+				root: { type: "string", description: "Workspace root directory (defaults to process.cwd())" },
 			},
 			required: ["target"],
 		},
@@ -458,6 +462,7 @@ export const CODE_TOOLS: readonly ToolDefinition[] = [
 			properties: {
 				query: { type: "string", description: "Search query" },
 				limit: { type: "integer", default: 5 },
+				root: { type: "string", description: "Workspace root directory (defaults to process.cwd())" },
 			},
 			required: ["query"],
 		},
@@ -469,6 +474,7 @@ export const CODE_TOOLS: readonly ToolDefinition[] = [
 			type: "object",
 			properties: {
 				rebuild: { type: "boolean", default: false },
+				root: { type: "string", description: "Workspace root directory (defaults to process.cwd())" },
 			},
 		},
 	},
@@ -1013,56 +1019,61 @@ async function handleGraphLink(args: ToolArguments): Promise<ToolResult> {
 	});
 }
 
-function getCodeDb(): ReturnType<typeof openDatabase> {
-	const envPath = process.env.MNEMOPI_CODE_DB_PATH;
-	if (envPath) return openDatabase(envPath);
-	return openDatabase(join(process.cwd(), ".jeopi", "db", "jeo.db"));
+function withCodeDb<T>(
+	args: ToolArguments,
+	autoIndex: boolean,
+	fn: (db: ReturnType<typeof openCodeDatabase>, root: string) => T,
+): T {
+	const root = stringArg(args, "root") || process.cwd();
+	const dbFile = defaultCodeDbPath(root);
+	const db = openCodeDatabase(dbFile);
+	try {
+		if (autoIndex && stats(db).files === 0) {
+			indexDir(db, root);
+		}
+		return fn(db, root);
+	} finally {
+		closeQuietly(db);
+	}
 }
 
 function handleJeoxWhereDefined(args: ToolArguments): ToolResult {
-	const db = getCodeDb();
 	const name = stringArg(args, "name");
 	const limit = numberArg(args, "limit", 5);
-	return { results: whereDefined(db, name, limit) };
+	return withCodeDb(args, true, db => ({ results: whereDefined(db, name, limit) }));
 }
 
 function handleJeoxWhoCalls(args: ToolArguments): ToolResult {
-	const db = getCodeDb();
 	const name = stringArg(args, "name");
 	const limit = numberArg(args, "limit", 5);
 	const strict = booleanArg(args, "strict", false);
-	return { results: whoCalls(db, name, { limit, strict }) };
+	return withCodeDb(args, true, db => ({ results: whoCalls(db, name, { limit, strict }) }));
 }
 
 function handleJeoxWhatCalls(args: ToolArguments): ToolResult {
-	const db = getCodeDb();
 	const name = stringArg(args, "name");
 	const limit = numberArg(args, "limit", 5);
 	const strict = booleanArg(args, "strict", false);
-	return { results: whatCalls(db, name, { limit, strict }) };
+	return withCodeDb(args, true, db => ({ results: whatCalls(db, name, { limit, strict }) }));
 }
 
 function handleJeoxImpact(args: ToolArguments): ToolResult {
-	const db = getCodeDb();
 	const target = stringArg(args, "target") || stringArg(args, "name");
 	const depth = numberArg(args, "depth", 3);
 	const limit = numberArg(args, "limit", 20);
 	const strict = booleanArg(args, "strict", false);
-	return impact(db, target, depth, limit, strict);
+	return withCodeDb(args, true, db => impact(db, target, depth, limit, strict));
 }
 
 function handleJeoxSearch(args: ToolArguments): ToolResult {
-	const db = getCodeDb();
 	const query = stringArg(args, "query") || stringArg(args, "q");
 	const limit = numberArg(args, "limit", 5);
-	return { results: search(db, query, limit) };
+	return withCodeDb(args, true, db => ({ results: search(db, query, limit) }));
 }
 
 function handleJeoxBuild(args: ToolArguments): ToolResult {
-	const db = getCodeDb();
 	const rebuild = booleanArg(args, "rebuild", false);
-	const root = stringArg(args, "root", process.cwd());
-	return { results: indexDir(db, root, { rebuild }) };
+	return withCodeDb(args, false, (db, root) => ({ results: indexDir(db, root, { rebuild }) }));
 }
 
 type Handler = (args: ToolArguments) => ToolResult | Promise<ToolResult>;
@@ -1106,5 +1117,5 @@ export async function handleToolCall(name: string, args: ToolArguments = {}): Pr
 	return handler(args);
 }
 export function getToolDefinitions(): readonly ToolDefinition[] {
-	return TOOLS;
+	return ALL_TOOLS;
 }

@@ -3525,6 +3525,17 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	"jeox.enabled": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "tools",
+			group: "Available Tools",
+			label: "Jeox Code Graph",
+			description: "Enable the jeox tool for local code graph and BM25 search (.jeopi/db/jeo.db)",
+		},
+	},
+
 	// Optional tools
 
 	"debug.enabled": {

@@ -16,7 +16,8 @@ export interface QOpts {
 const confSql = (strict?: boolean) => (strict ? "AND e.conf <> 'name'" : "");
 export const isTestPath = (p: string) => /(^|\/)(tests?|__tests__)\//.test(p) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(p);
 const SEL = `n.name name, n.kind kind, f.path path, n.start_line start, n.end_line end`;
-const ORDER = "ORDER BY CASE e.conf WHEN 'import' THEN 0 WHEN 'local' THEN 1 ELSE 2 END";
+const ORDER =
+	"ORDER BY CASE MIN(e.conf) WHEN 'import' THEN 0 WHEN 'local' THEN 1 ELSE 2 END, n.name, f.path, n.start_line";
 
 export const whereDefined = (db: Database, name: string, limit = 5): Loc[] =>
 	db
@@ -95,12 +96,14 @@ const STOP = new Set([
 	"does",
 ]);
 const ftsQuery = (text: string) => {
+	const expanded = `${text} ${text.replace(/([a-z0-9])([A-Z])/g, "$1 $2")}`;
 	const toks = [
 		...new Set(
-			text
+			expanded
 				.toLowerCase()
-				.split(/[^a-z0-9]+/)
-				.filter(t => t.length >= 3 && !STOP.has(t)),
+				.split(/[^\p{L}\p{N}]+/u)
+				.map(t => t.replace(/"/g, ""))
+				.filter(t => (t.length >= 3 || (/[^\x00-\x7f]/.test(t) && t.length >= 2)) && !STOP.has(t)),
 		),
 	];
 	return toks.map(t => `"${t}"*`).join(" OR ");

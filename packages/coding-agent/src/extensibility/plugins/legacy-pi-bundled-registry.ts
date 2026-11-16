@@ -840,6 +840,7 @@ import * as bundledPiCodingAgentToolsImageGen from "jeopi-cli/tools/image-gen";
 import * as bundledPiCodingAgentToolsInspectImage from "jeopi-cli/tools/inspect-image";
 import * as bundledPiCodingAgentToolsInspectImageRenderer from "jeopi-cli/tools/inspect-image-renderer";
 import * as bundledPiCodingAgentToolsIrc from "jeopi-cli/tools/irc";
+import * as bundledPiCodingAgentToolsJeox from "jeopi-cli/tools/jeox";
 import * as bundledPiCodingAgentToolsJob from "jeopi-cli/tools/job";
 import * as bundledPiCodingAgentToolsJsonTree from "jeopi-cli/tools/json-tree";
 import * as bundledPiCodingAgentToolsJtdToJsonSchema from "jeopi-cli/tools/jtd-to-json-schema";
@@ -3022,6 +3023,9 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 		Record<string, unknown>
 	>,
 	"@oh-my-pi/pi-coding-agent/tools/irc": bundledPiCodingAgentToolsIrc as unknown as Readonly<Record<string, unknown>>,
+	"@oh-my-pi/pi-coding-agent/tools/jeox": bundledPiCodingAgentToolsJeox as unknown as Readonly<
+		Record<string, unknown>
+	>,
 	"@oh-my-pi/pi-coding-agent/tools/job": bundledPiCodingAgentToolsJob as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-coding-agent/tools/json-tree": bundledPiCodingAgentToolsJsonTree as unknown as Readonly<
 		Record<string, unknown>

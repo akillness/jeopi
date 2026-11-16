@@ -109,6 +109,7 @@
         "puppeteer-core": "catalog:",
         "turndown": "catalog:",
         "turndown-plugin-gfm": "catalog:",
+        "typescript": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -167,6 +168,7 @@
         "jeopi-catalog": "catalog:",
         "jeopi-utils": "catalog:",
         "lru-cache": "catalog:",
+        "typescript": "catalog:",
       },
       "devDependencies": {
         "@types/bun": "catalog:",

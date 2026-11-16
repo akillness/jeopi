@@ -75,7 +75,7 @@ describe("MCP tool definitions", () => {
 
 	it("returns JSON-serializable MCP schemas", () => {
 		const tools = getToolDefinitions();
-		expect(tools).toHaveLength(23);
+		expect(tools).toHaveLength(29);
 		for (const tool of tools) {
 			const schema = JSON.parse(JSON.stringify(tool.inputSchema)) as {
 				type: string;
@@ -92,7 +92,7 @@ describe("MCP JSON handlers", () => {
 		const response = await handleJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
 		if (response === null) throw new Error("expected tools/list response");
 		expect(response.error).toBeUndefined();
-		expect((response.result as { tools: unknown[] }).tools).toHaveLength(23);
+		expect((response.result as { tools: unknown[] }).tools).toHaveLength(29);
 	});
 
 	it("does not write a response for notifications but still answers requests", async () => {
@@ -108,7 +108,7 @@ describe("MCP JSON handlers", () => {
 		expect(responses).toHaveLength(1);
 		const response = responses[0] as { id?: unknown; result?: { tools?: unknown[] } };
 		expect(response.id).toBe(7);
-		expect(response.result?.tools).toHaveLength(23);
+		expect(response.result?.tools).toHaveLength(29);
 	});
 
 	it("returns parse errors for malformed lines and keeps serving later requests", async () => {
@@ -121,7 +121,7 @@ describe("MCP JSON handlers", () => {
 		expect(parseError.error?.code).toBe(-32700);
 		const validResponse = responses[1] as { id?: unknown; result?: { tools?: unknown[] } };
 		expect(validResponse.id).toBe(8);
-		expect(validResponse.result?.tools).toHaveLength(23);
+		expect(validResponse.result?.tools).toHaveLength(29);
 	});
 
 	it("wraps tool results in MCP text content", async () => {

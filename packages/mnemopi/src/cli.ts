@@ -6,8 +6,8 @@ import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./conf
 import { BankManager, ValueError } from "./core/banks";
 import { BeamMemory } from "./core/beam";
 import type { ImportStats, RecallResult } from "./core/beam/types";
-import { impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
-import { openDatabase } from "./db";
+import { stats as codeStats, impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
+import { closeQuietly, defaultCodeDbPath, openCodeDatabase } from "./db";
 import { runDiagnostics } from "./diagnose";
 import { main as runMcpMain } from "./mcp-server";
 
@@ -331,92 +331,185 @@ export const cmdDiagnose: CommandHandler = (_args, context) => {
 	return result.checks_failed === 0 ? 0 : 1;
 };
 
-function resolveCodeDb(args: readonly string[], context?: CliContext): ReturnType<typeof openDatabase> {
-	const dbArgIdx = args.indexOf("--db");
-	const explicit = dbArgIdx !== -1 && args[dbArgIdx + 1] ? args[dbArgIdx + 1] : context?.dbPath;
-	if (explicit) return openDatabase(explicit);
-	const envPath = process.env.MNEMOPI_CODE_DB_PATH;
-	if (envPath) return openDatabase(envPath);
-	return openDatabase(join(process.cwd(), ".jeopi", "db", "jeo.db"));
+interface CodeCliArgs {
+	readonly positional: string[];
+	readonly dbPath?: string;
+	readonly root?: string;
+	readonly limit?: number;
+	readonly depth?: number;
+	readonly strict: boolean;
+	readonly rebuild: boolean;
+}
+
+function consumeFlagValue(
+	arg: string,
+	flag: string,
+	args: readonly string[],
+	index: number,
+): { value: string; nextIndex: number } | null {
+	if (arg === flag) {
+		const next = args[index + 1];
+		if (next === undefined) fail(`Missing value for ${flag}`);
+		return { value: next, nextIndex: index + 1 };
+	}
+	if (arg.startsWith(`${flag}=`)) {
+		return { value: arg.slice(flag.length + 1), nextIndex: index };
+	}
+	return null;
+}
+
+function parseCodeCliArgs(args: readonly string[]): CodeCliArgs {
+	const positional: string[] = [];
+	let dbPath: string | undefined;
+	let root: string | undefined;
+	let limit: number | undefined;
+	let depth: number | undefined;
+	let strict = false;
+	let rebuild = false;
+
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i] ?? "";
+		if (arg === "--strict") {
+			strict = true;
+			continue;
+		}
+		if (arg === "--rebuild" || arg === "--full") {
+			rebuild = true;
+			continue;
+		}
+		const dbMatch = consumeFlagValue(arg, "--db", args, i);
+		if (dbMatch) {
+			dbPath = dbMatch.value;
+			i = dbMatch.nextIndex;
+			continue;
+		}
+		const rootMatch = consumeFlagValue(arg, "--root", args, i);
+		if (rootMatch) {
+			root = rootMatch.value;
+			i = rootMatch.nextIndex;
+			continue;
+		}
+		const limitMatch = consumeFlagValue(arg, "--limit", args, i);
+		if (limitMatch) {
+			limit = parseIntArg(limitMatch.value, "--limit");
+			i = limitMatch.nextIndex;
+			continue;
+		}
+		const depthMatch = consumeFlagValue(arg, "--depth", args, i);
+		if (depthMatch) {
+			depth = parseIntArg(depthMatch.value, "--depth");
+			i = depthMatch.nextIndex;
+			continue;
+		}
+		if (arg.startsWith("-")) continue;
+		positional.push(arg);
+	}
+
+	return { positional, dbPath, root, limit, depth, strict, rebuild };
+}
+
+function withCodeDb<T>(
+	parsed: CodeCliArgs,
+	context: CliContext | undefined,
+	autoIndex: boolean,
+	fn: (db: ReturnType<typeof openCodeDatabase>, root: string) => T,
+): T {
+	const root = parsed.root ?? process.cwd();
+	const dbFile = parsed.dbPath ?? context?.dbPath ?? defaultCodeDbPath(root);
+	const db = openCodeDatabase(dbFile);
+	try {
+		if (autoIndex && codeStats(db).files === 0) {
+			indexDir(db, root);
+		}
+		return fn(db, root);
+	} finally {
+		closeQuietly(db);
+	}
 }
 
 const cmdBuild: CommandHandler = async (args, context) => {
-	const rebuild = args.includes("--rebuild") || args.includes("--full");
-	const rootIdx = args.indexOf("--root");
-	const root = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
-	const db = resolveCodeDb(args, context);
-	const res = indexDir(db, root, { rebuild });
-	out(context, JSON.stringify(res));
-	return 0;
+	const parsed = parseCodeCliArgs(args);
+	return withCodeDb(parsed, context, false, (db, root) => {
+		const res = indexDir(db, root, { rebuild: parsed.rebuild });
+		out(context, JSON.stringify(res));
+		return 0;
+	});
 };
 
 const cmdWhoCalls: CommandHandler = async (args, context) => {
-	const sym = args.find(a => !a.startsWith("-")) ?? "";
+	const parsed = parseCodeCliArgs(args);
+	const sym = parsed.positional[0] ?? "";
 	if (!sym) throw new CliError("Usage: mnemopi who-calls <symbol> [--strict] [--limit N]");
-	const strict = args.includes("--strict");
-	const limitIdx = args.indexOf("--limit");
-	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
-	const db = resolveCodeDb(args, context);
-	for (const loc of whoCalls(db, sym, { limit, strict })) {
-		out(context, JSON.stringify(loc));
-	}
-	return 0;
+	return withCodeDb(parsed, context, true, db => {
+		for (const loc of whoCalls(db, sym, { limit: parsed.limit ?? 5, strict: parsed.strict })) {
+			out(context, JSON.stringify(loc));
+		}
+		return 0;
+	});
 };
 
 const cmdWhatCalls: CommandHandler = async (args, context) => {
-	const sym = args.find(a => !a.startsWith("-")) ?? "";
+	const parsed = parseCodeCliArgs(args);
+	const sym = parsed.positional[0] ?? "";
 	if (!sym) throw new CliError("Usage: mnemopi what-calls <symbol> [--strict] [--limit N]");
-	const strict = args.includes("--strict");
-	const limitIdx = args.indexOf("--limit");
-	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
-	const db = resolveCodeDb(args, context);
-	for (const loc of whatCalls(db, sym, { limit, strict })) {
-		out(context, JSON.stringify(loc));
-	}
-	return 0;
+	return withCodeDb(parsed, context, true, db => {
+		for (const loc of whatCalls(db, sym, { limit: parsed.limit ?? 5, strict: parsed.strict })) {
+			out(context, JSON.stringify(loc));
+		}
+		return 0;
+	});
 };
 
 const cmdWhereDefined: CommandHandler = async (args, context) => {
-	const sym = args.find(a => !a.startsWith("-")) ?? "";
+	const parsed = parseCodeCliArgs(args);
+	const sym = parsed.positional[0] ?? "";
 	if (!sym) throw new CliError("Usage: mnemopi where-defined <symbol> [--limit N]");
-	const limitIdx = args.indexOf("--limit");
-	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
-	const db = resolveCodeDb(args, context);
-	for (const loc of whereDefined(db, sym, limit)) {
-		out(context, JSON.stringify(loc));
-	}
-	return 0;
+	return withCodeDb(parsed, context, true, db => {
+		for (const loc of whereDefined(db, sym, parsed.limit ?? 5)) {
+			out(context, JSON.stringify(loc));
+		}
+		return 0;
+	});
 };
 
 const cmdImpact: CommandHandler = async (args, context) => {
-	const sym = args.find(a => !a.startsWith("-")) ?? "";
+	const parsed = parseCodeCliArgs(args);
+	const sym = parsed.positional[0] ?? "";
 	if (!sym) throw new CliError("Usage: mnemopi impact <target> [--strict] [--depth N] [--limit N]");
-	const strict = args.includes("--strict");
-	const depthIdx = args.indexOf("--depth");
-	const depth = depthIdx !== -1 && args[depthIdx + 1] ? Number(args[depthIdx + 1]) : 3;
-	const limitIdx = args.indexOf("--limit");
-	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 20;
-	const db = resolveCodeDb(args, context);
-	out(context, JSON.stringify(impact(db, sym, depth, limit, strict)));
-	return 0;
+	return withCodeDb(parsed, context, true, db => {
+		out(context, JSON.stringify(impact(db, sym, parsed.depth ?? 3, parsed.limit ?? 20, parsed.strict)));
+		return 0;
+	});
 };
 
 const cmdScope: CommandHandler = async (args, context) => {
-	const query = args.filter(a => !a.startsWith("-")).join(" ");
-	if (!query) throw new CliError("Usage: mnemopi scope <query>");
-	const db = resolveCodeDb(args, context);
-	const hits = search(db, query, 5);
-	out(context, JSON.stringify({ meta: { task: query, hits: hits.length, preview: "none" } }));
-	for (const h of hits) out(context, JSON.stringify(h));
-	return 0;
+	const parsed = parseCodeCliArgs(args);
+	const query = parsed.positional.join(" ");
+	if (!query) throw new CliError("Usage: mnemopi scope <query> [--limit N]");
+	return withCodeDb(parsed, context, true, db => {
+		const hits = search(db, query, parsed.limit ?? 5);
+		out(context, JSON.stringify({ meta: { task: query, hits: hits.length, preview: "none" } }));
+		for (const h of hits) out(context, JSON.stringify(h));
+		return 0;
+	});
 };
 
 const cmdCodeQuery: CommandHandler = async (args, context) => {
-	const query = args.filter(a => !a.startsWith("-")).join(" ");
-	if (!query) throw new CliError("Usage: mnemopi query <query>");
-	const db = resolveCodeDb(args, context);
-	for (const h of search(db, query, 5)) out(context, JSON.stringify(h));
-	return 0;
+	const parsed = parseCodeCliArgs(args);
+	const query = parsed.positional.join(" ");
+	if (!query) throw new CliError("Usage: mnemopi query <query> [--limit N]");
+	return withCodeDb(parsed, context, true, db => {
+		for (const h of search(db, query, parsed.limit ?? 5)) out(context, JSON.stringify(h));
+		return 0;
+	});
+};
+
+const cmdCodeStatus: CommandHandler = async (args, context) => {
+	const parsed = parseCodeCliArgs(args);
+	return withCodeDb(parsed, context, false, db => {
+		out(context, JSON.stringify(codeStats(db)));
+		return 0;
+	});
 };
 
 export const COMMANDS: Readonly<Record<string, CommandHandler>> = {
@@ -429,6 +522,8 @@ export const COMMANDS: Readonly<Record<string, CommandHandler>> = {
 	delete: cmdDelete,
 	forget: cmdDelete,
 	stats: cmdStats,
+	status: cmdCodeStatus,
+	"code-stats": cmdCodeStatus,
 	export: cmdExport,
 	import: cmdImport,
 	sleep: cmdSleep,
@@ -465,6 +560,14 @@ export function printHelp(context?: CliContext): void {
 	out(context, "  diagnose                               Run diagnostics");
 	out(context, "  bank list|create|delete [name]         Manage memory banks");
 	out(context, "  mcp [args]                             Run MCP server");
+	out(context, "  build [--root DIR] [--rebuild]         Index code graph (.jeopi/db/jeo.db)");
+	out(context, "  where-defined <symbol> [--limit N]     Locate symbol definitions");
+	out(context, "  who-calls <symbol> [--strict]          List symbol callers and importers");
+	out(context, "  what-calls <symbol> [--strict]         List symbols called by caller");
+	out(context, "  impact <target> [--depth N]            Reverse dependency impact closure");
+	out(context, "  scope <query> [--limit N]              Search compact code/doc manifest");
+	out(context, "  query <query> [--limit N]              BM25 search across symbols and docs");
+	out(context, "  status [--root DIR]                    Show code graph index counts");
 }
 
 export async function runCli(args: readonly string[] = Bun.argv.slice(2), context?: CliContext): Promise<number> {

@@ -838,6 +838,7 @@ export const BUNDLED_PI_REGISTRY_KEYS: ReadonlySet<string> = new Set([
 	"@oh-my-pi/pi-coding-agent/tools/inspect-image-renderer",
 	"@oh-my-pi/pi-coding-agent/tools/inspect-image",
 	"@oh-my-pi/pi-coding-agent/tools/irc",
+	"@oh-my-pi/pi-coding-agent/tools/jeox",
 	"@oh-my-pi/pi-coding-agent/tools/job",
 	"@oh-my-pi/pi-coding-agent/tools/json-tree",
 	"@oh-my-pi/pi-coding-agent/tools/jtd-to-json-schema",

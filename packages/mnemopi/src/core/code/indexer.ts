@@ -57,6 +57,9 @@ export function indexDir(db: Database, root: string, opts: { rebuild?: boolean }
 	const delChunkFts = db.prepare(
 		"DELETE FROM code_chunks_fts WHERE rowid IN (SELECT id FROM code_chunks WHERE file_id = ?)",
 	);
+	const delNodes = db.prepare("DELETE FROM code_nodes WHERE file_id = ?");
+	const delChunks = db.prepare("DELETE FROM code_chunks WHERE file_id = ?");
+	const delImps = db.prepare("DELETE FROM code_imports WHERE file_id = ?");
 	const delFile = db.prepare("DELETE FROM code_files WHERE id = ?");
 	const insFile = db.prepare(
 		"INSERT INTO code_files(path, lang, digest, mtime, indexed_at) VALUES (?,?,?,?,?) RETURNING id",
@@ -101,8 +104,9 @@ export function indexDir(db: Database, root: string, opts: { rebuild?: boolean }
 			let fileId: number;
 			if (prev) {
 				clearFile(prev.id);
-				db.query("DELETE FROM code_nodes WHERE file_id = ?").run(prev.id);
-				db.query("DELETE FROM code_chunks WHERE file_id = ?").run(prev.id);
+				delNodes.run(prev.id);
+				delChunks.run(prev.id);
+				delImps.run(prev.id);
 				updFile.run(digest, mtime, new Date().toISOString(), prev.id);
 				fileId = prev.id;
 				st.changed++;

@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { dbPath } from "./config";
-import { CODE_DDL } from "./core/code/schema";
+import { CODE_DDL, CODE_SCHEMA_VERSION } from "./core/code/schema";
 
 export type DatabasePath = string | ":memory:";
 
@@ -23,6 +23,10 @@ const TX_STATE = Symbol("mnemopi.txState");
 type TxDatabase = Database & { [TX_STATE]?: TxState };
 type ExtensionDatabase = Database & { loadExtension(path: string): void };
 
+export function defaultCodeDbPath(cwd = process.cwd()): string {
+	return process.env.MNEMOPI_CODE_DB_PATH?.trim() || join(cwd, ".jeopi", "db", "jeo.db");
+}
+
 export function openDatabase(path: DatabasePath = dbPath(), options: OpenDatabaseOptions = {}): Database {
 	if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
 	const db = new Database(path, {
@@ -31,14 +35,29 @@ export function openDatabase(path: DatabasePath = dbPath(), options: OpenDatabas
 		strict: options.strict ?? true,
 	});
 	if (options.pragmas !== false) enablePragmas(db, path);
-	if (options.readwrite !== false) initCodeSchema(db);
 	if (options.loadExtension !== undefined) loadExtensions(db, options.loadExtension);
+	return db;
+}
+
+export function openCodeDatabase(
+	path: DatabasePath = defaultCodeDbPath(),
+	options: OpenDatabaseOptions = {},
+): Database {
+	const db = openDatabase(path, options);
+	if (options.readwrite !== false) initCodeSchema(db);
 	return db;
 }
 
 export function initCodeSchema(db: Database): void {
 	for (const stmt of CODE_DDL) {
 		db.exec(stmt);
+	}
+	const row = db.query("SELECT MAX(version) AS v FROM schema_versions").get() as { v: number | null };
+	if ((row?.v ?? 0) < CODE_SCHEMA_VERSION) {
+		db.query("INSERT INTO schema_versions(version, applied_at) VALUES (?, ?)").run(
+			CODE_SCHEMA_VERSION,
+			new Date().toISOString(),
+		);
 	}
 }
 

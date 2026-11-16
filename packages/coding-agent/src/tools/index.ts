@@ -50,6 +50,7 @@ import { GlobTool } from "./glob";
 import { GrepTool } from "./grep";
 import { InspectImageTool } from "./inspect-image";
 import { IrcTool, isIrcEnabled } from "./irc";
+import { JeoxTool } from "./jeox";
 import { JobTool } from "./job";
 import { LearnTool } from "./learn";
 import { ManageSkillTool } from "./manage-skill";
@@ -91,6 +92,7 @@ export * from "./grep";
 export * from "./image-gen";
 export * from "./inspect-image";
 export * from "./irc";
+export * from "./jeox";
 export * from "./job";
 export * from "./learn";
 export * from "./manage-skill";
@@ -459,6 +461,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	edit: s => new EditTool(s),
 	ast_grep: s => new AstGrepTool(s),
 	ast_edit: s => new AstEditTool(s),
+	jeox: s => new JeoxTool(s),
 	ask: AskTool.createIf,
 	debug: DebugTool.createIf,
 	eval: s => new EvalTool(s),
@@ -574,6 +577,9 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		) {
 			requestedTools.push("ast_grep");
 		}
+		if (requestedTools.includes("grep") && !requestedTools.includes("jeox") && session.settings.get("jeox.enabled")) {
+			requestedTools.push("jeox");
+		}
 		if (
 			requestedTools.includes("edit") &&
 			!requestedTools.includes("ast_edit") &&
@@ -623,6 +629,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		if (name === "github") return session.settings.get("github.enabled");
 		if (name === "ast_grep") return session.settings.get("astGrep.enabled");
 		if (name === "ast_edit") return session.settings.get("astEdit.enabled");
+		if (name === "jeox") return session.settings.get("jeox.enabled");
 		if (name === "inspect_image") return session.settings.get("inspect_image.enabled");
 		if (name === "vision_verify") return session.settings.get("vision_verify.enabled");
 		if (name === "web_search") return session.settings.get("web_search.enabled");

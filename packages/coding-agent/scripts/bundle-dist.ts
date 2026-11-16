@@ -32,6 +32,7 @@ const RUNTIME_EXTERNAL = [
 	"@mozilla/readability",
 	"linkedom",
 	"@agentclientprotocol/sdk",
+	"typescript",
 ];
 
 async function runCommand(command: string[]): Promise<void> {

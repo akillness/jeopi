@@ -42,7 +42,8 @@
 		"jeopi-ai": "catalog:",
 		"jeopi-catalog": "catalog:",
 		"jeopi-utils": "catalog:",
-		"lru-cache": "catalog:"
+		"lru-cache": "catalog:",
+		"typescript": "catalog:"
 	},
 	"peerDependencies": {
 		"fastembed": "2.1.0",
@@ -68,6 +69,7 @@
 		"src",
 		"README.md",
 		"CHANGELOG.md",
+		"SCHEMA.md",
 		"dist/types"
 	],
 	"exports": {
@@ -86,6 +88,10 @@
 		"./beam": {
 			"types": "./dist/types/core/beam/index.d.ts",
 			"import": "./src/core/beam/index.ts"
+		},
+		"./code": {
+			"types": "./dist/types/core/code/index.d.ts",
+			"import": "./src/core/code/index.ts"
 		},
 		"./diagnose": {
 			"types": "./dist/types/diagnose.d.ts",
