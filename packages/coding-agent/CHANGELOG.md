@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [16.6.26] - 2026-11-16
+
+### Added
+
+- Added the built-in `jeox` tool (`jeox.enabled`, default `true`) backed by `jeopi-mnemopi/code` and `<cwd>/.jeopi/db/jeo.db` for local code graph lookups (`where-defined`, `who-calls`, `what-calls`, `impact`), Unicode/Korean + symbol BM25 `search`/`scope`, and incremental/full `build` indexing.
+
 ## [16.6.25] - 2026-11-14
 
 ### Fixed

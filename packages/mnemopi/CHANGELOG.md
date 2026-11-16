@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [16.6.26] - 2026-11-16
+
+### Added
+
+- Isolated the code graph schema (`CODE_DDL`, `CODE_SCHEMA_VERSION = 1`) behind `openCodeDatabase()` and `defaultCodeDbPath()` targeting `<cwd>/.jeopi/db/jeo.db`, exported via `jeopi-mnemopi/code` with `SCHEMA.md` packaged in `files` and `typescript` declared as a runtime dependency.
+- Added code graph `status` / `code-stats` CLI support, `--limit` support in `query`/`scope`, auto-indexing on empty `.jeopi/db/jeo.db`, `root` argument support across `CODE_TOOLS`, and exposed all 29 MCP tools (`ALL_TOOLS`) via `getToolDefinitions()`.
+
+### Fixed
+
+- Deleted stale `code_imports` rows before re-indexing changed files, ordered grouped caller/callee edges by `MIN(e.conf)` with deterministic tie-breakers, expanded `ftsQuery` for Unicode/Korean and camelCase queries, fixed CLI `--limit`/`--db` flag parsing order, and closed SQLite handles after CLI/MCP calls.
+
 ## [16.2.2] - 2026-06-27
 
 ### Fixed
