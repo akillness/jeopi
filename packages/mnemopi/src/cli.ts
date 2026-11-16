@@ -6,10 +6,10 @@ import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./conf
 import { BankManager, ValueError } from "./core/banks";
 import { BeamMemory } from "./core/beam";
 import type { ImportStats, RecallResult } from "./core/beam/types";
+import { impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
+import { openDatabase } from "./db";
 import { runDiagnostics } from "./diagnose";
 import { main as runMcpMain } from "./mcp-server";
-import { openDatabase } from "./db";
-import { impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
 
 export interface CliIo {
 	write(data: string): void;
@@ -340,7 +340,7 @@ const cmdBuild: CommandHandler = async (args, context) => {
 };
 
 const cmdWhoCalls: CommandHandler = async (args, context) => {
-	const sym = args.find((a) => !a.startsWith("-")) ?? "";
+	const sym = args.find(a => !a.startsWith("-")) ?? "";
 	if (!sym) throw new CliError("Usage: mnemopi who-calls <symbol> [--strict] [--limit N]");
 	const strict = args.includes("--strict");
 	const limitIdx = args.indexOf("--limit");
@@ -353,7 +353,7 @@ const cmdWhoCalls: CommandHandler = async (args, context) => {
 };
 
 const cmdWhatCalls: CommandHandler = async (args, context) => {
-	const sym = args.find((a) => !a.startsWith("-")) ?? "";
+	const sym = args.find(a => !a.startsWith("-")) ?? "";
 	if (!sym) throw new CliError("Usage: mnemopi what-calls <symbol> [--strict] [--limit N]");
 	const strict = args.includes("--strict");
 	const limitIdx = args.indexOf("--limit");
@@ -366,7 +366,7 @@ const cmdWhatCalls: CommandHandler = async (args, context) => {
 };
 
 const cmdWhereDefined: CommandHandler = async (args, context) => {
-	const sym = args.find((a) => !a.startsWith("-")) ?? "";
+	const sym = args.find(a => !a.startsWith("-")) ?? "";
 	if (!sym) throw new CliError("Usage: mnemopi where-defined <symbol> [--limit N]");
 	const limitIdx = args.indexOf("--limit");
 	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
@@ -378,7 +378,7 @@ const cmdWhereDefined: CommandHandler = async (args, context) => {
 };
 
 const cmdImpact: CommandHandler = async (args, context) => {
-	const sym = args.find((a) => !a.startsWith("-")) ?? "";
+	const sym = args.find(a => !a.startsWith("-")) ?? "";
 	if (!sym) throw new CliError("Usage: mnemopi impact <target> [--strict] [--depth N] [--limit N]");
 	const strict = args.includes("--strict");
 	const depthIdx = args.indexOf("--depth");
@@ -391,7 +391,7 @@ const cmdImpact: CommandHandler = async (args, context) => {
 };
 
 const cmdScope: CommandHandler = async (args, context) => {
-	const query = args.filter((a) => !a.startsWith("-")).join(" ");
+	const query = args.filter(a => !a.startsWith("-")).join(" ");
 	if (!query) throw new CliError("Usage: mnemopi scope <query>");
 	const db = openDatabase(context?.dbPath);
 	const hits = search(db, query, 5);
@@ -401,7 +401,7 @@ const cmdScope: CommandHandler = async (args, context) => {
 };
 
 const cmdCodeQuery: CommandHandler = async (args, context) => {
-	const query = args.filter((a) => !a.startsWith("-")).join(" ");
+	const query = args.filter(a => !a.startsWith("-")).join(" ");
 	if (!query) throw new CliError("Usage: mnemopi query <query>");
 	const db = openDatabase(context?.dbPath);
 	for (const h of search(db, query, 5)) out(context, JSON.stringify(h));

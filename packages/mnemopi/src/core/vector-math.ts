@@ -1,5 +1,5 @@
 export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
-	const length = a.length > b.length ? a.length : b.length;
+	const length = Math.max(a.length, b.length);
 	if (length === 0) {
 		return 0;
 	}

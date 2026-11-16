@@ -3,9 +3,9 @@ import { dirname, join } from "node:path";
 import { DEFAULT_DB_FILENAME, dataDir } from "./config";
 import { BankManager } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";
+import { impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
 import { addTriple, queryTriples } from "./core/triples";
 import { openDatabase } from "./db";
-import { impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -437,7 +437,8 @@ export const CODE_TOOLS: readonly ToolDefinition[] = [
 	},
 	{
 		name: "jeox_impact",
-		description: "Reverse dependency closure: find files, tests, and symbols affected by modifying target symbol or file.",
+		description:
+			"Reverse dependency closure: find files, tests, and symbols affected by modifying target symbol or file.",
 		inputSchema: {
 			type: "object",
 			properties: {
