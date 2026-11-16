@@ -8,6 +8,8 @@ import { BeamMemory } from "./core/beam";
 import type { ImportStats, RecallResult } from "./core/beam/types";
 import { runDiagnostics } from "./diagnose";
 import { main as runMcpMain } from "./mcp-server";
+import { openDatabase } from "./db";
+import { impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
 
 export interface CliIo {
 	write(data: string): void;
@@ -329,6 +331,83 @@ export const cmdDiagnose: CommandHandler = (_args, context) => {
 	return result.checks_failed === 0 ? 0 : 1;
 };
 
+const cmdBuild: CommandHandler = async (args, context) => {
+	const rebuild = args.includes("--rebuild") || args.includes("--full");
+	const db = openDatabase(context?.dbPath);
+	const res = indexDir(db, process.cwd(), { rebuild });
+	out(context, JSON.stringify(res));
+	return 0;
+};
+
+const cmdWhoCalls: CommandHandler = async (args, context) => {
+	const sym = args.find((a) => !a.startsWith("-")) ?? "";
+	if (!sym) throw new CliError("Usage: mnemopi who-calls <symbol> [--strict] [--limit N]");
+	const strict = args.includes("--strict");
+	const limitIdx = args.indexOf("--limit");
+	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
+	const db = openDatabase(context?.dbPath);
+	for (const loc of whoCalls(db, sym, { limit, strict })) {
+		out(context, JSON.stringify(loc));
+	}
+	return 0;
+};
+
+const cmdWhatCalls: CommandHandler = async (args, context) => {
+	const sym = args.find((a) => !a.startsWith("-")) ?? "";
+	if (!sym) throw new CliError("Usage: mnemopi what-calls <symbol> [--strict] [--limit N]");
+	const strict = args.includes("--strict");
+	const limitIdx = args.indexOf("--limit");
+	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
+	const db = openDatabase(context?.dbPath);
+	for (const loc of whatCalls(db, sym, { limit, strict })) {
+		out(context, JSON.stringify(loc));
+	}
+	return 0;
+};
+
+const cmdWhereDefined: CommandHandler = async (args, context) => {
+	const sym = args.find((a) => !a.startsWith("-")) ?? "";
+	if (!sym) throw new CliError("Usage: mnemopi where-defined <symbol> [--limit N]");
+	const limitIdx = args.indexOf("--limit");
+	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
+	const db = openDatabase(context?.dbPath);
+	for (const loc of whereDefined(db, sym, limit)) {
+		out(context, JSON.stringify(loc));
+	}
+	return 0;
+};
+
+const cmdImpact: CommandHandler = async (args, context) => {
+	const sym = args.find((a) => !a.startsWith("-")) ?? "";
+	if (!sym) throw new CliError("Usage: mnemopi impact <target> [--strict] [--depth N] [--limit N]");
+	const strict = args.includes("--strict");
+	const depthIdx = args.indexOf("--depth");
+	const depth = depthIdx !== -1 && args[depthIdx + 1] ? Number(args[depthIdx + 1]) : 3;
+	const limitIdx = args.indexOf("--limit");
+	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 20;
+	const db = openDatabase(context?.dbPath);
+	out(context, JSON.stringify(impact(db, sym, depth, limit, strict)));
+	return 0;
+};
+
+const cmdScope: CommandHandler = async (args, context) => {
+	const query = args.filter((a) => !a.startsWith("-")).join(" ");
+	if (!query) throw new CliError("Usage: mnemopi scope <query>");
+	const db = openDatabase(context?.dbPath);
+	const hits = search(db, query, 5);
+	out(context, JSON.stringify({ meta: { task: query, hits: hits.length, preview: "none" } }));
+	for (const h of hits) out(context, JSON.stringify(h));
+	return 0;
+};
+
+const cmdCodeQuery: CommandHandler = async (args, context) => {
+	const query = args.filter((a) => !a.startsWith("-")).join(" ");
+	if (!query) throw new CliError("Usage: mnemopi query <query>");
+	const db = openDatabase(context?.dbPath);
+	for (const h of search(db, query, 5)) out(context, JSON.stringify(h));
+	return 0;
+};
+
 export const COMMANDS: Readonly<Record<string, CommandHandler>> = {
 	store: cmdRemember,
 	remember: cmdRemember,
@@ -349,6 +428,14 @@ export const COMMANDS: Readonly<Record<string, CommandHandler>> = {
 	diagnose: cmdDiagnose,
 	doctor: cmdDiagnose,
 	mcp: cmdMcp,
+	build: cmdBuild,
+	index: cmdBuild,
+	"who-calls": cmdWhoCalls,
+	"what-calls": cmdWhatCalls,
+	"where-defined": cmdWhereDefined,
+	impact: cmdImpact,
+	scope: cmdScope,
+	query: cmdCodeQuery,
 };
 
 export function printHelp(context?: CliContext): void {

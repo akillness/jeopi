@@ -4,6 +4,8 @@ import { DEFAULT_DB_FILENAME, dataDir } from "./config";
 import { BankManager } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";
 import { addTriple, queryTriples } from "./core/triples";
+import { openDatabase } from "./db";
+import { impact, indexDir, search, whatCalls, whereDefined, whoCalls } from "./core/code";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -393,6 +395,85 @@ export const TOOLS: readonly ToolDefinition[] = [
 		inputSchema: GRAPH_LINK_SCHEMA,
 	},
 ];
+
+export const CODE_TOOLS: readonly ToolDefinition[] = [
+	{
+		name: "jeox_where_defined",
+		description: "Look up where a symbol (function, class, interface, type, etc.) is defined.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				name: { type: "string", description: "Symbol name" },
+				limit: { type: "integer", default: 5 },
+			},
+			required: ["name"],
+		},
+	},
+	{
+		name: "jeox_who_calls",
+		description: "Look up functions, methods, or modules that call, import, or extend the given symbol.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				name: { type: "string", description: "Symbol name" },
+				limit: { type: "integer", default: 5 },
+				strict: { type: "boolean", default: false },
+			},
+			required: ["name"],
+		},
+	},
+	{
+		name: "jeox_what_calls",
+		description: "Look up functions or symbols called by the given caller symbol.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				name: { type: "string", description: "Caller symbol name" },
+				limit: { type: "integer", default: 5 },
+				strict: { type: "boolean", default: false },
+			},
+			required: ["name"],
+		},
+	},
+	{
+		name: "jeox_impact",
+		description: "Reverse dependency closure: find files, tests, and symbols affected by modifying target symbol or file.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				target: { type: "string", description: "Symbol name or relative file path" },
+				depth: { type: "integer", default: 3 },
+				limit: { type: "integer", default: 20 },
+				strict: { type: "boolean", default: false },
+			},
+			required: ["target"],
+		},
+	},
+	{
+		name: "jeox_search",
+		description: "BM25 full-text search across indexed symbols and markdown documentation chunks.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				query: { type: "string", description: "Search query" },
+				limit: { type: "integer", default: 5 },
+			},
+			required: ["query"],
+		},
+	},
+	{
+		name: "jeox_build",
+		description: "Incremental build/reindex of the code graph and search database.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				rebuild: { type: "boolean", default: false },
+			},
+		},
+	},
+];
+
+export const ALL_TOOLS: readonly ToolDefinition[] = [...TOOLS, ...CODE_TOOLS];
 
 function stringArg(args: ToolArguments, key: string, fallback = ""): string {
 	const value = args[key];
@@ -931,6 +1012,52 @@ async function handleGraphLink(args: ToolArguments): Promise<ToolResult> {
 	});
 }
 
+function handleJeoxWhereDefined(args: ToolArguments): ToolResult {
+	const db = openDatabase();
+	const name = stringArg(args, "name");
+	const limit = numberArg(args, "limit", 5);
+	return { results: whereDefined(db, name, limit) };
+}
+
+function handleJeoxWhoCalls(args: ToolArguments): ToolResult {
+	const db = openDatabase();
+	const name = stringArg(args, "name");
+	const limit = numberArg(args, "limit", 5);
+	const strict = booleanArg(args, "strict", false);
+	return { results: whoCalls(db, name, { limit, strict }) };
+}
+
+function handleJeoxWhatCalls(args: ToolArguments): ToolResult {
+	const db = openDatabase();
+	const name = stringArg(args, "name");
+	const limit = numberArg(args, "limit", 5);
+	const strict = booleanArg(args, "strict", false);
+	return { results: whatCalls(db, name, { limit, strict }) };
+}
+
+function handleJeoxImpact(args: ToolArguments): ToolResult {
+	const db = openDatabase();
+	const target = stringArg(args, "target") || stringArg(args, "name");
+	const depth = numberArg(args, "depth", 3);
+	const limit = numberArg(args, "limit", 20);
+	const strict = booleanArg(args, "strict", false);
+	return impact(db, target, depth, limit, strict);
+}
+
+function handleJeoxSearch(args: ToolArguments): ToolResult {
+	const db = openDatabase();
+	const query = stringArg(args, "query") || stringArg(args, "q");
+	const limit = numberArg(args, "limit", 5);
+	return { results: search(db, query, limit) };
+}
+
+function handleJeoxBuild(args: ToolArguments): ToolResult {
+	const db = openDatabase();
+	const rebuild = booleanArg(args, "rebuild", false);
+	const root = process.cwd();
+	return { results: indexDir(db, root, { rebuild }) };
+}
+
 type Handler = (args: ToolArguments) => ToolResult | Promise<ToolResult>;
 
 const TOOL_HANDLERS: Record<string, Handler> = {
@@ -958,6 +1085,12 @@ const TOOL_HANDLERS: Record<string, Handler> = {
 	mnemopi_diagnose: handleDiagnose,
 	mnemopi_graph_query: handleGraphQuery,
 	mnemopi_graph_link: handleGraphLink,
+	jeox_where_defined: handleJeoxWhereDefined,
+	jeox_who_calls: handleJeoxWhoCalls,
+	jeox_what_calls: handleJeoxWhatCalls,
+	jeox_impact: handleJeoxImpact,
+	jeox_search: handleJeoxSearch,
+	jeox_build: handleJeoxBuild,
 };
 
 export async function handleToolCall(name: string, args: ToolArguments = {}): Promise<ToolResult> {

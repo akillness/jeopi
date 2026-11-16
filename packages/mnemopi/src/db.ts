@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { dbPath } from "./config";
+import { CODE_DDL } from "./core/code/schema";
 
 export type DatabasePath = string | ":memory:";
 
@@ -30,8 +31,15 @@ export function openDatabase(path: DatabasePath = dbPath(), options: OpenDatabas
 		strict: options.strict ?? true,
 	});
 	if (options.pragmas !== false) enablePragmas(db, path);
+	if (options.readwrite !== false) initCodeSchema(db);
 	if (options.loadExtension !== undefined) loadExtensions(db, options.loadExtension);
 	return db;
+}
+
+export function initCodeSchema(db: Database): void {
+	for (const stmt of CODE_DDL) {
+		db.exec(stmt);
+	}
 }
 
 export function enablePragmas(db: Database, path?: DatabasePath): void {
