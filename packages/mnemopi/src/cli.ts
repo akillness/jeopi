@@ -331,10 +331,21 @@ export const cmdDiagnose: CommandHandler = (_args, context) => {
 	return result.checks_failed === 0 ? 0 : 1;
 };
 
+function resolveCodeDb(args: readonly string[], context?: CliContext): ReturnType<typeof openDatabase> {
+	const dbArgIdx = args.indexOf("--db");
+	const explicit = dbArgIdx !== -1 && args[dbArgIdx + 1] ? args[dbArgIdx + 1] : context?.dbPath;
+	if (explicit) return openDatabase(explicit);
+	const envPath = process.env.MNEMOPI_CODE_DB_PATH;
+	if (envPath) return openDatabase(envPath);
+	return openDatabase(join(process.cwd(), ".jeopi", "db", "jeo.db"));
+}
+
 const cmdBuild: CommandHandler = async (args, context) => {
 	const rebuild = args.includes("--rebuild") || args.includes("--full");
-	const db = openDatabase(context?.dbPath);
-	const res = indexDir(db, process.cwd(), { rebuild });
+	const rootIdx = args.indexOf("--root");
+	const root = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
+	const db = resolveCodeDb(args, context);
+	const res = indexDir(db, root, { rebuild });
 	out(context, JSON.stringify(res));
 	return 0;
 };
@@ -345,7 +356,7 @@ const cmdWhoCalls: CommandHandler = async (args, context) => {
 	const strict = args.includes("--strict");
 	const limitIdx = args.indexOf("--limit");
 	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
-	const db = openDatabase(context?.dbPath);
+	const db = resolveCodeDb(args, context);
 	for (const loc of whoCalls(db, sym, { limit, strict })) {
 		out(context, JSON.stringify(loc));
 	}
@@ -358,7 +369,7 @@ const cmdWhatCalls: CommandHandler = async (args, context) => {
 	const strict = args.includes("--strict");
 	const limitIdx = args.indexOf("--limit");
 	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
-	const db = openDatabase(context?.dbPath);
+	const db = resolveCodeDb(args, context);
 	for (const loc of whatCalls(db, sym, { limit, strict })) {
 		out(context, JSON.stringify(loc));
 	}
@@ -370,7 +381,7 @@ const cmdWhereDefined: CommandHandler = async (args, context) => {
 	if (!sym) throw new CliError("Usage: mnemopi where-defined <symbol> [--limit N]");
 	const limitIdx = args.indexOf("--limit");
 	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 5;
-	const db = openDatabase(context?.dbPath);
+	const db = resolveCodeDb(args, context);
 	for (const loc of whereDefined(db, sym, limit)) {
 		out(context, JSON.stringify(loc));
 	}
@@ -385,7 +396,7 @@ const cmdImpact: CommandHandler = async (args, context) => {
 	const depth = depthIdx !== -1 && args[depthIdx + 1] ? Number(args[depthIdx + 1]) : 3;
 	const limitIdx = args.indexOf("--limit");
 	const limit = limitIdx !== -1 && args[limitIdx + 1] ? Number(args[limitIdx + 1]) : 20;
-	const db = openDatabase(context?.dbPath);
+	const db = resolveCodeDb(args, context);
 	out(context, JSON.stringify(impact(db, sym, depth, limit, strict)));
 	return 0;
 };
@@ -393,7 +404,7 @@ const cmdImpact: CommandHandler = async (args, context) => {
 const cmdScope: CommandHandler = async (args, context) => {
 	const query = args.filter(a => !a.startsWith("-")).join(" ");
 	if (!query) throw new CliError("Usage: mnemopi scope <query>");
-	const db = openDatabase(context?.dbPath);
+	const db = resolveCodeDb(args, context);
 	const hits = search(db, query, 5);
 	out(context, JSON.stringify({ meta: { task: query, hits: hits.length, preview: "none" } }));
 	for (const h of hits) out(context, JSON.stringify(h));
@@ -403,7 +414,7 @@ const cmdScope: CommandHandler = async (args, context) => {
 const cmdCodeQuery: CommandHandler = async (args, context) => {
 	const query = args.filter(a => !a.startsWith("-")).join(" ");
 	if (!query) throw new CliError("Usage: mnemopi query <query>");
-	const db = openDatabase(context?.dbPath);
+	const db = resolveCodeDb(args, context);
 	for (const h of search(db, query, 5)) out(context, JSON.stringify(h));
 	return 0;
 };

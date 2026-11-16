@@ -1013,15 +1013,21 @@ async function handleGraphLink(args: ToolArguments): Promise<ToolResult> {
 	});
 }
 
+function getCodeDb(): ReturnType<typeof openDatabase> {
+	const envPath = process.env.MNEMOPI_CODE_DB_PATH;
+	if (envPath) return openDatabase(envPath);
+	return openDatabase(join(process.cwd(), ".jeopi", "db", "jeo.db"));
+}
+
 function handleJeoxWhereDefined(args: ToolArguments): ToolResult {
-	const db = openDatabase();
+	const db = getCodeDb();
 	const name = stringArg(args, "name");
 	const limit = numberArg(args, "limit", 5);
 	return { results: whereDefined(db, name, limit) };
 }
 
 function handleJeoxWhoCalls(args: ToolArguments): ToolResult {
-	const db = openDatabase();
+	const db = getCodeDb();
 	const name = stringArg(args, "name");
 	const limit = numberArg(args, "limit", 5);
 	const strict = booleanArg(args, "strict", false);
@@ -1029,7 +1035,7 @@ function handleJeoxWhoCalls(args: ToolArguments): ToolResult {
 }
 
 function handleJeoxWhatCalls(args: ToolArguments): ToolResult {
-	const db = openDatabase();
+	const db = getCodeDb();
 	const name = stringArg(args, "name");
 	const limit = numberArg(args, "limit", 5);
 	const strict = booleanArg(args, "strict", false);
@@ -1037,7 +1043,7 @@ function handleJeoxWhatCalls(args: ToolArguments): ToolResult {
 }
 
 function handleJeoxImpact(args: ToolArguments): ToolResult {
-	const db = openDatabase();
+	const db = getCodeDb();
 	const target = stringArg(args, "target") || stringArg(args, "name");
 	const depth = numberArg(args, "depth", 3);
 	const limit = numberArg(args, "limit", 20);
@@ -1046,16 +1052,16 @@ function handleJeoxImpact(args: ToolArguments): ToolResult {
 }
 
 function handleJeoxSearch(args: ToolArguments): ToolResult {
-	const db = openDatabase();
+	const db = getCodeDb();
 	const query = stringArg(args, "query") || stringArg(args, "q");
 	const limit = numberArg(args, "limit", 5);
 	return { results: search(db, query, limit) };
 }
 
 function handleJeoxBuild(args: ToolArguments): ToolResult {
-	const db = openDatabase();
+	const db = getCodeDb();
 	const rebuild = booleanArg(args, "rebuild", false);
-	const root = process.cwd();
+	const root = stringArg(args, "root", process.cwd());
 	return { results: indexDir(db, root, { rebuild }) };
 }
 
