@@ -3,7 +3,16 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCli } from "../src/cli";
-import { defaultCodeDbPath, impact, indexDir, openCodeDatabase, search, whatCalls, whereDefined, whoCalls } from "../src/core/code";
+import {
+	defaultCodeDbPath,
+	impact,
+	indexDir,
+	openCodeDatabase,
+	search,
+	whatCalls,
+	whereDefined,
+	whoCalls,
+} from "../src/core/code";
 import { openDatabase } from "../src/db";
 import { handleToolCall } from "../src/mcp-tools";
 
@@ -172,10 +181,7 @@ test("indexDir bridges project wiki pages into @wiki/ chunks and whoCalls refere
 	try {
 		mkdirSync(join(repo, "src"), { recursive: true });
 		mkdirSync(join(wikiRoot, "wiki", "projects", "my-app"), { recursive: true });
-		writeFileSync(
-			join(repo, "src", "ledger.ts"),
-			"export function readLedger(): string { return 'ok'; }\n",
-		);
+		writeFileSync(join(repo, "src", "ledger.ts"), "export function readLedger(): string { return 'ok'; }\n");
 		writeFileSync(
 			join(wikiRoot, "wiki", "projects", "my-app", "architecture.md"),
 			"# Architecture\n\nThe audit flow calls `readLedger` before finalizing state.\n",

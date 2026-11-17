@@ -133,3 +133,7 @@ export const stats = (db: Database) => ({
 	edges: (db.query("SELECT COUNT(*) c FROM code_edges").get() as any).c,
 	chunks: (db.query("SELECT COUNT(*) c FROM code_chunks").get() as any).c,
 });
+
+export function hasIndexedFiles(db: Database): boolean {
+	return db.query("SELECT 1 FROM code_files LIMIT 1").get() !== null;
+}

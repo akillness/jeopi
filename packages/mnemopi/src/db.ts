@@ -81,7 +81,12 @@ export function initCodeSchema(db: Database): void {
 export function enablePragmas(db: Database, path?: DatabasePath): void {
 	db.exec("PRAGMA foreign_keys=ON");
 	db.exec("PRAGMA busy_timeout=5000");
-	if (path !== ":memory:") db.exec("PRAGMA journal_mode=WAL");
+	if (path !== ":memory:") {
+		db.exec("PRAGMA journal_mode=WAL");
+		db.exec(
+			"PRAGMA synchronous=NORMAL; PRAGMA temp_store=MEMORY; PRAGMA cache_size=-32000; PRAGMA mmap_size=134217728;",
+		);
+	}
 }
 
 export function loadExtensions(db: Database, extensions: string | readonly string[]): void {

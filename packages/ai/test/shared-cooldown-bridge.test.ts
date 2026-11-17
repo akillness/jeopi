@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Database } from "bun:sqlite";
 import { AuthStorage, SqliteAuthCredentialStore } from "../src/auth-storage";
 
 describe("jeopi shared 429 cooldown bridge", () => {
@@ -41,8 +40,20 @@ describe("jeopi shared 429 cooldown bridge", () => {
 		const store = await SqliteAuthCredentialStore.open(":memory:");
 		const storage = new AuthStorage(store, { sharedCooldown: true, usageProviderResolver: () => undefined });
 		await storage.set("openai-codex", [
-			{ type: "oauth", access: "tok-alpha", refresh: "ref-alpha", expires: Date.now() + 3_600_000, email: "alpha@example.com" },
-			{ type: "oauth", access: "tok-beta", refresh: "ref-beta", expires: Date.now() + 3_600_000, email: "beta@example.com" },
+			{
+				type: "oauth",
+				access: "tok-alpha",
+				refresh: "ref-alpha",
+				expires: Date.now() + 3_600_000,
+				email: "alpha@example.com",
+			},
+			{
+				type: "oauth",
+				access: "tok-beta",
+				refresh: "ref-beta",
+				expires: Date.now() + 3_600_000,
+				email: "beta@example.com",
+			},
 		]);
 
 		// Because alpha is cooled down via shared pool, AuthStorage selects beta

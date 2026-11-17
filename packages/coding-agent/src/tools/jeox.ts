@@ -20,6 +20,9 @@ const jeoxSchema = type({
 	"rerank?": type("boolean").describe("rerank search/scope results with local qev /v1/systemone (fail-open)"),
 });
 
+const QEV_CIRCUIT_COOLDOWN_MS = 15_000;
+let qevRerankDownUntil = 0;
+
 async function rerankHitsWithQev<T extends { type?: string; path?: string; label?: string }>(
 	query: string,
 	hits: T[],
@@ -27,7 +30,9 @@ async function rerankHitsWithQev<T extends { type?: string; path?: string; label
 ): Promise<T[]> {
 	const enabled = explicitRerank === true || (explicitRerank !== false && process.env.JEOX_JEV_RERANK === "1");
 	if (!enabled || hits.length <= 1) return hits;
-	const endpoint = process.env.JEOX_QEV_URL?.trim() || "http://127.0.0.1:8017/v1/systemone";
+	const overrideUrl = process.env.JEOX_QEV_URL?.trim();
+	if (!overrideUrl && process.env.NODE_ENV !== "test" && Date.now() < qevRerankDownUntil) return hits;
+	const endpoint = overrideUrl || "http://127.0.0.1:8017/v1/systemone";
 	const capped = hits.slice(0, 12);
 	const state: Record<string, string> = { query };
 	const questions: Record<string, { type: "noul"; instructions: string }> = {};
@@ -47,7 +52,11 @@ async function rerankHitsWithQev<T extends { type?: string; path?: string; label
 			body: JSON.stringify({ state, model: "qev-0.8b-text-Q8_0", questions }),
 			signal: AbortSignal.timeout(500),
 		});
-		if (!resp.ok) return hits;
+		if (!resp.ok) {
+			if (!overrideUrl && process.env.NODE_ENV !== "test") qevRerankDownUntil = Date.now() + QEV_CIRCUIT_COOLDOWN_MS;
+			return hits;
+		}
+		qevRerankDownUntil = 0;
 		const payload = (await resp.json()) as { answers?: Record<string, { noul?: number }> };
 		const answers = payload?.answers;
 		if (!answers || typeof answers !== "object") return hits;
@@ -61,6 +70,7 @@ async function rerankHitsWithQev<T extends { type?: string; path?: string; label
 		scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
 		return [...scored.map(s => s.item), ...hits.slice(12)];
 	} catch {
+		if (!overrideUrl && process.env.NODE_ENV !== "test") qevRerankDownUntil = Date.now() + QEV_CIRCUIT_COOLDOWN_MS;
 		return hits;
 	}
 }
@@ -92,7 +102,7 @@ export class JeoxTool implements AgentTool<typeof jeoxSchema> {
 			const rebuild = params.rebuild ?? false;
 
 			try {
-				if (action !== "build" && code.stats(db).files === 0) {
+				if (action !== "build" && !code.hasIndexedFiles(db)) {
 					code.indexDir(db, root);
 				}
 

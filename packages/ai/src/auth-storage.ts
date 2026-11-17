@@ -11,17 +11,17 @@ import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDbPath, logger } from "jeopi-utils";
-import {
-	lookupSharedCredentialCooldown,
-	recordSharedCredentialCooldown,
-	shouldEnableSharedCooldown,
-} from "./shared-cooldown-bridge";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
 import { getProviderDefinition, PASTE_CODE_LOGIN_PROVIDERS } from "./registry";
 import { getOAuthApiKey, getOAuthProvider, refreshOAuthToken } from "./registry/oauth";
 import type { OAuthController, OAuthCredentials, OAuthProvider, OAuthProviderId } from "./registry/oauth/types";
+import {
+	lookupSharedCredentialCooldown,
+	recordSharedCredentialCooldown,
+	shouldEnableSharedCooldown,
+} from "./shared-cooldown-bridge";
 import { getEnvApiKey, getEnvApiKeyName } from "./stream";
 import type { Provider } from "./types";
 import type {

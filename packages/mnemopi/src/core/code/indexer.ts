@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
 import { chunkMarkdown } from "./chunk-md";
@@ -70,7 +70,7 @@ function isTempWorkspace(root: string): boolean {
 }
 
 function collectMarkdownFiles(dir: string, out: Array<{ absPath: string; mtimeMs: number }>): void {
-	let entries;
+	let entries: Dirent[];
 	try {
 		entries = readdirSync(dir, { withFileTypes: true });
 	} catch {
@@ -135,7 +135,7 @@ export function discoverProjectWikiFiles(
 	for (const sub of WIKI_SUBDIRS) {
 		if (sub === "projects") continue;
 		const subDir = join(realWikiDir, sub);
-		let entries;
+		let entries: Dirent[];
 		try {
 			entries = readdirSync(subDir, { withFileTypes: true });
 		} catch {
@@ -276,7 +276,14 @@ export function indexDir(db: Database, root: string, opts: { rebuild?: boolean; 
 				delFile.run(r.id);
 				st.removed++;
 			}
-		rebuildEdges(db);
+		const needsEdges =
+			Boolean(opts.rebuild) ||
+			st.added > 0 ||
+			st.changed > 0 ||
+			st.removed > 0 ||
+			(db.query("SELECT 1 FROM code_edges LIMIT 1").get() === null &&
+				db.query("SELECT 1 FROM code_refs LIMIT 1").get() !== null);
+		if (needsEdges) rebuildEdges(db);
 	});
 	work();
 	st.ms = +(performance.now() - t0).toFixed(1);
