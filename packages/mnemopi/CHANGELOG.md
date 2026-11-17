@@ -2,10 +2,14 @@
 
 ## [Unreleased]
 
+## [16.6.27] - 2026-11-17
+
 ### Added
+
 - Bridged project-relevant `~/vaults/llm-wiki` pages into `@wiki/...` virtual files/chunks and backticked `<wiki>` `code_nodes`/`code_refs` (`references` edges surfaced in `whoCalls`) while isolating temp workspaces (`discoverProjectWikiFiles`).
 
 ### Changed
+
 - Unified `defaultCodeDbPath()` from `.jeopi/db/jeo.db` to `.jeo/db/jeo.db` (matching `jeo-code` and `jeo-skills/scripts/jeox.py`) with automatic legacy `.jeopi/db/jeo.db` migration on first access.
 - Enabled `PRAGMA synchronous=NORMAL`, `temp_store=MEMORY`, `cache_size=-32000`, and `mmap_size=134217728` in `enablePragmas()`, added fast `hasIndexedFiles()` leaf check, and skipped `rebuildEdges()` on no-op incremental `indexDir()` runs.
 

@@ -372,11 +372,11 @@ jeopi --model gpt-5 --smol gemini-2.5-flash
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.6.27]** (2026-11-17) — Added fail-open 500ms local `qev:8017` Noul `rerank` support (`rerank` parameter / `JEOX_JEV_RERANK=1`) with a 15s negative-health circuit breaker on `jeox` `search`/`scope`.
 - **[16.6.26]** (2026-11-16) — Added the built-in `jeox` tool (`jeox.enabled`, default `true`) backed by `jeopi-mnemopi/code` and `<cwd>/.jeopi/db/jeo.db` for local code graph lookups (`where-defined`, `who-calls`, `what-calls`,…
 - **[16.6.25]** (2026-11-14) — Stopped `createApiKeyResolver` from re-resolving a blocked credential when `rotateSessionCredential` reports no unblocked sibling is available.
 - **[16.6.24]** (2026-11-14) — Separated provider-reported `providerPromptTokens` (`current | stale | unavailable`) from local `bytes/4` category estimates across `getContextBreakdown`, `getContextUsage`, `/context`, and the…
 - **[16.6.23]** (2026-11-13) — Updated interrupted-turn regression coverage to preserve native thinking in session history without copying it into hidden plaintext context for official Anthropic requests.
-- **[16.6.22]** (2026-11-13) — Prevented legacy interrupted private reasoning from entering official Anthropic main and side requests. Unrepairable `reasoning_extraction` refusals now retain their original diagnostic and stop…
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->

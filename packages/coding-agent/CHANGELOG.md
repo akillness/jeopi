@@ -2,11 +2,16 @@
 
 ## [Unreleased]
 
+## [16.6.27] - 2026-11-17
+
 ### Added
+
 - Added fail-open 500ms local `qev:8017` Noul `rerank` support (`rerank` parameter / `JEOX_JEV_RERANK=1`) with a 15s negative-health circuit breaker on `jeox` `search`/`scope`.
 
 ### Changed
+
 - Pointed `JeoxTool` to the shared `<cwd>/.jeo/db/jeo.db` graph DB (auto-migrating `.jeopi/db/jeo.db`) with `@wiki/` project cross-links and fast `hasIndexedFiles()` auto-index checks.
+- Pointed `JeoxTool` to the shared `<cwd>/.jeo/db/jeo.db` graph DB (auto-migrating `.jeopi/db/jeo.db`) with `@wiki/` project cross-links and fast `hasIndexedFiles()` auto-index checks.` (previously this shipped a GitHub Release with an empty body, e.g. v16.2.22); pass `--allow-empty` for an intentional no-notes rebuild.
 
 ## [16.6.26] - 2026-11-16
 
@@ -396,11 +401,8 @@
 - `jeopi update` now detects when GitHub has a newer release than the npm registry serves (npm publish still running, failed, or silently skipped for missing credentials) and says so, instead of reporting only "Already up to date" after a visibly tagged release.
 - `bun run release` now refuses to cut a release when no package has content under `## [Unreleased]
 
-### Added
-- Added fail-open 500ms local `qev:8017` Noul `rerank` support (`rerank` parameter / `JEOX_JEV_RERANK=1`) with a 15s negative-health circuit breaker on `jeox` `search`/`scope`.
-
 ### Changed
-- Pointed `JeoxTool` to the shared `<cwd>/.jeo/db/jeo.db` graph DB (auto-migrating `.jeopi/db/jeo.db`) with `@wiki/` project cross-links and fast `hasIndexedFiles()` auto-index checks.` (previously this shipped a GitHub Release with an empty body, e.g. v16.2.22); pass `--allow-empty` for an intentional no-notes rebuild.
+
 - Fixed the advisor dying permanently behind repeated `Refusal (reasoning_extraction)` errors when Anthropic's classifier flags transcripts that replay thinking as text: on a provider refusal the advisor now strips thinking from the render once, re-primes, and retries (latching thinking off for the session with a notice) instead of blind-retrying the identical refused payload into the 3-strike watchdog forever. A new `advisor.includeThinking` setting (default on) provides an explicit opt-out.
 - Fixed the "Update Available" banner never appearing in long-running interactive sessions started before a release shipped: the startup version check only ever queried the registry once at launch, so a release published hours into a session stayed invisible until the user restarted (even though a fresh `jeopi update` correctly saw it). Interactive sessions now periodically recheck the registry every 4 hours and notify at most once per newer version.
 - Fixed `/marketplace install`/`uninstall`/`upgrade` and `/plugins enable`/`disable` silently not taking effect in the interactive TUI: unlike their ACP counterparts, the TUI handlers mutated the plugin registry but never invalidated plugin-root caches or refreshed slash-command/SSH-tool state, so newly installed/removed/upgraded/toggled plugins required a manual `/reload-plugins` (or a restart) before they worked.

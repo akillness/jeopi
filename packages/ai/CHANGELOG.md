@@ -2,7 +2,10 @@
 
 ## [Unreleased]
 
+## [16.6.27] - 2026-11-17
+
 ### Added
+
 - Shared cross-runtime OAuth 429 cooldown synchronization via mode-`0600` `~/.agents/auth-pool/cooldowns.json` (`shared-cooldown-bridge.ts`, wired into `AuthStorage`), with stat-gated in-memory caching for zero-copy repeat lookups and hermetic test isolation.
 
 ## [16.6.25] - 2026-11-14
