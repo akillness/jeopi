@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { dbPath } from "./config";
 import { CODE_DDL, CODE_SCHEMA_VERSION } from "./core/code/schema";
@@ -24,7 +24,24 @@ type TxDatabase = Database & { [TX_STATE]?: TxState };
 type ExtensionDatabase = Database & { loadExtension(path: string): void };
 
 export function defaultCodeDbPath(cwd = process.cwd()): string {
-	return process.env.MNEMOPI_CODE_DB_PATH?.trim() || join(cwd, ".jeopi", "db", "jeo.db");
+	const override = process.env.MNEMOPI_CODE_DB_PATH?.trim();
+	if (override) return override;
+	const canonical = join(cwd, ".jeo", "db", "jeo.db");
+	const legacy = join(cwd, ".jeopi", "db", "jeo.db");
+	if (!existsSync(canonical) && existsSync(legacy)) {
+		try {
+			mkdirSync(join(cwd, ".jeo", "db"), { recursive: true });
+			copyFileSync(legacy, canonical);
+			for (const suffix of ["-wal", "-shm"]) {
+				if (existsSync(`${legacy}${suffix}`)) {
+					copyFileSync(`${legacy}${suffix}`, `${canonical}${suffix}`);
+				}
+			}
+		} catch {
+			// Ignore migration copy error and let caller initialize canonical DB.
+		}
+	}
+	return canonical;
 }
 
 export function openDatabase(path: DatabasePath = dbPath(), options: OpenDatabaseOptions = {}): Database {

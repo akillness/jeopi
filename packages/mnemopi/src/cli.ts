@@ -560,7 +560,7 @@ export function printHelp(context?: CliContext): void {
 	out(context, "  diagnose                               Run diagnostics");
 	out(context, "  bank list|create|delete [name]         Manage memory banks");
 	out(context, "  mcp [args]                             Run MCP server");
-	out(context, "  build [--root DIR] [--rebuild]         Index code graph (.jeopi/db/jeo.db)");
+	out(context, "  build [--root DIR] [--rebuild]         Index code graph (.jeo/db/jeo.db)");
 	out(context, "  where-defined <symbol> [--limit N]     Locate symbol definitions");
 	out(context, "  who-calls <symbol> [--strict]          List symbol callers and importers");
 	out(context, "  what-calls <symbol> [--strict]         List symbols called by caller");

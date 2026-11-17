@@ -1,13 +1,13 @@
 # jeox
 
-> Local TypeScript AST code graph and BM25 search over `.jeopi/db/jeo.db`.
+> Local TypeScript AST code graph, project `@wiki/` cross-links, and BM25 search over `.jeo/db/jeo.db`.
 
 ## Source
 - Entry: `packages/coding-agent/src/tools/jeox.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/jeox.md`
 - Key collaborators:
   - `packages/mnemopi/src/core/code/index.ts` — code graph indexer, SQLite schema (`SCHEMA.md`), and query engine
-  - `packages/mnemopi/src/db.ts` — `openCodeDatabase()` and `defaultCodeDbPath()` resolving `.jeopi/db/jeo.db`
+  - `packages/mnemopi/src/db.ts` — `openCodeDatabase()` and `defaultCodeDbPath()` resolving `.jeo/db/jeo.db` (auto-migrating legacy `.jeopi/db/jeo.db` if canonical is absent)
 
 ## Inputs
 
@@ -24,7 +24,7 @@
 
 ## Outputs
 - Single-shot JSON or formatted text block summarizing matching definitions, callers, callees, impacted files/tests, or index counts.
-- Database storage is strictly isolated to `<cwd>/.jeopi/db/jeo.db` (or `MNEMOPI_CODE_DB_PATH` when explicitly set); `.jeo` is never used by `jeopi`.
+- Database storage unifies with `jeo-code` and `jeo-skills` at `<cwd>/.jeo/db/jeo.db` (or `MNEMOPI_CODE_DB_PATH` when explicitly set), auto-migrating legacy `<cwd>/.jeopi/db/jeo.db` when canonical does not yet exist.
 
 ## Side Effects
-- Opens `<cwd>/.jeopi/db/jeo.db` via `openCodeDatabase()`, initializes `CODE_DDL` tables on first run, and auto-indexes the workspace if `code_files` is empty or `action` is `build`.
+- Opens `<cwd>/.jeo/db/jeo.db` via `openCodeDatabase()` in WAL mode, initializes `CODE_DDL` tables on first run, and auto-indexes the workspace if `code_files` is empty or `action` is `build`.

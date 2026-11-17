@@ -1,4 +1,4 @@
-Local code graph and BM25 search backed by `<cwd>/.jeopi/db/jeo.db`.
+Local code graph, project wiki cross-links, and BM25 search backed by `<cwd>/.jeo/db/jeo.db` (auto-migrating legacy `<cwd>/.jeopi/db/jeo.db` on first access).
 
 <instruction>
 - Use `where-defined` to locate exact definitions of functions, classes, methods, interfaces, types, or enums.

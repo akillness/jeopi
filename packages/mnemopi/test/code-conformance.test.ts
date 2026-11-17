@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCli } from "../src/cli";
-import { impact, indexDir, openCodeDatabase, search, whatCalls, whereDefined, whoCalls } from "../src/core/code";
+import { defaultCodeDbPath, impact, indexDir, openCodeDatabase, search, whatCalls, whereDefined, whoCalls } from "../src/core/code";
 import { openDatabase } from "../src/db";
 import { handleToolCall } from "../src/mcp-tools";
 
@@ -113,7 +113,7 @@ test("mnemopi code graph FTS5 supports Unicode/Korean and camelCase queries", ()
 	}
 });
 
-test("mnemopi MCP & CLI code tools target .jeopi/db/jeo.db without leaking cwd DBs", async () => {
+test("mnemopi MCP & CLI code tools target .jeo/db/jeo.db without leaking cwd DBs", async () => {
 	const root = fixture();
 	const prevEnv = process.env.MNEMOPI_CODE_DB_PATH;
 	delete process.env.MNEMOPI_CODE_DB_PATH;
@@ -121,11 +121,11 @@ test("mnemopi MCP & CLI code tools target .jeopi/db/jeo.db without leaking cwd D
 		const res = await handleToolCall("jeox_where_defined", { name: "readLedger", root });
 		expect(Array.isArray(res.results)).toBe(true);
 		expect((res.results as Array<{ path: string }>)[0]?.path).toBe("src/a.ts");
-		expect(existsSync(join(root, ".jeopi", "db", "jeo.db"))).toBe(true);
-		expect(existsSync(join(root, ".jeo"))).toBe(false);
+		expect(existsSync(join(root, ".jeo", "db", "jeo.db"))).toBe(true);
+		expect(existsSync(join(root, ".jeopi"))).toBe(false);
 
 		const lines: string[] = [];
-		const dbFile = join(root, ".jeopi", "db", "jeo.db");
+		const dbFile = join(root, ".jeo", "db", "jeo.db");
 		const code = await runCli(["where-defined", "--limit", "2", "--db", dbFile, "readLedger"], {
 			stdout: { write: s => lines.push(s) },
 			stderr: { write: () => {} },
@@ -136,5 +136,58 @@ test("mnemopi MCP & CLI code tools target .jeopi/db/jeo.db without leaking cwd D
 		if (prevEnv === undefined) delete process.env.MNEMOPI_CODE_DB_PATH;
 		else process.env.MNEMOPI_CODE_DB_PATH = prevEnv;
 		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("defaultCodeDbPath auto-migrates legacy .jeopi/db/jeo.db to .jeo/db/jeo.db", () => {
+	const root = mkdtempSync(join(tmpdir(), "mnemopi-migrate-"));
+	const prevEnv = process.env.MNEMOPI_CODE_DB_PATH;
+	delete process.env.MNEMOPI_CODE_DB_PATH;
+	try {
+		writeFileSync(join(root, "legacy.ts"), "export function legacyOnlySymbol(): number { return 42; }\n");
+		const legacyDbPath = join(root, ".jeopi", "db", "jeo.db");
+		const legacyDb = openCodeDatabase(legacyDbPath);
+		indexDir(legacyDb, root);
+		legacyDb.close();
+		expect(existsSync(join(root, ".jeo", "db", "jeo.db"))).toBe(false);
+
+		const resolved = defaultCodeDbPath(root);
+		expect(resolved).toBe(join(root, ".jeo", "db", "jeo.db"));
+		expect(existsSync(resolved)).toBe(true);
+
+		const migratedDb = openCodeDatabase(resolved);
+		expect(whereDefined(migratedDb, "legacyOnlySymbol")).toHaveLength(1);
+		migratedDb.close();
+	} finally {
+		if (prevEnv === undefined) delete process.env.MNEMOPI_CODE_DB_PATH;
+		else process.env.MNEMOPI_CODE_DB_PATH = prevEnv;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("indexDir bridges project wiki pages into @wiki/ chunks and whoCalls references", () => {
+	const base = mkdtempSync(join(tmpdir(), "mnemopi-wiki-bridge-"));
+	const repo = join(base, "my-app");
+	const wikiRoot = join(base, "vault");
+	try {
+		mkdirSync(join(repo, "src"), { recursive: true });
+		mkdirSync(join(wikiRoot, "wiki", "projects", "my-app"), { recursive: true });
+		writeFileSync(
+			join(repo, "src", "ledger.ts"),
+			"export function readLedger(): string { return 'ok'; }\n",
+		);
+		writeFileSync(
+			join(wikiRoot, "wiki", "projects", "my-app", "architecture.md"),
+			"# Architecture\n\nThe audit flow calls `readLedger` before finalizing state.\n",
+		);
+		const db = openCodeDatabase(":memory:");
+		indexDir(db, repo, { wikiRoot });
+		const found = search(db, "finalizing");
+		expect(found.some(c => c.path === "@wiki/projects/my-app/architecture.md")).toBe(true);
+		const callers = whoCalls(db, "readLedger");
+		expect(callers.some(c => c.path === "@wiki/projects/my-app/architecture.md" && c.kind === "wiki")).toBe(true);
+		db.close();
+	} finally {
+		rmSync(base, { recursive: true, force: true });
 	}
 });

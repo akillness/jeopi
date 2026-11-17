@@ -11,6 +11,11 @@ import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDbPath, logger } from "jeopi-utils";
+import {
+	lookupSharedCredentialCooldown,
+	recordSharedCredentialCooldown,
+	shouldEnableSharedCooldown,
+} from "./shared-cooldown-bridge";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
@@ -478,6 +483,8 @@ export type AuthStorageOptions = {
 	 * AuthStorage caller surfaces that to its own consumer unchanged.
 	 */
 	fetchUsageReports?: (signal?: AbortSignal) => Promise<UsageReport[] | null>;
+	/** Enable cross-runtime 429 cooldown synchronization via ~/.agents/auth-pool/cooldowns.json. */
+	sharedCooldown?: boolean;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -987,10 +994,12 @@ export class AuthStorage {
 	#generationListeners: Set<(generation: number) => void> = new Set();
 	#oauthRefreshInFlight: Map<number, Promise<AuthCredentialSnapshotEntry>> = new Map();
 	#oauthCredentialRefreshInFlight: Map<number, Promise<OAuthCredentials>> = new Map();
+	#sharedCooldownEnabled = false;
 	#closed = false;
 
 	constructor(store: AuthCredentialStore, options: AuthStorageOptions = {}) {
 		this.#store = store;
+		this.#sharedCooldownEnabled = options.sharedCooldown ?? shouldEnableSharedCooldown();
 		this.#configValueResolver = options.configValueResolver ?? defaultConfigValueResolver;
 		this.#usageProviderResolver = options.usageProviderResolver ?? resolveDefaultUsageProvider;
 		this.#rankingStrategyResolver = options.rankingStrategyResolver ?? resolveDefaultRankingStrategy;
@@ -1028,7 +1037,10 @@ export class AuthStorage {
 	 */
 	static async create(dbPath: string, options: AuthStorageOptions = {}): Promise<AuthStorage> {
 		const store = await SqliteAuthCredentialStore.open(dbPath);
-		return new AuthStorage(store, options);
+		return new AuthStorage(store, {
+			...options,
+			sharedCooldown: options.sharedCooldown ?? shouldEnableSharedCooldown(dbPath),
+		});
 	}
 
 	/**
@@ -1337,15 +1349,24 @@ export class AuthStorage {
 		return blockedUntil;
 	}
 
-	/** Returns block expiry timestamp for a credential, checking global then scoped blocks. */
+	/** Returns block expiry timestamp for a credential, checking global, scoped, and shared pool blocks. */
 	#getCredentialBlockedUntil(
 		providerKey: string,
 		credentialIndex: number,
 		blockScope: string | undefined = undefined,
 	): number | undefined {
 		const globalBlockedUntil = this.#getCredentialBlockedUntilForKey(providerKey, credentialIndex);
-		if (globalBlockedUntil !== undefined || !blockScope) return globalBlockedUntil;
-		return this.#getCredentialBlockedUntilForKey(this.#toScopedBackoffKey(providerKey, blockScope), credentialIndex);
+		const localUntil =
+			globalBlockedUntil !== undefined || !blockScope
+				? globalBlockedUntil
+				: this.#getCredentialBlockedUntilForKey(this.#toScopedBackoffKey(providerKey, blockScope), credentialIndex);
+		if (!this.#sharedCooldownEnabled) return localUntil;
+		const colonIdx = providerKey.lastIndexOf(":");
+		const provider = colonIdx > 0 ? providerKey.slice(0, colonIdx) : providerKey;
+		const cred = this.#getCredentialsForProvider(provider)[credentialIndex];
+		const sharedUntil = lookupSharedCredentialCooldown(provider, cred);
+		if (localUntil !== undefined && sharedUntil !== undefined) return Math.max(localUntil, sharedUntil);
+		return localUntil ?? sharedUntil;
 	}
 
 	/** Checks if a credential is temporarily blocked due to usage limits. */
@@ -1369,6 +1390,17 @@ export class AuthStorage {
 		const existing = backoffMap.get(credentialIndex) ?? 0;
 		backoffMap.set(credentialIndex, Math.max(existing, blockedUntilMs));
 		this.#credentialBackoff.set(backoffKey, backoffMap);
+		if (this.#sharedCooldownEnabled) {
+			const colonIdx = providerKey.lastIndexOf(":");
+			const provider = colonIdx > 0 ? providerKey.slice(0, colonIdx) : providerKey;
+			const cred = this.#getCredentialsForProvider(provider)[credentialIndex];
+			recordSharedCredentialCooldown(
+				provider,
+				cred,
+				blockedUntilMs,
+				blockScope ? `usage_limit:${blockScope}` : "usage_limit",
+			);
+		}
 	}
 
 	/** Records which credential was used for a session (for rate-limit switching). */

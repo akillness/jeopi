@@ -17,7 +17,53 @@ const jeoxSchema = type({
 	"depth?": type("number").describe("traversal depth for impact (default 3)"),
 	"strict?": type("boolean").describe("exclude name-only heuristic edges"),
 	"rebuild?": type("boolean").describe("full rebuild when action is build"),
+	"rerank?": type("boolean").describe("rerank search/scope results with local qev /v1/systemone (fail-open)"),
 });
+
+async function rerankHitsWithQev<T extends { type?: string; path?: string; label?: string }>(
+	query: string,
+	hits: T[],
+	explicitRerank?: boolean,
+): Promise<T[]> {
+	const enabled = explicitRerank === true || (explicitRerank !== false && process.env.JEOX_JEV_RERANK === "1");
+	if (!enabled || hits.length <= 1) return hits;
+	const endpoint = process.env.JEOX_QEV_URL?.trim() || "http://127.0.0.1:8017/v1/systemone";
+	const capped = hits.slice(0, 12);
+	const state: Record<string, string> = { query };
+	const questions: Record<string, { type: "noul"; instructions: string }> = {};
+	for (let i = 0; i < capped.length; i++) {
+		const h = capped[i]!;
+		const key = `cand_${i}`;
+		state[key] = `${h.type ?? ""} ${h.path ?? ""}: ${h.label ?? ""}`.slice(0, 200);
+		questions[`relevant::${i}`] = {
+			type: "noul",
+			instructions: `Is candidate ${key} directly relevant to the query?`,
+		};
+	}
+	try {
+		const resp = await fetch(endpoint, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ state, model: "qev-0.8b-text-Q8_0", questions }),
+			signal: AbortSignal.timeout(500),
+		});
+		if (!resp.ok) return hits;
+		const payload = (await resp.json()) as { answers?: Record<string, { noul?: number }> };
+		const answers = payload?.answers;
+		if (!answers || typeof answers !== "object") return hits;
+		const total = capped.length;
+		const scored = capped.map((item, idx) => {
+			const bm25Norm = total > 1 ? 1 - idx / (total - 1) : 1;
+			const rawNoul = answers[`relevant::${idx}`]?.noul;
+			const noulProb = typeof rawNoul === "number" && Number.isFinite(rawNoul) ? rawNoul : bm25Norm;
+			return { item, idx, score: 0.45 * bm25Norm + 0.55 * noulProb };
+		});
+		scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+		return [...scored.map(s => s.item), ...hits.slice(12)];
+	} catch {
+		return hits;
+	}
+}
 
 export type JeoxParams = typeof jeoxSchema.infer;
 
@@ -29,7 +75,7 @@ export class JeoxTool implements AgentTool<typeof jeoxSchema> {
 	readonly parameters = jeoxSchema;
 	readonly strict = true;
 	readonly loadMode = "discoverable" as const;
-	readonly summary = "Query local code graph and BM25 search index (.jeopi/db/jeo.db)";
+	readonly summary = "Query local code graph and BM25 search index (.jeo/db/jeo.db)";
 
 	constructor(private readonly session: ToolSession) {}
 
@@ -84,14 +130,16 @@ export class JeoxTool implements AgentTool<typeof jeoxSchema> {
 					case "search": {
 						const query = params.query?.trim() || params.name?.trim() || "";
 						if (!query) throw new ToolError('jeox "search" requires a "query" string.');
-						const hits = code.search(db, query, limit);
+						const rawHits = code.search(db, query, limit);
+						const hits = await rerankHitsWithQev(query, rawHits, params.rerank);
 						const text = hits.length > 0 ? JSON.stringify(hits, null, 2) : `0 search hits for "${query}".`;
 						return { content: [{ type: "text", text }], details: { action, hits, dbPath } };
 					}
 					case "scope": {
 						const query = params.query?.trim() || params.name?.trim() || "";
 						if (!query) throw new ToolError('jeox "scope" requires a task "query" string.');
-						const hits = code.search(db, query, limit);
+						const rawHits = code.search(db, query, limit);
+						const hits = await rerankHitsWithQev(query, rawHits, params.rerank);
 						const manifest = { meta: { task: query, hits: hits.length, preview: "none" }, hits };
 						return {
 							content: [{ type: "text", text: JSON.stringify(manifest, null, 2) }],

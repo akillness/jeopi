@@ -29,7 +29,7 @@ export const whereDefined = (db: Database, name: string, limit = 5): Loc[] =>
 export const whoCalls = (db: Database, name: string, o: QOpts = {}): Loc[] =>
 	db
 		.query(`SELECT ${SEL}, MIN(e.conf) conf FROM code_edges e JOIN code_nodes d ON d.id=e.dst_id JOIN code_nodes n ON n.id=e.src_id
-            JOIN code_files f ON f.id=n.file_id WHERE d.name=? AND e.kind IN ('calls','imports','extends') ${confSql(o.strict)}
+            JOIN code_files f ON f.id=n.file_id WHERE d.name=? AND e.kind IN ('calls','imports','extends','references') ${confSql(o.strict)}
             GROUP BY n.id ${ORDER} LIMIT ?`)
 		.all(name, o.limit ?? 5) as Loc[];
 

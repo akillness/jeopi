@@ -3532,7 +3532,7 @@ export const SETTINGS_SCHEMA = {
 			tab: "tools",
 			group: "Available Tools",
 			label: "Jeox Code Graph",
-			description: "Enable the jeox tool for local code graph and BM25 search (.jeopi/db/jeo.db)",
+			description: "Enable the jeox tool for local code graph and BM25 search (.jeo/db/jeo.db)",
 		},
 	},
 
