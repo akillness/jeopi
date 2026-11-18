@@ -141,16 +141,12 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	if (!enabled) {
 		return { skills: [], warnings: [] };
 	}
-	// Fall-through gate for third-party CLI providers (claude-plugins, opencode,
-	// gemini, github, ...) that share user intent with the named third-party
-	// source toggles but don't have a dedicated control of their own. Only the
-	// third-party toggles count here: the OMP-native providers (`agents`,
-	// `native`) get explicit branches in `isSourceEnabled` below, so folding
-	// them into the fallback would re-enable unrelated third-party CLIs whenever
-	// the user kept the default `.agent[s]/skills` toggles on while turning off
-	// Codex/Claude/Pi (issue #2401 / PR #2405 review).
-	const anyThirdPartySkillToggleEnabled =
-		enableCodexUser || enableClaudeUser || enableClaudeProject || enablePiUser || enablePiProject;
+	// Fall-through gate for third-party CLI providers (opencode, gemini, github, ...)
+	// that share user intent with the named third-party source toggles but don't have
+	// a dedicated control of their own. Only true third-party toggles count here:
+	// jeopi/OMP-native (`native` via enablePi* and `agents` via enableAgents*) must
+	// NOT re-enable third-party providers when Claude/Codex are disabled (cf. #2401 / #2405).
+	const anyThirdPartySkillToggleEnabled = enableCodexUser || enableClaudeUser || enableClaudeProject;
 
 	function isSourceEnabled(source: SourceMeta): boolean {
 		const { provider, level } = source;
@@ -161,6 +157,8 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		if (provider === "codex" && level === "user") return enableCodexUser;
 		if (provider === "claude" && level === "user") return enableClaudeUser;
 		if (provider === "claude" && level === "project") return enableClaudeProject;
+		if (provider === "claude-plugins" && level === "user") return enableClaudeUser;
+		if (provider === "claude-plugins" && level === "project") return enableClaudeProject;
 		if (provider === "native" && level === "user") return enablePiUser;
 		if (provider === "native" && level === "project") return enablePiProject;
 		if (provider === "agents" && level === "user") return enableAgentsUser;
@@ -168,8 +166,31 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		return anyThirdPartySkillToggleEnabled;
 	}
 
-	// Use capability API to load all skills
-	const result = await loadCapability<CapabilitySkill>(skillCapability.id, { cwd, disabledExtensions });
+	const excludeProviders: string[] = [];
+	if (!enableClaudeUser && !enableClaudeProject) {
+		excludeProviders.push("claude", "claude-plugins");
+	}
+	if (!enableCodexUser && !anyThirdPartySkillToggleEnabled) {
+		excludeProviders.push("codex");
+	}
+	if (!enablePiUser && !enablePiProject) {
+		excludeProviders.push("native");
+	}
+	if (!enableAgentsUser && !enableAgentsProject) {
+		excludeProviders.push("agents");
+	}
+	if (!anyThirdPartySkillToggleEnabled) {
+		excludeProviders.push("opencode", "gemini", "cursor", "windsurf", "cline", "github", "vscode");
+	}
+
+	// Use capability API to load all skills, skipping fully disabled providers
+	// and filtering pre-dedup items by source toggle so a disabled higher-priority
+	// provider (e.g. claude) never shadows an enabled lower-priority one (e.g. agents).
+	const result = await loadCapability<CapabilitySkill>(skillCapability.id, {
+		cwd,
+		disabledExtensions,
+		...(excludeProviders.length > 0 ? { excludeProviders } : {}),
+	});
 
 	const skillMap = new Map<string, Skill>();
 	const realPathSet = new Set<string>();
@@ -190,8 +211,10 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	const disabledSkillNames = new Set(
 		(disabledExtensions ?? []).filter(id => id.startsWith("skill:")).map(id => id.slice(6)),
 	);
-	// Filter skills by source and patterns first
-	const filteredSkills = result.items.filter(capSkill => {
+	// Filter pre-dedup skills by source and patterns first so disabled providers
+	// cannot shadow enabled lower-priority providers.
+	const filteredSkills = result.all.filter(capSkill => {
+		if (!capSkill.name || !capSkill.path) return false;
 		if (disabledSkillNames.has(capSkill.name)) return false;
 		if (!isSourceEnabled(capSkill._source)) return false;
 		if (matchesIgnorePatterns(capSkill.name)) return false;

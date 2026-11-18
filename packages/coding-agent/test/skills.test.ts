@@ -287,6 +287,68 @@ describe("skills", () => {
 			}
 		});
 
+		it("does not leak claude or opencode skills when native/agents are enabled and claude/codex are off", async () => {
+			const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "pi-isolated-home-"));
+			const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "pi-isolated-cwd-"));
+			const claudeSkillDir = path.join(tempHome, ".claude", "skills", "claude-only-skill");
+			const opencodeSkillDir = path.join(tempHome, ".config", "opencode", "skills", "opencode-only-skill");
+			const agentsSkillDir = path.join(tempHome, ".agents", "skills", "shared-agents-skill");
+			await fs.mkdir(claudeSkillDir, { recursive: true });
+			await fs.mkdir(opencodeSkillDir, { recursive: true });
+			await fs.mkdir(agentsSkillDir, { recursive: true });
+			await fs.writeFile(
+				path.join(claudeSkillDir, "SKILL.md"),
+				["---", "description: Claude skill", "---", "", "# claude-only-skill"].join("\n"),
+			);
+			await fs.writeFile(
+				path.join(opencodeSkillDir, "SKILL.md"),
+				["---", "description: OpenCode skill", "---", "", "# opencode-only-skill"].join("\n"),
+			);
+			await fs.writeFile(
+				path.join(agentsSkillDir, "SKILL.md"),
+				["---", "description: Shared agents skill", "---", "", "# shared-agents-skill"].join("\n"),
+			);
+			const homedirSpy = spyOn(os, "homedir").mockReturnValue(tempHome);
+			try {
+				const { skills } = await loadSkills({
+					enableCodexUser: false,
+					enableClaudeUser: false,
+					enableClaudeProject: false,
+					enablePiUser: true,
+					enablePiProject: true,
+					enableAgentsUser: true,
+					enableAgentsProject: true,
+					cwd: tempCwd,
+				});
+				expect(skills.some(s => s.name === "shared-agents-skill" && s.source === "agents:user")).toBe(true);
+				expect(skills.some(s => s.name === "claude-only-skill")).toBe(false);
+				expect(skills.some(s => s.name === "opencode-only-skill")).toBe(false);
+
+				// Also verify when a shared skill is symlinked in ~/.claude/skills AND exists in ~/.agents/skills,
+				// disabling claude still loads the skill from ~/.agents/skills instead of letting claude shadow it.
+				await fs.symlink(agentsSkillDir, path.join(tempHome, ".claude", "skills", "shared-agents-skill"));
+				const { skills: afterSymlink } = await loadSkills({
+					enableCodexUser: false,
+					enableClaudeUser: false,
+					enableClaudeProject: false,
+					enablePiUser: true,
+					enablePiProject: true,
+					enableAgentsUser: true,
+					enableAgentsProject: true,
+					cwd: tempCwd,
+				});
+				const sharedLoaded = afterSymlink.find(s => s.name === "shared-agents-skill");
+				expect(sharedLoaded).toBeDefined();
+				expect(sharedLoaded?.source).toBe("agents:user");
+				expect(sharedLoaded?.filePath).toBe(path.join(agentsSkillDir, "SKILL.md"));
+				expect(afterSymlink.some(s => s.filePath.includes(".claude"))).toBe(false);
+			} finally {
+				homedirSpy.mockRestore();
+				await removeWithRetries(tempHome);
+				await removeWithRetries(tempCwd);
+			}
+		});
+
 		it("should filter out ignoredSkills", async () => {
 			const { skills } = await loadSkills({
 				...DISABLE_ALL_BUILTIN_SKILLS,

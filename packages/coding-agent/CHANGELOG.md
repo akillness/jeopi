@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Isolated third-party skill provider toggles (`claude`, `claude-plugins`, `codex`, `opencode`, `gemini`, etc.) from `native`/`agents` toggles and filtered pre-dedup skill entries so disabled higher-priority providers cannot shadow enabled ones.
+
 ## [16.6.28] - 2026-11-18
 
 ### Fixed
