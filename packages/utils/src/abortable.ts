@@ -9,6 +9,12 @@ export class AbortError extends Error {
 		this.name = "AbortError";
 	}
 }
+export class IdleTimeoutError extends Error {
+	constructor(timeoutMs: number) {
+		super(`Stream idle timeout exceeded: no chunk received for ${timeoutMs}ms`);
+		this.name = "IdleTimeoutError";
+	}
+}
 
 /**
  * Abortable async iteration over a {@link ReadableStream}. Reads the source
@@ -22,7 +28,11 @@ export class AbortError extends Error {
  * on completion, abort, throw, or early exit. The source is cancelled only on
  * abort or early exit — never on natural EOF.
  */
-export async function* abortableSource<T>(stream: ReadableStream<T>, signal?: AbortSignal): AsyncGenerator<T> {
+export async function* abortableSource<T>(
+	stream: ReadableStream<T>,
+	signal?: AbortSignal,
+	idleTimeoutMs?: number,
+): AsyncGenerator<T> {
 	if (signal?.aborted) throw new AbortError(signal);
 	const reader = stream.getReader();
 	let onAbort: (() => void) | undefined;
@@ -33,9 +43,30 @@ export async function* abortableSource<T>(stream: ReadableStream<T>, signal?: Ab
 		signal.addEventListener("abort", onAbort, { once: true });
 	}
 	let completed = false;
+	let timedOutError: IdleTimeoutError | undefined;
+	const hasIdleTimeout = idleTimeoutMs !== undefined && Number.isFinite(idleTimeoutMs) && idleTimeoutMs > 0;
 	try {
 		for (;;) {
-			const result = await reader.read();
+			const rawReadPromise = reader.read();
+			let readPromise = rawReadPromise;
+			let timeoutId: NodeJS.Timeout | undefined;
+			if (hasIdleTimeout) {
+				const { promise: timeoutPromise, reject } = Promise.withResolvers<never>();
+				timeoutId = setTimeout(() => {
+					const err = new IdleTimeoutError(idleTimeoutMs);
+					timedOutError = err;
+					rawReadPromise.catch(() => {});
+					reject(err);
+				}, idleTimeoutMs);
+				timeoutId.unref?.();
+				readPromise = Promise.race([rawReadPromise, timeoutPromise]);
+			}
+			let result: { done: true; value?: T } | { done: false; value: T };
+			try {
+				result = await readPromise;
+			} finally {
+				clearTimeout(timeoutId);
+			}
 			if (signal?.aborted) throw new AbortError(signal);
 			if (result.done) {
 				completed = true;
@@ -45,12 +76,20 @@ export async function* abortableSource<T>(stream: ReadableStream<T>, signal?: Ab
 		}
 	} finally {
 		if (signal && onAbort) signal.removeEventListener("abort", onAbort);
-		// Propagate early-exit (`break`/`return`) and abort to the backend; skip
-		// on natural EOF where the stream already closed itself.
-		if (!completed) {
+		// Propagate early-exit (`break`/`return`), timeout, and abort to the backend;
+		// skip on natural EOF where the stream already closed itself. Bound the wait
+		// so a stalled underlying stream cannot hang `cancel()` forever.
+		if (!completed && !signal?.aborted) {
+			let cancelTimer: NodeJS.Timeout | undefined;
+			const { promise: cancelTimeout, resolve: resolveCancelTimeout } = Promise.withResolvers<void>();
+			cancelTimer = setTimeout(resolveCancelTimeout, 250);
+			cancelTimer.unref?.();
 			try {
-				await reader.cancel();
-			} catch {}
+				await Promise.race([reader.cancel(timedOutError).catch(() => {}), cancelTimeout]);
+			} catch {
+			} finally {
+				clearTimeout(cancelTimer);
+			}
 		}
 		try {
 			reader.releaseLock();

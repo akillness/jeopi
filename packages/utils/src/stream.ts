@@ -24,9 +24,13 @@ function parseJsonlChunkCompat(input: Uint8Array | string, beg?: number, end?: n
 	return { values, error, read, done };
 }
 
-export async function* readLines(stream: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<Uint8Array> {
+export async function* readLines(
+	stream: ReadableStream<Uint8Array>,
+	signal?: AbortSignal,
+	idleTimeoutMs?: number,
+): AsyncGenerator<Uint8Array> {
 	const buffer = new ConcatSink();
-	const source = abortableSource(stream, signal);
+	const source = abortableSource(stream, signal, idleTimeoutMs);
 	try {
 		for await (const chunk of source) {
 			for (const line of buffer.appendAndFlushLines(chunk)) {
@@ -47,9 +51,13 @@ export async function* readLines(stream: ReadableStream<Uint8Array>, signal?: Ab
 	}
 }
 
-export async function* readJsonl<T>(stream: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<T> {
+export async function* readJsonl<T>(
+	stream: ReadableStream<Uint8Array>,
+	signal?: AbortSignal,
+	idleTimeoutMs?: number,
+): AsyncGenerator<T> {
 	const buffer = new ConcatSink();
-	const source = abortableSource(stream, signal);
+	const source = abortableSource(stream, signal, idleTimeoutMs);
 	try {
 		for await (const chunk of source) {
 			yield* buffer.pullJSONL<T>(chunk, 0, chunk.length);
@@ -229,8 +237,9 @@ export async function* readSseJson<T>(
 	stream: ReadableStream<Uint8Array>,
 	signal?: AbortSignal,
 	onEvent?: SseEventObserver,
+	idleTimeoutMs?: number,
 ): AsyncGenerator<T> {
-	for await (const sse of readSseEvents(stream, signal)) {
+	for await (const sse of readSseEvents(stream, signal, idleTimeoutMs)) {
 		const isTrailing = trailingEvents.has(sse);
 		notifySseEventObserver(onEvent, sse);
 		const data = sse.data;
@@ -359,10 +368,11 @@ function pushSseLine(line: Uint8Array, state: SseEventState): ServerSentEvent | 
 export async function* readSseEvents(
 	stream: ReadableStream<Uint8Array>,
 	signal?: AbortSignal,
+	idleTimeoutMs?: number,
 ): AsyncGenerator<ServerSentEvent> {
 	const lineBuffer = new ConcatSink();
 	const state: SseEventState = { event: null, data: null, raw: [] };
-	const source = abortableSource(stream, signal);
+	const source = abortableSource(stream, signal, idleTimeoutMs);
 	try {
 		for await (const chunk of source) {
 			for (const line of lineBuffer.appendAndFlushLines(chunk)) {

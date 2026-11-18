@@ -635,7 +635,12 @@ async function callPerplexityAsk(
 	const sourcesByUrl = new Map<string, SearchSource>();
 	let mergedEvent: PerplexityOAuthStreamEvent = { blocks: [] };
 
-	for await (const event of readSseJson<PerplexityOAuthStreamEvent>(response.body, params.signal)) {
+	for await (const event of readSseJson<PerplexityOAuthStreamEvent>(
+		response.body,
+		params.signal,
+		undefined,
+		120_000,
+	)) {
 		if (event.error_code) {
 			const message = event.error_message ?? event.error_code;
 			throw new SearchProviderError("perplexity", `Perplexity ask stream error: ${message}`, 400);

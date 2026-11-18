@@ -846,7 +846,7 @@ async function parseOpenAIHostedImageSse(response: Response, signal?: AbortSigna
 	const fallbackOutput: OpenAIResponseOutput[] = [];
 	let completedResponse: OpenAIHostedImageResponse | undefined;
 
-	for await (const event of readSseJson<OpenAISseEvent>(response.body, signal)) {
+	for await (const event of readSseJson<OpenAISseEvent>(response.body, signal, undefined, 120_000)) {
 		if (event.type === "error") {
 			const message = event.error?.message ?? event.message ?? "OpenAI image request failed";
 			throw new Error(message);
@@ -996,7 +996,7 @@ async function parseAntigravitySseForImage(response: Response, signal?: AbortSig
 	const images: InlineImageData[] = [];
 	let usage: GeminiUsageMetadata | undefined;
 
-	for await (const chunk of readSseJson<AntigravityResponseChunk>(response.body, signal)) {
+	for await (const chunk of readSseJson<AntigravityResponseChunk>(response.body, signal, undefined, 120_000)) {
 		const responseData = chunk.response;
 		if (!responseData) continue;
 		if (!responseData.candidates) continue;

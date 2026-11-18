@@ -1,4 +1,4 @@
-export { once, untilAborted } from "./abortable";
+export { abortableSource, IdleTimeoutError, once, untilAborted } from "./abortable";
 export * from "./async";
 export * from "./binary";
 export * from "./color";

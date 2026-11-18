@@ -303,7 +303,12 @@ export class HttpTransport implements MCPTransport {
 		// controller", so we must not exit the loop early.
 		const drain = async (): Promise<void> => {
 			try {
-				for await (const raw of readSseJson<JsonRpcMessage | JsonRpcMessage[]>(response.body!, signal)) {
+				for await (const raw of readSseJson<JsonRpcMessage | JsonRpcMessage[]>(
+					response.body!,
+					signal,
+					undefined,
+					120_000,
+				)) {
 					const messages = Array.isArray(raw) ? raw : [raw];
 					for (const message of messages) {
 						if (

@@ -381,7 +381,12 @@ async function callCodexSearch(
 	let requestId = "";
 	let usage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined;
 
-	for await (const rawEvent of readSseJson<Record<string, unknown>>(response.body, options.signal)) {
+	for await (const rawEvent of readSseJson<Record<string, unknown>>(
+		response.body,
+		options.signal,
+		undefined,
+		120_000,
+	)) {
 		const eventType = typeof rawEvent.type === "string" ? rawEvent.type : "";
 		if (!eventType) continue;
 

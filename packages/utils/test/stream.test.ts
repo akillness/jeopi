@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { IdleTimeoutError } from "jeopi-utils";
 import { sanitizeText } from "jeopi-utils/sanitize-text";
 import {
 	parseJsonlLenient,
@@ -451,5 +452,49 @@ describe("readSseEvents", () => {
 		expect(events[1999].data).toBe("1999");
 		// Generous bound: the previous quadratic implementation needed >5s here.
 		expect(elapsed).toBeLessThan(2000);
+	});
+});
+
+describe("stream idleTimeoutMs", () => {
+	it("throws IdleTimeoutError when no chunk arrives within idleTimeoutMs", async () => {
+		let cancelled = false;
+		const stream = new ReadableStream<Uint8Array>({
+			cancel() {
+				cancelled = true;
+			},
+		});
+
+		await expect(collectAsync(readSseJson(stream, undefined, undefined, 40))).rejects.toBeInstanceOf(
+			IdleTimeoutError,
+		);
+		expect(cancelled).toBe(true);
+	});
+
+	it("resets the idle timer as chunks arrive", async () => {
+		const stream = new ReadableStream<Uint8Array>({
+			async start(controller) {
+				controller.enqueue(encoder.encode('data: {"n":1}\n\n'));
+				await Bun.sleep(25);
+				controller.enqueue(encoder.encode('data: {"n":2}\n\n'));
+				await Bun.sleep(25);
+				controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+				controller.close();
+			},
+		});
+
+		const output = await collectAsync(readSseJson<{ n: number }>(stream, undefined, undefined, 60));
+		expect(output).toEqual([{ n: 1 }, { n: 2 }]);
+	});
+
+	it("does not hang if underlying stream cancel stalls after IdleTimeoutError", async () => {
+		const stream = new ReadableStream<Uint8Array>({
+			cancel() {
+				return Promise.withResolvers<void>().promise;
+			},
+		});
+
+		const start = performance.now();
+		await expect(collectAsync(readSseEvents(stream, undefined, 30))).rejects.toBeInstanceOf(IdleTimeoutError);
+		expect(performance.now() - start).toBeLessThan(1000);
 	});
 });

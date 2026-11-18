@@ -166,6 +166,8 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 			for await (const event of readSseJson<ProxyAssistantMessageEvent>(
 				response.body as ReadableStream<Uint8Array>,
 				options.signal,
+				undefined,
+				120_000,
 			)) {
 				const parsedEvent = processProxyEvent(model, event, partial, partialJsonByIndex);
 				if (parsedEvent) {
