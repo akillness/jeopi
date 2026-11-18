@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Applied a `120_000ms` SSE idle timeout to `ProxyMessageEventStream` so stalled proxy responses fail cleanly instead of hanging.
+
 ## [16.6.24] - 2026-11-14
 
 ### Fixed
