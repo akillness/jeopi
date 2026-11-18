@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.28] - 2026-11-18
+
 ### Fixed
 
 - Applied a `120_000ms` SSE idle timeout to unguarded `readSseJson` consumers (`image-gen`, Codex/Perplexity web search, and MCP HTTP POST responses) to prevent hangs on stalled streams.

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.6.28] - 2026-11-18
+
 ### Fixed
 
 - Added `IdleTimeoutError` and bounded `idleTimeoutMs` handling to `abortableSource`, `readLines`, `readJsonl`, `readSseEvents`, and `readSseJson`, bounding stream `cancel()` cleanup so stalled streams never hang indefinitely.
