@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.0] - 2026-11-18
+
 ### Fixed
 
 - Disposed JS `eval` VM contexts per owner on `AgentSession` disposal and SDK creation failure so finished subagents and sessions do not leak live JS worker contexts.

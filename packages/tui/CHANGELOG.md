@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.0] - 2026-11-18
+
 ### Changed
 
 - Added incremental streaming Markdown lexing in `Markdown` component to avoid re-lexing unchanged prefixes during streaming updates.
