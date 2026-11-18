@@ -49,6 +49,7 @@ interface JsSession {
 	worker: WorkerHandle;
 	state: "alive" | "dead";
 	pending: Map<string, PendingRun>;
+	ownerIds: Set<string>;
 }
 
 const sessions = new Map<string, JsSession>();
@@ -82,6 +83,7 @@ export function setWorkerCloseTimeoutMsForTests(ms: number): number {
 export async function executeInVmContext(options: {
 	sessionKey: string;
 	sessionId: string;
+	ownerId?: string;
 	cwd: string;
 	session: ToolSession;
 	localRoots?: Record<string, string>;
@@ -119,6 +121,7 @@ export async function executeInVmContext(options: {
 		options.sessionKey,
 		{ cwd: options.cwd, sessionId: options.sessionId, localRoots: options.localRoots },
 		options.timeoutMs,
+		options.ownerId,
 	);
 	return await runOnce(session, options);
 }
@@ -143,6 +146,36 @@ export async function disposeAllVmContexts(): Promise<void> {
 	await Promise.all(all.map(session => killSession(session, new ToolError("JS context disposed"), { force: false })));
 }
 
+export async function disposeVmContextsByOwner(ownerId: string): Promise<void> {
+	if (!ownerId) return;
+	// Wait for any in-flight startups so an owner disposing concurrently with
+	// worker init doesn't strand a freshly-started session in `sessions`.
+	const pending = [...startingSessions.values()];
+	if (pending.length > 0) {
+		await Promise.allSettled(pending);
+	}
+	const toKill: JsSession[] = [];
+	for (const session of [...sessions.values()]) {
+		if (!session.ownerIds.has(ownerId)) continue;
+		if (session.ownerIds.size <= 1) {
+			toKill.push(session);
+			continue;
+		}
+		session.ownerIds.delete(ownerId);
+	}
+	for (const session of toKill) {
+		if (sessions.get(session.sessionKey) === session) {
+			sessions.delete(session.sessionKey);
+		}
+	}
+	await Promise.all(
+		toKill.map(async session => {
+			await killSession(session, new ToolError("JS context disposed"), { force: false });
+			session.ownerIds.delete(ownerId);
+		}),
+	);
+}
+
 /**
  * Smoke probe: spawn the JS eval worker through the worker-host entry and prove
  * it answers the `init` handshake on a real worker thread (not the inline
@@ -160,6 +193,7 @@ export async function smokeTestJsEvalWorker(): Promise<void> {
 		worker,
 		state: "alive",
 		pending: new Map(),
+		ownerIds: new Set(["smoke"]),
 	};
 	try {
 		await initWorker(session, { cwd: process.cwd(), sessionId: "smoke" }, WORKER_INIT_TIMEOUT_MS);
@@ -226,15 +260,25 @@ async function runOnce(
 	}
 }
 
-async function acquireSession(sessionKey: string, snapshot: SessionSnapshot, timeoutMs?: number): Promise<JsSession> {
+async function acquireSession(
+	sessionKey: string,
+	snapshot: SessionSnapshot,
+	timeoutMs?: number,
+	ownerId?: string,
+): Promise<JsSession> {
 	const existing = sessions.get(sessionKey);
 	if (existing && existing.state === "alive") {
 		existing.sessionId = snapshot.sessionId;
 		existing.cwd = snapshot.cwd;
+		if (ownerId) existing.ownerIds.add(ownerId);
 		return existing;
 	}
 	const starting = startingSessions.get(sessionKey);
-	if (starting) return await starting;
+	if (starting) {
+		const session = await starting;
+		if (ownerId) session.ownerIds.add(ownerId);
+		return session;
+	}
 
 	const startup = (async (): Promise<JsSession> => {
 		// The message listener must be attached synchronously after `new Worker`:
@@ -249,6 +293,7 @@ async function acquireSession(sessionKey: string, snapshot: SessionSnapshot, tim
 			worker,
 			state: "alive",
 			pending: new Map(),
+			ownerIds: ownerId ? new Set([ownerId]) : new Set(),
 		};
 		// Init headroom is the fixed infrastructure floor; the caller's per-cell timeout
 		// dominates when larger so users can grant more by raising `timeout` on a cell.

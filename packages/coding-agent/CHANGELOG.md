@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Disposed JS `eval` VM contexts per owner on `AgentSession` disposal and SDK creation failure so finished subagents and sessions do not leak live JS worker contexts.
+- Bounded `AgentLifecycleManager` with LRU limits (`maxLiveIdle = 2`, `maxAdopted = 16`), dropped in-memory `revive` closures on `park()` when a persisted reviver factory is available, and detached aborted subagent sessions in `finalizeSubagentLifecycle()`.
+- Shared a process-global subagent spawn semaphore (with separate top-level and nested pools) across `TaskTool` and `eval`'s `agent()` bridge, lowered default `task.maxConcurrency` (`8`) and `task.agentIdleTtlMs` (`60_000`), and enabled a default `5 * 60 * 1000`ms idle timeout for LSP clients.
+
 ## [16.6.29] - 2026-11-18
 
 ### Fixed

@@ -192,4 +192,16 @@ describe("Markdown incremental streaming lex (E2)", () => {
 			expect(streamLines).toEqual(renderCold(crlf.slice(0, len), 60));
 		}
 	});
+
+	it("unclosed <details> block spanning blank lines stays identical when </details> arrives", () => {
+		const detailsDoc =
+			"Intro paragraph before the details block.\n\n" +
+			"<details>\n<summary>Jev routing note</summary>\n\n" +
+			"First body paragraph inside details.\n\n" +
+			"- Bullet one\n- Bullet two\n\n" +
+			"</details>\n\n" +
+			"Trailing paragraph after details closes.";
+		assertIdenticalGrowth(detailsDoc, 60, 1);
+		assertIdenticalGrowth(detailsDoc, 60, 7);
+	});
 });

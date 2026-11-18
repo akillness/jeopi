@@ -100,6 +100,7 @@ export async function executeJs(code: string, options: JsExecutorOptions): Promi
 		await executeInVmContext({
 			sessionKey: options.sessionId,
 			sessionId: options.sessionId,
+			ownerId: options.session.getEvalKernelOwnerId?.() ?? options.sessionId,
 			cwd: options.cwd ?? options.session.cwd,
 			session: options.session,
 			localRoots: options.localRoots,

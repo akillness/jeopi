@@ -59,6 +59,7 @@ import {
 } from "./critic-gate";
 import { type DiscoveryResult, discoverAgents, getAgent } from "./discovery";
 import { runSubprocess } from "./executor";
+import { getGlobalSpawnSemaphore } from "./global-concurrency";
 import {
 	applyEligibleNestedPatches,
 	type IsolationContext,
@@ -70,7 +71,7 @@ import {
 import { classifyDefaultTaskModelTier } from "./model-tier-classifier";
 import { generateTaskName } from "./name-generator";
 import { AgentOutputManager } from "./output-manager";
-import { mapWithConcurrencyLimit, normalizeConcurrencyLimit, Semaphore } from "./parallel";
+import { mapWithConcurrencyLimit, normalizeConcurrencyLimit, type Semaphore } from "./parallel";
 import { renderResult, renderCall as renderTaskCall } from "./render";
 import { repairTaskParams } from "./repair-args";
 import { parseIsolationMode } from "./worktree";
@@ -509,15 +510,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	readonly mergeCallAndResult = true;
 	readonly #discoveredAgents: AgentDefinition[];
 	readonly #blockedAgent: string | undefined;
-	/**
-	 * One semaphore per TaskTool instance (i.e. per session): bounds concurrent
-	 * subagents across parallel `task` calls within the session. Resized in
-	 * place from `task.maxConcurrency` before every acquire/release so a
-	 * mid-session settings change (UI toggle, `/settings`) applies to both new
-	 * spawns and work already parked in the semaphore queue.
-	 */
-	#spawnSemaphore: Semaphore | undefined;
-
 	get parameters(): TaskToolSchemaInstance {
 		const isolationEnabled = this.session.settings.get("task.isolation.mode") !== "none";
 		const defaultAgent = resolveSpawnPolicy(this.session.getSessionSpawns()).defaultAgent;
@@ -582,18 +574,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 	#getSpawnSemaphore(): Semaphore {
 		const max = this.session.settings.get("task.maxConcurrency");
-		if (this.#spawnSemaphore) {
-			this.#spawnSemaphore.resize(max);
-		} else {
-			this.#spawnSemaphore = new Semaphore(max);
-		}
-		return this.#spawnSemaphore;
+		return getGlobalSpawnSemaphore(max, this.session.taskDepth ?? 0);
 	}
 
 	#releaseSpawnSemaphore(): void {
 		this.#getSpawnSemaphore().release();
 	}
-
 	/**
 	 * Create a TaskTool instance with async agent discovery.
 	 */

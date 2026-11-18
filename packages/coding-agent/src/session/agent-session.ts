@@ -192,6 +192,7 @@ import { loadCapability } from "../discovery";
 import { expandApplyPatchToEntries, normalizeDiff, normalizeToLF, ParseError, previewPatch, stripBom } from "../edit";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { disposeJuliaKernelSessionsByOwner } from "../eval/jl/executor";
+import { disposeVmContextsByOwner } from "../eval/js/context-manager";
 import { namespaceSessionId as namespacePythonSessionId } from "../eval/py";
 import {
 	disposeKernelSessionsByOwner,
@@ -5812,6 +5813,7 @@ export class AgentSession {
 		await disposeKernelSessionsByOwner(this.#evalKernelOwnerId);
 		await disposeRubyKernelSessionsByOwner(this.#evalKernelOwnerId);
 		await disposeJuliaKernelSessionsByOwner(this.#evalKernelOwnerId);
+		await disposeVmContextsByOwner(this.#evalKernelOwnerId);
 		// Release headless / spawned Chromium and worker tabs this session
 		// opened via the browser tool. The tool's `tabs`/`browsers` maps are
 		// module-global — subagents and future sessions share them — so we

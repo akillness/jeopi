@@ -87,15 +87,38 @@ function createHtmlNormalizationState(): HtmlNormalizationState {
 }
 
 const HTML_COMMENT_REGEX = /<!--[\s\S]*?-->/g;
-const HTML_TAG_REGEX = /<\/?(?:br|p|ol|ul|li|span|text|code|hr|blockquote)\b(?:\s[^>]*)?\s*\/?>/gi;
+const HTML_TAG_REGEX =
+	/<\/?(?:br|p|ol|ul|li|span|text|code|kbd|hr|blockquote|details|summary|div|section|article|aside|header|footer|main|nav|figure|figcaption|pre|h[1-6]|strong|em|del|strike|mark|small|sup|sub|a|img|b|i|u|s)\b(?:\s[^>]*)?\s*\/?>/gi;
 // Block-level HTML that needs structural (not just textual) rendering: standalone
 // `<hr>` becomes a rule and balanced `<blockquote>…</blockquote>` renders with
 // quote styling. Group 1 captures blockquote inner content; it is undefined for hr.
 const BLOCK_HTML_REGEX = /<hr\b[^>]*\/?>|<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi;
+const SINGLE_LETTER_INLINE_HTML_TAGS = new Set(["b", "i", "u", "s"]);
+
+interface HtmlStyleHooks {
+	code?: (text: string) => string;
+	bold?: (text: string) => string;
+	italic?: (text: string) => string;
+	underline?: (text: string) => string;
+	strikethrough?: (text: string) => string;
+	heading?: (text: string) => string;
+	link?: (text: string, href: string) => string;
+}
 
 function htmlTagName(tag: string): string {
 	const match = /^<\/?\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(tag);
 	return match ? match[1].toLowerCase() : "";
+}
+
+function htmlRawTagName(tag: string): string {
+	const match = /^<\/?\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(tag);
+	return match ? match[1] : "";
+}
+
+function htmlAttr(tag: string, attrName: string): string {
+	const match = new RegExp(`\\b${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
+	if (!match) return "";
+	return normalizeHtmlEntitiesForTerminal(match[1] ?? match[2] ?? match[3] ?? "");
 }
 
 function htmlOlStart(tag: string): number {
@@ -129,56 +152,285 @@ function isAtEmptyHtmlListItem(state: HtmlNormalizationState): boolean {
 	return state.openItems[itemIndex] === true && state.itemHasContent[itemIndex] !== true;
 }
 
+function isInlineHtmlTagName(name: string): boolean {
+	switch (name) {
+		case "span":
+		case "text":
+		case "code":
+		case "kbd":
+		case "strong":
+		case "em":
+		case "del":
+		case "strike":
+		case "mark":
+		case "small":
+		case "sup":
+		case "sub":
+		case "a":
+		case "img":
+		case "b":
+		case "i":
+		case "u":
+		case "s":
+			return true;
+		default:
+			return false;
+	}
+}
+
+function formatHtmlLink(text: string, href: string, hooks?: HtmlStyleHooks): string {
+	if (hooks?.link) {
+		return hooks.link(text, href);
+	}
+	if (!href || text === href) return text || href;
+	return text ? `${text} (${href})` : href;
+}
+
 function normalizeHtmlForTerminal(
 	raw: string,
 	state: HtmlNormalizationState = createHtmlNormalizationState(),
-	codeHook?: (text: string) => string,
+	hooks?: HtmlStyleHooks,
 ): string {
 	let output = "";
 	let lastIndex = 0;
 	let inCode = false;
+	let inPre = false;
+	let boldDepth = 0;
+	let italicDepth = 0;
+	let underlineDepth = 0;
+	let strikeDepth = 0;
+	let headingDepth = 0;
+	let inSummary = false;
+	let pendingSummaryPrefix = false;
+	let activeLinkHref: string | null = null;
+	let activeLinkText = "";
+	const openSingleLetterCounts: Record<string, number> = { b: 0, i: 0, u: 0, s: 0 };
 	const withoutComments = raw.replace(HTML_COMMENT_REGEX, "");
+
+	const styleChunk = (text: string): string => {
+		if (!text) return "";
+		if (inCode) {
+			return hooks?.code ? hooks.code(text) : text;
+		}
+		let styled = text;
+		if (headingDepth > 0 && hooks?.heading) {
+			styled = hooks.heading(styled);
+		}
+		if ((boldDepth > 0 || inSummary) && hooks?.bold) {
+			styled = hooks.bold(styled);
+		}
+		if (italicDepth > 0 && hooks?.italic) {
+			styled = hooks.italic(styled);
+		}
+		if (underlineDepth > 0 && hooks?.underline) {
+			styled = hooks.underline(styled);
+		}
+		if (strikeDepth > 0 && hooks?.strikethrough) {
+			styled = hooks.strikethrough(styled);
+		}
+		return styled;
+	};
+
+	const emitText = (text: string): void => {
+		if (!text) return;
+		if (pendingSummaryPrefix && text.trim() !== "") {
+			const prefix = hooks?.bold ? hooks.bold("▾ ") : "▾ ";
+			output += prefix;
+			pendingSummaryPrefix = false;
+		}
+		const styled = styleChunk(text);
+		if (activeLinkHref !== null) {
+			activeLinkText += styled;
+		} else {
+			output += styled;
+		}
+		markCurrentHtmlItemContent(state, text);
+	};
 
 	for (const match of withoutComments.matchAll(HTML_TAG_REGEX)) {
 		const tag = match[0];
 		const index = match.index ?? 0;
 		const textBeforeTag = normalizeHtmlEntitiesForTerminal(withoutComments.slice(lastIndex, index));
 		const name = htmlTagName(tag);
-		// Most tags handled here are block-level. Inline contexts — span, text, and
-		// the content inside a `<code>` run — keep their surrounding whitespace
-		// verbatim because it is significant. For block-level tags, HTML formatting
-		// whitespace between tags (e.g. the newlines and indentation in
-		// pretty-printed `<ul>\n  <li>…`) is not rendered content; appending it
-		// literally would leak source indentation before bullets and blank rows
-		// between items, so a whitespace-only slice is dropped. Text inside a
-		// `<code>` run is routed through `codeHook` so the inline-code theme is
-		// applied without leaking the raw `<code>`/`</code>` tags.
-		const isInlineTag = name === "span" || name === "text";
-		if (isInlineTag || inCode || textBeforeTag.trim() !== "") {
-			output += inCode && codeHook ? codeHook(textBeforeTag) : textBeforeTag;
-			markCurrentHtmlItemContent(state, textBeforeTag);
-		}
-		lastIndex = index + tag.length;
-
+		const rawName = htmlRawTagName(tag);
 		const isClosing = /^<\//.test(tag);
 		const isSelfClosing = /\/\s*>$/.test(tag);
+
+		// Single-letter HTML tags (`<b>`, `<i>`, `<u>`, `<s>`) collide with uppercase
+		// TypeScript generics (`Wrapper<U>`, `Box<B>`). Leave uppercase or unmatched
+		// single-letter tags untouched as literal text.
+		if (SINGLE_LETTER_INLINE_HTML_TAGS.has(name)) {
+			if (rawName !== name) {
+				continue;
+			}
+			if (!isClosing && !isSelfClosing) {
+				const closeRe = new RegExp(`</${name}\\s*>`);
+				if (!closeRe.test(withoutComments.slice(index + tag.length))) {
+					continue;
+				}
+			} else if (isClosing && openSingleLetterCounts[name] <= 0) {
+				continue;
+			}
+		}
+
+		// Most tags handled here are block-level. Inline contexts — span, text,
+		// formatting tags, and the content inside `<code>`/`<pre>` — keep their
+		// surrounding whitespace verbatim because it is significant. For block-level
+		// tags, HTML formatting whitespace between tags is dropped so source
+		// indentation doesn't leak before bullets and blocks.
+		const isInlineTag = isInlineHtmlTagName(name);
+		if (isInlineTag || inCode || inPre || textBeforeTag.trim() !== "") {
+			emitText(textBeforeTag);
+		}
+		lastIndex = index + tag.length;
 
 		switch (name) {
 			case "span":
 			case "text":
+			case "mark":
+			case "small":
+			case "sup":
+			case "sub":
 				break;
 			case "code":
+			case "kbd":
 				if (isClosing) inCode = false;
 				else if (!isSelfClosing) inCode = true;
+				break;
+			case "pre":
+				if (isClosing) {
+					inPre = false;
+					output = appendHtmlLineBreak(output);
+				} else if (!isSelfClosing) {
+					if (output.trim() !== "" && !output.endsWith("\n") && !isAtEmptyHtmlListItem(state)) {
+						output = appendHtmlLineBreak(output);
+					}
+					inPre = true;
+				}
+				break;
+			case "strong":
+			case "b":
+				if (isClosing) {
+					boldDepth = Math.max(0, boldDepth - 1);
+					if (name === "b") openSingleLetterCounts.b = Math.max(0, openSingleLetterCounts.b - 1);
+				} else if (!isSelfClosing) {
+					boldDepth++;
+					if (name === "b") openSingleLetterCounts.b++;
+				}
+				break;
+			case "em":
+			case "i":
+				if (isClosing) {
+					italicDepth = Math.max(0, italicDepth - 1);
+					if (name === "i") openSingleLetterCounts.i = Math.max(0, openSingleLetterCounts.i - 1);
+				} else if (!isSelfClosing) {
+					italicDepth++;
+					if (name === "i") openSingleLetterCounts.i++;
+				}
+				break;
+			case "u":
+				if (isClosing) {
+					underlineDepth = Math.max(0, underlineDepth - 1);
+					openSingleLetterCounts.u = Math.max(0, openSingleLetterCounts.u - 1);
+				} else if (!isSelfClosing) {
+					underlineDepth++;
+					openSingleLetterCounts.u++;
+				}
+				break;
+			case "del":
+			case "strike":
+			case "s":
+				if (isClosing) {
+					strikeDepth = Math.max(0, strikeDepth - 1);
+					if (name === "s") openSingleLetterCounts.s = Math.max(0, openSingleLetterCounts.s - 1);
+				} else if (!isSelfClosing) {
+					strikeDepth++;
+					if (name === "s") openSingleLetterCounts.s++;
+				}
+				break;
+			case "a":
+				if (isClosing) {
+					if (activeLinkHref !== null) {
+						output += formatHtmlLink(activeLinkText, activeLinkHref, hooks);
+						activeLinkHref = null;
+						activeLinkText = "";
+					}
+				} else if (!isSelfClosing) {
+					const href = htmlAttr(tag, "href");
+					if (href) {
+						if (activeLinkHref !== null) {
+							output += formatHtmlLink(activeLinkText, activeLinkHref, hooks);
+						}
+						activeLinkHref = href;
+						activeLinkText = "";
+					}
+				}
+				break;
+			case "img": {
+				const alt = htmlAttr(tag, "alt");
+				if (alt) {
+					emitText(`[${alt}]`);
+				}
+				break;
+			}
+			case "h1":
+			case "h2":
+			case "h3":
+			case "h4":
+			case "h5":
+			case "h6":
+				if (isClosing) {
+					headingDepth = Math.max(0, headingDepth - 1);
+					output = appendHtmlLineBreak(output);
+				} else if (!isSelfClosing) {
+					if (output.trim() !== "" && !output.endsWith("\n") && !isAtEmptyHtmlListItem(state)) {
+						output = appendHtmlLineBreak(output);
+					}
+					headingDepth++;
+				}
+				break;
+			case "summary":
+				if (isClosing) {
+					inSummary = false;
+					pendingSummaryPrefix = false;
+					if (output.trim() !== "") {
+						output = appendHtmlLineBreak(output);
+					}
+				} else if (!isSelfClosing) {
+					if (output.trim() !== "" && !output.endsWith("\n") && !isAtEmptyHtmlListItem(state)) {
+						output = appendHtmlLineBreak(output);
+					}
+					inSummary = true;
+					pendingSummaryPrefix = true;
+				}
 				break;
 			case "br":
 			case "hr":
 				output = appendHtmlLineBreak(output, true);
 				break;
 			case "p":
-			case "blockquote":
 				if (isClosing) {
 					output = appendHtmlLineBreak(output);
+				} else if (output.trim() !== "" && !output.endsWith("\n") && !isAtEmptyHtmlListItem(state)) {
+					output = appendHtmlLineBreak(output);
+				}
+				break;
+			case "blockquote":
+			case "details":
+			case "div":
+			case "section":
+			case "article":
+			case "aside":
+			case "header":
+			case "footer":
+			case "main":
+			case "nav":
+			case "figure":
+			case "figcaption":
+				if (isClosing) {
+					if (output.trim() !== "") {
+						output = appendHtmlLineBreak(output);
+					}
 				} else if (output.trim() !== "" && !output.endsWith("\n") && !isAtEmptyHtmlListItem(state)) {
 					output = appendHtmlLineBreak(output);
 				}
@@ -241,8 +493,11 @@ function normalizeHtmlForTerminal(
 	}
 
 	const remainingText = normalizeHtmlEntitiesForTerminal(withoutComments.slice(lastIndex));
-	markCurrentHtmlItemContent(state, remainingText);
-	return output + (inCode && codeHook ? codeHook(remainingText) : remainingText);
+	emitText(remainingText);
+	if (activeLinkHref !== null) {
+		output += formatHtmlLink(activeLinkText, activeLinkHref, hooks);
+	}
+	return output;
 }
 
 function splitTerminalLines(text: string): string[] {
@@ -443,7 +698,144 @@ const mathEnvBlockExtension: TokenizerAndRendererExtension = {
 		return (token as { text?: string }).text ?? "";
 	},
 };
-markdownParser.use({ extensions: [customHrExtension, mathBlockExtension, mathEnvBlockExtension, mathExtension] });
+
+const DETAILS_BLOCK_START = /(?:^|\n) {0,3}<details(?:\s[^>]*)?>/i;
+const DETAILS_OPEN_AT_START = /^ {0,3}<details(?:\s[^>]*)?>/i;
+const DETAILS_SUMMARY_REGEX = /^\s*<summary(?:\s[^>]*)?>([\s\S]*?)<\/summary>/i;
+
+function findMatchingDetailsClose(src: string, startIndex: number): { closeStart: number; closeEnd: number } | null {
+	let depth = 1;
+	let i = startIndex;
+	let atLineStart = false;
+	let fenceChar = "";
+	let fenceLen = 0;
+
+	while (i < src.length) {
+		if (atLineStart) {
+			const lineEndIdx = src.indexOf("\n", i);
+			const lineEnd = lineEndIdx === -1 ? src.length : lineEndIdx;
+			const line = src.slice(i, lineEnd);
+			const fenceMatch = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+			if (fenceChar) {
+				if (
+					fenceMatch &&
+					fenceMatch[1]![0] === fenceChar &&
+					fenceMatch[1]!.length >= fenceLen &&
+					fenceMatch[2]!.trim() === ""
+				) {
+					fenceChar = "";
+					fenceLen = 0;
+				}
+				i = lineEndIdx === -1 ? src.length : lineEndIdx + 1;
+				atLineStart = true;
+				continue;
+			}
+			if (fenceMatch && (fenceMatch[1]![0] === "~" || !fenceMatch[2]!.includes("`"))) {
+				fenceChar = fenceMatch[1]![0];
+				fenceLen = fenceMatch[1]!.length;
+				i = lineEndIdx === -1 ? src.length : lineEndIdx + 1;
+				atLineStart = true;
+				continue;
+			}
+		}
+
+		const ch = src.charCodeAt(i);
+		if (ch === 0x0a /* \n */) {
+			atLineStart = true;
+			i++;
+			continue;
+		}
+		atLineStart = false;
+
+		if (ch === 0x60 /* ` */) {
+			let tickLen = 1;
+			while (src.charCodeAt(i + tickLen) === 0x60) tickLen++;
+			let scan = i + tickLen;
+			let closed = false;
+			while (scan < src.length) {
+				if (src.charCodeAt(scan) === 0x0a && src.charCodeAt(scan + 1) === 0x0a) break;
+				if (src.charCodeAt(scan) === 0x60) {
+					let run = 1;
+					while (src.charCodeAt(scan + run) === 0x60) run++;
+					if (run === tickLen) {
+						i = scan + run;
+						closed = true;
+						break;
+					}
+					scan += run;
+					continue;
+				}
+				scan++;
+			}
+			if (closed) continue;
+			i += tickLen;
+			continue;
+		}
+
+		if (ch === 0x3c /* < */) {
+			const tail = src.slice(i);
+			if (tail.length >= 10 && tail.slice(0, 9).toLowerCase() === "</details") {
+				const closeMatch = /^<\/details\s*>/i.exec(tail);
+				if (closeMatch) {
+					depth--;
+					if (depth === 0) {
+						return { closeStart: i, closeEnd: i + closeMatch[0].length };
+					}
+					i += closeMatch[0].length;
+					continue;
+				}
+			} else if (tail.length >= 9 && tail.slice(0, 8).toLowerCase() === "<details") {
+				const openMatch = /^<details(?:\s[^>]*)?>/i.exec(tail);
+				if (openMatch && !/\/\s*>$/.test(openMatch[0])) {
+					depth++;
+					i += openMatch[0].length;
+					continue;
+				}
+			}
+		}
+
+		i++;
+	}
+
+	return null;
+}
+
+const detailsBlockExtension: TokenizerAndRendererExtension = {
+	name: "details",
+	level: "block",
+	start(src) {
+		const m = DETAILS_BLOCK_START.exec(src);
+		if (!m) return undefined;
+		return src[m.index] === "\n" ? m.index + 1 : m.index;
+	},
+	tokenizer(src) {
+		const openMatch = DETAILS_OPEN_AT_START.exec(src);
+		if (!openMatch || /\/\s*>$/.test(openMatch[0])) return undefined;
+		const openEnd = openMatch[0].length;
+		const close = findMatchingDetailsClose(src, openEnd);
+		if (!close) return undefined;
+		let end = close.closeEnd;
+		while (src[end] === " " || src[end] === "\t") end++;
+		const raw = src.slice(0, end);
+		const inner = src.slice(openEnd, close.closeStart);
+		const summaryMatch = DETAILS_SUMMARY_REGEX.exec(inner);
+		const summaryText = summaryMatch ? summaryMatch[1].replace(/\s+/g, " ").trim() : "";
+		const bodyText = (summaryMatch ? inner.slice(summaryMatch[0].length) : inner).trim();
+		return {
+			type: "details",
+			raw,
+			summaryTokens: summaryText ? this.lexer.inlineTokens(summaryText) : undefined,
+			tokens: bodyText ? this.lexer.blockTokens(bodyText) : [],
+		};
+	},
+	renderer() {
+		return "";
+	},
+};
+
+markdownParser.use({
+	extensions: [customHrExtension, detailsBlockExtension, mathBlockExtension, mathEnvBlockExtension, mathExtension],
+});
 
 // ---------------------------------------------------------------------------
 // Module-level LRU render cache
@@ -552,6 +944,7 @@ interface InlineStyleContext {
 type ListToken = Token & { items: Array<{ tokens?: Token[] }>; ordered: boolean; start?: number };
 type TableCellToken = { tokens?: Token[] };
 type TableToken = Token & { header: TableCellToken[]; rows: TableCellToken[][]; raw?: string };
+type DetailsToken = Token & { type: "details"; summaryTokens?: Token[]; tokens: Token[]; raw: string };
 
 function formatHyperlink(text: string, target: string): string {
 	if (!TERMINAL.hyperlinks || !target) {
@@ -642,6 +1035,7 @@ function plainInlineTokens(tokens: Token[]): string {
 			case "strong":
 			case "em":
 			case "del":
+			case "underline":
 			case "link":
 				result += plainInlineTokens(token.tokens || []);
 				break;
@@ -656,55 +1050,182 @@ function plainInlineTokens(tokens: Token[]): string {
 	return result;
 }
 
+const COLLAPSIBLE_INLINE_HTML_TAGS = new Set([
+	"code",
+	"kbd",
+	"strong",
+	"b",
+	"em",
+	"i",
+	"del",
+	"s",
+	"strike",
+	"u",
+	"a",
+	"mark",
+	"small",
+	"sup",
+	"sub",
+	"summary",
+	"details",
+]);
+
 /**
  * Classify an inline `html` token by tag name and whether it is a closing tag.
  * Returns null for non-html tokens or raw that isn't a recognizable HTML tag.
  */
-function inlineHtmlTag(token: Token): { name: string; closing: boolean } | null {
+function inlineHtmlTag(
+	token: Token,
+): { name: string; rawName: string; raw: string; closing: boolean; selfClosing: boolean } | null {
 	if ((token as { type: string }).type !== "html") return null;
 	const raw = (token as { raw?: unknown }).raw;
 	if (typeof raw !== "string") return null;
 	const name = htmlTagName(raw);
+	const rawName = htmlRawTagName(raw);
 	if (!name) return null;
-	return { name, closing: /^<\s*\//.test(raw) };
+	return { name, rawName, raw, closing: /^<\s*\//.test(raw), selfClosing: /\/\s*>$/.test(raw) };
 }
 
 /**
- * Collapse inline `<code>…</code>` runs — which marked emits as separate `html`
- * open/close tokens around the literal content — into a single synthetic
- * `codespan` token, so they render with the theme's inline-code styling instead
- * of leaking the raw tags. HTML entities inside the run are decoded. Stray or
- * unmatched code tags are dropped; other inline html tokens pass through for the
- * `html` render path to normalize. Returns the original array when no `<code>`
- * tag is present (the common case).
+ * Collapse paired inline HTML runs (`<code>…</code>`, `<strong>…</strong>`,
+ * `<em>…</em>`, `<del>…</del>`, `<u>…</u>`, `<a href="…">…</a>`, etc.) — which
+ * marked emits as separate `html` open/close tokens around the literal content —
+ * into native markdown tokens so they render with the theme's styling instead of
+ * leaking raw tags. Single-letter tags (`b`, `i`, `u`, `s`) require lowercase
+ * matched pairs so uppercase TypeScript generics (`Wrapper<U>`) stay untouched.
  */
 function collapseInlineHtml(tokens: Token[]): Token[] {
-	let hasCode = false;
+	let hasCollapsible = false;
 	for (const token of tokens) {
-		if (inlineHtmlTag(token)?.name === "code") {
-			hasCode = true;
+		const tag = inlineHtmlTag(token);
+		if (tag && COLLAPSIBLE_INLINE_HTML_TAGS.has(tag.name)) {
+			hasCollapsible = true;
 			break;
 		}
 	}
-	if (!hasCode) return tokens;
+	if (!hasCollapsible) return tokens;
 
 	const out: Token[] = [];
 	for (let i = 0; i < tokens.length; i++) {
 		const tag = inlineHtmlTag(tokens[i]);
-		if (tag?.name === "code") {
-			if (tag.closing) continue; // stray `</code>` — drop it
-			let j = i + 1;
-			for (; j < tokens.length; j++) {
-				const close = inlineHtmlTag(tokens[j]);
-				if (close?.name === "code" && close.closing) break;
-			}
-			if (j >= tokens.length) continue; // unmatched `<code>` — drop it, render the rest normally
-			const text = normalizeHtmlEntitiesForTerminal(plainInlineTokens(tokens.slice(i + 1, j)));
-			out.push({ type: "codespan", raw: text, text } as Token);
-			i = j;
+		if (!tag || !COLLAPSIBLE_INLINE_HTML_TAGS.has(tag.name)) {
+			out.push(tokens[i]);
 			continue;
 		}
-		out.push(tokens[i]);
+		if (SINGLE_LETTER_INLINE_HTML_TAGS.has(tag.name) && tag.rawName !== tag.name) {
+			out.push(tokens[i]);
+			continue;
+		}
+		if (tag.selfClosing) {
+			continue;
+		}
+		if (tag.closing) {
+			if (tag.name === "code") continue; // stray `</code>` — drop it
+			out.push(tokens[i]);
+			continue;
+		}
+
+		let depth = 1;
+		let j = i + 1;
+		for (; j < tokens.length; j++) {
+			const nextTag = inlineHtmlTag(tokens[j]);
+			if (!nextTag || nextTag.name !== tag.name) continue;
+			if (SINGLE_LETTER_INLINE_HTML_TAGS.has(nextTag.name) && nextTag.rawName !== nextTag.name) continue;
+			if (nextTag.closing) {
+				depth--;
+				if (depth === 0) break;
+			} else if (!nextTag.selfClosing) {
+				depth++;
+			}
+		}
+
+		if (j >= tokens.length) {
+			if (tag.name === "code") continue; // unmatched `<code>` — drop it, render the rest normally
+			out.push(tokens[i]);
+			continue;
+		}
+
+		const inner = tokens.slice(i + 1, j);
+		switch (tag.name) {
+			case "code":
+			case "kbd": {
+				const text = normalizeHtmlEntitiesForTerminal(plainInlineTokens(inner));
+				out.push({ type: "codespan", raw: text, text } as Token);
+				break;
+			}
+			case "strong":
+			case "b": {
+				const innerCollapsed = collapseInlineHtml(inner);
+				const text = plainInlineTokens(innerCollapsed);
+				out.push({ type: "strong", raw: text, text, tokens: innerCollapsed } as Token);
+				break;
+			}
+			case "em":
+			case "i": {
+				const innerCollapsed = collapseInlineHtml(inner);
+				const text = plainInlineTokens(innerCollapsed);
+				out.push({ type: "em", raw: text, text, tokens: innerCollapsed } as Token);
+				break;
+			}
+			case "del":
+			case "s":
+			case "strike": {
+				const innerCollapsed = collapseInlineHtml(inner);
+				const text = plainInlineTokens(innerCollapsed);
+				out.push({ type: "del", raw: text, text, tokens: innerCollapsed } as Token);
+				break;
+			}
+			case "u": {
+				const innerCollapsed = collapseInlineHtml(inner);
+				const text = plainInlineTokens(innerCollapsed);
+				out.push({ type: "underline", raw: text, text, tokens: innerCollapsed } as Token);
+				break;
+			}
+			case "a": {
+				const href = htmlAttr(tag.raw, "href");
+				const innerCollapsed = collapseInlineHtml(inner);
+				const text = plainInlineTokens(innerCollapsed);
+				if (href) {
+					out.push({ type: "link", raw: text, href, text, tokens: innerCollapsed } as Token);
+				} else {
+					out.push(...innerCollapsed);
+				}
+				break;
+			}
+			case "summary": {
+				const innerCollapsed = collapseInlineHtml(inner);
+				const text = plainInlineTokens(innerCollapsed).trim();
+				if (text) {
+					out.push({
+						type: "strong",
+						raw: text,
+						text: `▾ ${text}`,
+						tokens: [{ type: "text", raw: "▾ ", text: "▾ " } as Token, ...innerCollapsed],
+					} as Token);
+					const nextToken = tokens[j + 1];
+					if (
+						nextToken &&
+						nextToken.type === "text" &&
+						typeof nextToken.text === "string" &&
+						!/^\s/.test(nextToken.text)
+					) {
+						out.push({ type: "text", raw: " ", text: " " } as Token);
+					}
+				}
+				break;
+			}
+			case "mark":
+			case "small":
+			case "sup":
+			case "sub":
+			case "details":
+				out.push(...collapseInlineHtml(inner));
+				break;
+			default:
+				out.push(tokens[i], ...inner, tokens[j]);
+				break;
+		}
+		i = j;
 	}
 	return out;
 }
@@ -937,22 +1458,36 @@ export class Markdown implements Component {
 		let pos = 0;
 		let frozenEnd = 0;
 		let frozenCount = 0;
+		let detailsDepth = 0;
 		for (let i = 0; i < tokens.length; i++) {
-			const raw = tokens[i].raw;
+			const token = tokens[i];
+			const raw = token.raw;
 			const end = pos + raw.length;
+			if (token.type === "html") {
+				const cleaned = raw.replace(HTML_COMMENT_REGEX, "");
+				for (const match of cleaned.matchAll(/<\/?details(?:\s[^>]*)?>/gi)) {
+					if (match[0].startsWith("</")) {
+						detailsDepth = Math.max(0, detailsDepth - 1);
+					} else if (!/\/\s*>$/.test(match[0])) {
+						detailsDepth++;
+					}
+				}
+			}
 			// A `space` token ending in "\n\n" closes the preceding block, but a
 			// `list` before it can still be extended by a following same-marker
 			// item across the blank line (CommonMark loose-list continuation),
 			// which marked merges into one renumbered loose list. Freezing across
 			// such a cut would keep the lists separate. Never freeze right after a
-			// list — it stays in the re-lexed tail.
-			if (raw.endsWith("\n\n") && tokens[i - 1]?.type !== "list") {
+			// list — it stays in the re-lexed tail. Likewise, never freeze inside
+			// an unclosed `<details>` block so `detailsBlockExtension` still sees
+			// the opening tag when `</details>` arrives.
+			if (detailsDepth === 0 && raw.endsWith("\n\n") && tokens[i - 1]?.type !== "list") {
 				frozenEnd = end;
 				frozenCount = i + 1;
 			}
 			pos = end;
 		}
-		// Freeze only when the tail begins with real block content. If the next
+
 		// char is whitespace (an extra blank line, or an indented continuation),
 		// the block separator straddles the cut and lex(prefix)++lex(tail) would
 		// desync from a full lex — e.g. a fence followed by "\n\n\n- list". When
@@ -1509,7 +2044,7 @@ export class Markdown implements Component {
 			}
 
 			case "list": {
-				const listLines = this.#renderList(token as ListToken, 0, styleContext);
+				const listLines = this.#renderList(token as ListToken, 0, styleContext, width);
 				lines.push(...listLines);
 				// Don't add spacing after lists if a space token follows
 				// (the space token will handle it)
@@ -1547,6 +2082,11 @@ export class Markdown implements Component {
 				if (nextTokenType && nextTokenType !== "space") {
 					lines.push(""); // Add spacing after blockquotes (unless space token follows)
 				}
+				break;
+			}
+
+			case "details": {
+				lines.push(...this.#renderDetails(token as DetailsToken, width, nextTokenType, styleContext));
 				break;
 			}
 
@@ -1611,6 +2151,83 @@ export class Markdown implements Component {
 		return lines;
 	}
 
+	#renderDetails(
+		token: DetailsToken,
+		width: number,
+		nextTokenType?: string,
+		styleContext?: InlineStyleContext,
+	): string[] {
+		const innerWidth = Math.max(1, width - 2);
+		const innerLines: string[] = [];
+
+		if (token.summaryTokens && token.summaryTokens.length > 0) {
+			const resolvedStyleContext = styleContext ?? this.#getDefaultInlineStyleContext();
+			const summaryApply = (text: string): string => this.#theme.bold(resolvedStyleContext.applyText(text));
+			const summaryStyleContext: InlineStyleContext = {
+				applyText: summaryApply,
+				stylePrefix: this.#getStylePrefix(summaryApply),
+			};
+			const summaryText = this.#renderInlineTokens(token.summaryTokens, summaryStyleContext);
+			if (summaryText.trim() !== "") {
+				innerLines.push(`${summaryApply("▾ ")}${summaryText}`);
+			}
+		}
+
+		const bodyLines: string[] = [];
+		const childTokens = token.tokens || [];
+		for (let i = 0; i < childTokens.length; i++) {
+			const childToken = childTokens[i];
+			const nextChildToken = childTokens[i + 1];
+			bodyLines.push(...this.#renderToken(childToken, innerWidth, nextChildToken?.type, styleContext));
+		}
+		while (bodyLines.length > 0 && bodyLines[bodyLines.length - 1] === "") {
+			bodyLines.pop();
+		}
+
+		if (innerLines.length > 0 && bodyLines.length > 0) {
+			innerLines.push("");
+		}
+		innerLines.push(...bodyLines);
+
+		const border = this.#theme.quoteBorder(`${this.#theme.symbols.quoteBorder} `);
+		const lines: string[] = [];
+		for (const line of innerLines) {
+			if (TERMINAL.isImageLine(line) || isOsc66Line(line)) {
+				lines.push(line);
+				continue;
+			}
+			for (const wrappedLine of wrapTextWithAnsi(line, innerWidth)) {
+				lines.push(border + wrappedLine);
+			}
+		}
+
+		if (lines.length > 0 && nextTokenType && nextTokenType !== "space") {
+			lines.push("");
+		}
+		return lines;
+	}
+
+	#createHtmlStyleHooks(stylePrefix: string): HtmlStyleHooks {
+		return {
+			code: (text: string): string => this.#theme.code(text) + stylePrefix,
+			bold: (text: string): string => this.#theme.bold(text) + stylePrefix,
+			italic: (text: string): string => this.#theme.italic(text) + stylePrefix,
+			underline: (text: string): string => this.#theme.underline(text) + stylePrefix,
+			strikethrough: (text: string): string => this.#theme.strikethrough(text) + stylePrefix,
+			heading: (text: string): string => this.#theme.heading(this.#theme.bold(text)) + stylePrefix,
+			link: (text: string, href: string): string => {
+				const styledLinkText = this.#theme.link(this.#theme.underline(text));
+				const clickableLinkText = formatHyperlink(styledLinkText, href);
+				const hrefForComparison = href.startsWith("mailto:") ? href.slice(7) : href;
+				if (!text || text === href || text === hrefForComparison) {
+					return (clickableLinkText || href) + stylePrefix;
+				}
+				const styledLinkUrl = this.#theme.linkUrl(` (${href})`);
+				return clickableLinkText + formatHyperlink(styledLinkUrl, href) + stylePrefix;
+			},
+		};
+	}
+
 	/**
 	 * Render a block-level `html` token to styled lines. Standalone `<hr>` tags
 	 * become rules and balanced `<blockquote>…</blockquote>` regions render with
@@ -1620,9 +2237,9 @@ export class Markdown implements Component {
 	#renderHtmlBlock(raw: string, width: number): string[] {
 		const lines: string[] = [];
 		const state = createHtmlNormalizationState();
-		const codeHook = (text: string): string => this.#theme.code(text) + this.#getDefaultStylePrefix();
+		const hooks = this.#createHtmlStyleHooks(this.#getDefaultStylePrefix());
 		const flushText = (chunk: string): void => {
-			const cleaned = normalizeHtmlForTerminal(chunk, state, codeHook);
+			const cleaned = normalizeHtmlForTerminal(chunk, state, hooks);
 			if (cleaned.trim() === "") return;
 			for (const line of splitTerminalLines(cleaned)) {
 				const trimmed = line.trimEnd();
@@ -1646,7 +2263,7 @@ export class Markdown implements Component {
 
 	/** Render the inner content of an HTML `<blockquote>` with quote styling. */
 	#renderHtmlBlockquote(inner: string, width: number): string[] {
-		const cleaned = normalizeHtmlForTerminal(inner, createHtmlNormalizationState(), text => this.#theme.code(text));
+		const cleaned = normalizeHtmlForTerminal(inner, createHtmlNormalizationState(), this.#createHtmlStyleHooks(""));
 		const innerLines = splitTerminalLines(cleaned).map(line => line.trimEnd());
 		while (innerLines.length > 0 && innerLines[innerLines.length - 1] === "") innerLines.pop();
 		return this.#applyQuoteBorder(innerLines, width);
@@ -1746,6 +2363,13 @@ export class Markdown implements Component {
 					break;
 				}
 
+				case "underline": {
+					const underlineContent = this.#renderInlineTokens(token.tokens || [], resolvedStyleContext);
+					markHtmlItemWhenContent(plainInlineTokens(token.tokens || []));
+					result += this.#theme.underline(underlineContent) + stylePrefix;
+					break;
+				}
+
 				case "html":
 					if ("raw" in token && typeof token.raw === "string") {
 						const cleaned = normalizeHtmlForTerminal(token.raw, htmlState);
@@ -1784,7 +2408,7 @@ export class Markdown implements Component {
 	/**
 	 * Render a list with proper nesting support
 	 */
-	#renderList(token: ListToken, depth: number, styleContext?: InlineStyleContext): string[] {
+	#renderList(token: ListToken, depth: number, styleContext?: InlineStyleContext, availableWidth?: number): string[] {
 		const lines: string[] = [];
 		const indent = "  ".repeat(depth);
 		// Use the list's start property (defaults to 1 for ordered lists)
@@ -1799,7 +2423,7 @@ export class Markdown implements Component {
 
 			// Process item tokens; nested-list lines arrive structurally tagged and
 			// already carry their own full indent.
-			const itemLines = this.#renderListItem(item.tokens || [], depth, styleContext);
+			const itemLines = this.#renderListItem(item.tokens || [], depth, styleContext, availableWidth);
 
 			if (itemLines.length > 0) {
 				const firstLine = itemLines[0]!;
@@ -1840,6 +2464,7 @@ export class Markdown implements Component {
 		tokens: Token[],
 		parentDepth: number,
 		styleContext?: InlineStyleContext,
+		availableWidth?: number,
 	): Array<{ text: string; nested: boolean }> {
 		const lines: Array<{ text: string; nested: boolean }> = [];
 
@@ -1847,7 +2472,7 @@ export class Markdown implements Component {
 			if (token.type === "list") {
 				// Nested list - render with one additional indent level
 				// These lines carry their own indent, so tag them for pass-through
-				const nestedLines = this.#renderList(token as ListToken, parentDepth + 1, styleContext);
+				const nestedLines = this.#renderList(token as ListToken, parentDepth + 1, styleContext, availableWidth);
 				for (const nestedLine of nestedLines) {
 					lines.push({ text: nestedLine, nested: true });
 				}
@@ -1883,6 +2508,16 @@ export class Markdown implements Component {
 					lines.push({ text: bodyLine, nested: false });
 				}
 				lines.push({ text: this.#theme.codeBlockBorder("```"), nested: false });
+			} else if (token.type === "details") {
+				const detailsWidth = Math.max(1, (availableWidth ?? 80) - (parentDepth + 1) * 2);
+				for (const detailsLine of this.#renderDetails(
+					token as DetailsToken,
+					detailsWidth,
+					undefined,
+					styleContext,
+				)) {
+					lines.push({ text: detailsLine, nested: false });
+				}
 			} else if (isMathToken(token)) {
 				// Display math block inside a list item: stack fractions / matrix rows.
 				const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));
@@ -2139,6 +2774,30 @@ export function renderInlineMarkdown(text: string, mdTheme: MarkdownTheme, baseC
 					return `${applyText(prefix)}${content}`;
 				})
 				.join(applyText(" "));
+		} else if (token.type === "details") {
+			const detailsToken = token as DetailsToken;
+			const parts: string[] = [];
+			if (detailsToken.summaryTokens && detailsToken.summaryTokens.length > 0) {
+				parts.push(
+					mdTheme.bold(`▾ ${renderInlineTokens(detailsToken.summaryTokens, mdTheme, applyText)}`) + applyText(""),
+				);
+			}
+			for (const child of detailsToken.tokens || []) {
+				if ("tokens" in child && Array.isArray(child.tokens)) {
+					const rendered = renderInlineTokens(child.tokens, mdTheme, applyText);
+					if (rendered) parts.push(rendered);
+				} else if ("text" in child && typeof child.text === "string") {
+					const rendered = applyText(normalizeHtmlEntitiesForTerminal(child.text));
+					if (rendered) parts.push(rendered);
+				}
+			}
+			result += parts.join(applyText(" "));
+		} else if (token.type === "html" && "raw" in token && typeof token.raw === "string") {
+			result += applyText(
+				normalizeHtmlForTerminal(token.raw)
+					.replace(/\s*\n\s*/g, " ")
+					.trim(),
+			);
 		} else if ("text" in token && typeof token.text === "string") {
 			result += applyText(normalizeHtmlEntitiesForTerminal(token.text));
 		}
@@ -2173,6 +2832,9 @@ function renderInlineTokens(tokens: Token[], mdTheme: MarkdownTheme, applyText: 
 				break;
 			case "del":
 				result += mdTheme.strikethrough(renderInlineTokens(token.tokens || [], mdTheme, applyText)) + styleReset;
+				break;
+			case "underline":
+				result += mdTheme.underline(renderInlineTokens(token.tokens || [], mdTheme, applyText)) + styleReset;
 				break;
 			case "link": {
 				const linkText = renderInlineTokens(token.tokens || [], mdTheme, applyText);

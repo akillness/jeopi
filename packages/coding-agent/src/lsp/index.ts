@@ -17,6 +17,7 @@ import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
 import { clampTimeout } from "../tools/tool-timeouts";
 import {
+	DEFAULT_LSP_IDLE_TIMEOUT_MS,
 	ensureFileOpen,
 	getActiveClients,
 	getOrCreateClient,
@@ -144,7 +145,7 @@ export function discoverStartupLspServers(
  */
 export async function warmupLspServers(cwd: string, options?: LspWarmupOptions): Promise<LspWarmupResult> {
 	const config = loadConfig(cwd);
-	setIdleTimeout(config.idleTimeoutMs);
+	setIdleTimeout(config.idleTimeoutMs === undefined ? DEFAULT_LSP_IDLE_TIMEOUT_MS : config.idleTimeoutMs);
 	const servers: LspWarmupResult["servers"] = [];
 	const lspServers = getLspServers(config);
 
@@ -257,7 +258,7 @@ function getConfig(cwd: string): LspConfig {
 	let config = configCache.get(cwd);
 	if (!config) {
 		config = loadConfig(cwd);
-		setIdleTimeout(config.idleTimeoutMs);
+		setIdleTimeout(config.idleTimeoutMs === undefined ? DEFAULT_LSP_IDLE_TIMEOUT_MS : config.idleTimeoutMs);
 		configCache.set(cwd, config);
 	}
 	return config;

@@ -1810,6 +1810,134 @@ describe("Inline and block HTML tag rendering", () => {
 		expect(plain).not.toMatch(/<\/?code>/);
 		expect(rendered).toContain(defaultMarkdownTheme.code("&self"));
 	});
+
+	it("renders <details> with <summary> and markdown body using quote border without raw tags", () => {
+		const md = new Markdown(
+			"<details>\n<summary>Jev routing note</summary>\n\n- Matched `skill-a`\n- Confidence **high**\n\n</details>",
+			0,
+			0,
+			defaultMarkdownTheme,
+		);
+		const rawLines = md.render(80);
+		const lines = rawLines.map(line => stripVTControlCharacters(line).trimEnd());
+		const joined = lines.join("\n");
+
+		expect(joined).not.toMatch(/<\/?(?:details|summary)>/);
+		expect(rawLines[0]).toContain(defaultMarkdownTheme.bold("▾ "));
+		expect(rawLines[0]).toContain(defaultMarkdownTheme.bold("Jev routing note"));
+		expect(lines.every(line => line.startsWith(defaultMarkdownTheme.symbols.quoteBorder))).toBe(true);
+		expect(joined).toContain("- Matched skill-a");
+		expect(joined).toContain("- Confidence high");
+		expect(rawLines.some(line => line.includes(defaultMarkdownTheme.code("skill-a")))).toBe(true);
+		expect(rawLines.some(line => line.includes(defaultMarkdownTheme.bold("high")))).toBe(true);
+	});
+
+	it("handles nested <details> and ignores </details> inside fenced code blocks", () => {
+		const md = new Markdown(
+			"<details>\n<summary>Outer</summary>\n\n```html\n</details>\n```\n\n<details><summary>Inner</summary>Nested body</details>\n\n</details>",
+			0,
+			0,
+			defaultMarkdownTheme,
+		);
+		const lines = plainLines(
+			"<details>\n<summary>Outer</summary>\n\n```html\n</details>\n```\n\n<details><summary>Inner</summary>Nested body</details>\n\n</details>",
+		);
+		const joined = lines.join("\n");
+
+		expect(joined).toContain("▾ Outer");
+		expect(joined).toContain("▾ Inner");
+		expect(joined).toContain("Nested body");
+		expect(joined).toContain("</details>"); // from the fenced code block
+		expect(joined).not.toContain("<details>");
+		expect(joined).not.toContain("<summary>");
+		expect(md.render(80).length).toBeGreaterThan(0);
+	});
+
+	it("keeps <details> and <summary> verbatim inside fenced code blocks", () => {
+		const lines = plainLines("```html\n<details><summary>Code</summary>Body</details>\n```");
+		expect(lines.some(line => line.includes("<details><summary>Code</summary>Body</details>"))).toBe(true);
+	});
+
+	it("strips unclosed streaming <details> and <summary> tags cleanly", () => {
+		const lines = plainLines("<details>\n<summary>Streaming header</summary>\n\nPartial body");
+		const joined = lines.join("\n");
+		expect(joined).toContain("▾ Streaming header");
+		expect(joined).toContain("Partial body");
+		expect(joined).not.toMatch(/<\/?(?:details|summary)>/);
+	});
+
+	it("renders inline HTML formatting tags (<strong>, <em>, <u>, <s>, <kbd>, <a>) without raw tags", () => {
+		const md = new Markdown(
+			'Press <kbd>Ctrl+C</kbd>, <strong>bold</strong>, <b>b</b>, <em>em</em>, <i>i</i>, <u>under</u>, <s>gone</s>, <a href="https://example.com">docs</a>.',
+			0,
+			0,
+			defaultMarkdownTheme,
+		);
+		const rendered = md.render(120).join("\n");
+		const plain = stripVTControlCharacters(rendered);
+
+		expect(plain).not.toMatch(/<\/?(?:kbd|strong|b|em|i|u|s|a)(?:\s|>)/);
+		expect(plain).toContain("Press Ctrl+C, bold, b, em, i, under, gone, docs (https://example.com).");
+		expect(rendered).toContain(defaultMarkdownTheme.code("Ctrl+C"));
+		expect(rendered).toContain(defaultMarkdownTheme.bold("bold"));
+		expect(rendered).toContain(defaultMarkdownTheme.bold("b"));
+		expect(rendered).toContain(defaultMarkdownTheme.italic("em"));
+		expect(rendered).toContain(defaultMarkdownTheme.italic("i"));
+		expect(rendered).toContain(defaultMarkdownTheme.underline("under"));
+		expect(rendered).toContain(defaultMarkdownTheme.strikethrough("gone"));
+		expect(rendered).toContain(defaultMarkdownTheme.link(defaultMarkdownTheme.underline("docs")));
+	});
+
+	it("renders block HTML formatting and headings inside <div> without raw tags", () => {
+		const md = new Markdown(
+			'<div><h3>Section</h3><p><b>Bold</b> <u>Under</u> <a href="https://example.com">Link</a></p></div>',
+			0,
+			0,
+			defaultMarkdownTheme,
+		);
+		const rendered = md.render(80).join("\n");
+		const plain = stripVTControlCharacters(rendered);
+
+		expect(plain).not.toMatch(/<\/?(?:div|h3|p|b|u|a)(?:\s|>)/);
+		expect(plain).toContain("Section");
+		expect(plain).toContain("Bold Under Link (https://example.com)");
+		expect(rendered).toContain(defaultMarkdownTheme.heading(defaultMarkdownTheme.bold("Section")));
+		expect(rendered).toContain(defaultMarkdownTheme.bold("Bold"));
+		expect(rendered).toContain(defaultMarkdownTheme.underline("Under"));
+	});
+
+	it("preserves TypeScript generics and unmatched single-letter angle brackets", () => {
+		const lines = plainLines(
+			"Types: Array<string>, Wrapper<U>, Box<B>, Map<K, V>, Foo<S>, Result<T, E>, and literal <u> unmatched.",
+		);
+		const plain = lines.join(" ");
+
+		expect(plain).toContain("Array<string>");
+		expect(plain).toContain("Wrapper<U>");
+		expect(plain).toContain("Box<B>");
+		expect(plain).toContain("Map<K, V>");
+		expect(plain).toContain("Foo<S>");
+		expect(plain).toContain("Result<T, E>");
+		expect(plain).toContain("<u> unmatched");
+	});
+
+	it("renderInlineMarkdown handles <u>, <kbd>, <a>, and <details>/<summary>", () => {
+		const inlineFormatted = renderInlineMarkdown(
+			'<u>under</u> <kbd>Esc</kbd> <a href="https://example.com">site</a>',
+			defaultMarkdownTheme,
+		);
+		expect(stripVTControlCharacters(inlineFormatted)).toBe("under Esc site");
+		expect(inlineFormatted).toContain(defaultMarkdownTheme.underline("under"));
+		expect(inlineFormatted).toContain(defaultMarkdownTheme.code("Esc"));
+		expect(inlineFormatted).toContain(defaultMarkdownTheme.link(defaultMarkdownTheme.underline("site")));
+
+		const inlineDetails = renderInlineMarkdown(
+			"<details><summary>Header</summary>Body text</details>",
+			defaultMarkdownTheme,
+		);
+		expect(stripVTControlCharacters(inlineDetails)).toBe("▾ Header Body text");
+		expect(inlineDetails).toContain(defaultMarkdownTheme.bold("▾ Header"));
+	});
 });
 
 describe("Math rendering", () => {

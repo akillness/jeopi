@@ -15,6 +15,7 @@ import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import * as taskDiscovery from "../task/discovery";
 import type { ExecutorOptions } from "../task/executor";
 import * as taskExecutor from "../task/executor";
+import { getGlobalSpawnSemaphore } from "../task/global-concurrency";
 import {
 	applyEligibleNestedPatches,
 	type IsolationContext,
@@ -442,6 +443,11 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		}
 		const preferredBackend = isIsolated ? parseIsolationMode(isolationMode) : undefined;
 
+		const spawnSemaphore = getGlobalSpawnSemaphore(
+			options.session.settings.get("task.maxConcurrency"),
+			options.session.taskDepth ?? 0,
+		);
+		await spawnSemaphore.acquire(options.signal);
 		const result = await (async () => {
 			if (!isolationContext) {
 				return taskExecutor.runSubprocess(baseRunOptions);
@@ -478,7 +484,9 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 					};
 				},
 			});
-		})();
+		})().finally(() => {
+			spawnSemaphore.release();
+		});
 
 		if (result.exitCode !== 0 || result.error || result.aborted) {
 			throw new ToolError(buildSubagentFailureMessage(agentName, result));

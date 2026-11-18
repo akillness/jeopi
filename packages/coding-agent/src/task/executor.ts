@@ -1799,6 +1799,7 @@ export async function finalizeSubagentLifecycle(args: {
 		// Hard abort (caller signal / wall-clock / budget): terminal teardown.
 		registry.setStatus(args.id, "aborted");
 		await disposeSession();
+		registry.detachSession(args.id);
 		return;
 	}
 

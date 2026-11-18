@@ -4116,7 +4116,7 @@ export const SETTINGS_SCHEMA = {
 
 	"task.maxConcurrency": {
 		type: "number",
-		default: 32,
+		default: 8,
 		ui: {
 			tab: "tasks",
 			group: "Subagents",
@@ -4198,7 +4198,7 @@ export const SETTINGS_SCHEMA = {
 
 	"task.agentIdleTtlMs": {
 		type: "number",
-		default: 420_000,
+		default: 60_000,
 		ui: {
 			tab: "tasks",
 			group: "Subagents",

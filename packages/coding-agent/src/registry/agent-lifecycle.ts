@@ -32,6 +32,16 @@ export interface AdoptOptions {
 	revive?: AgentReviver;
 }
 
+export interface AgentLifecycleManagerOptions {
+	/** Maximum number of live idle subagent sessions retained in RAM before LRU-parking. <= 0 disables cap. */
+	maxLiveIdle?: number;
+	/** Maximum number of adopted/parked subagent entries retained before LRU-releasing. <= 0 disables cap. */
+	maxAdopted?: number;
+}
+
+const DEFAULT_MAX_LIVE_IDLE_AGENTS = 2;
+const DEFAULT_MAX_ADOPTED_AGENTS = 16;
+
 interface AdoptedAgent {
 	idleTtlMs: number;
 	revive?: AgentReviver;
@@ -75,9 +85,13 @@ export class AgentLifecycleManager {
 	#persistedReviverFactory: PersistedSubagentReviverFactory | undefined;
 	/** TTL applied when a cold-revived ref is adopted on demand. */
 	#persistedReviveTtlMs = 0;
+	readonly #maxLiveIdle: number;
+	readonly #maxAdopted: number;
 
-	constructor(registry: AgentRegistry = AgentRegistry.global()) {
+	constructor(registry: AgentRegistry = AgentRegistry.global(), options?: AgentLifecycleManagerOptions) {
 		this.#registry = registry;
+		this.#maxLiveIdle = options?.maxLiveIdle ?? DEFAULT_MAX_LIVE_IDLE_AGENTS;
+		this.#maxAdopted = options?.maxAdopted ?? DEFAULT_MAX_ADOPTED_AGENTS;
 		this.#unsubscribe = registry.onChange(event => this.#onRegistryEvent(event));
 	}
 
@@ -104,9 +118,13 @@ export class AgentLifecycleManager {
 		}
 		const existing = this.#adopted.get(id);
 		clearTimeout(existing?.timer);
+		// Re-insert to keep #adopted in LRU order (oldest first, newest last).
+		this.#adopted.delete(id);
 		const adopted: AdoptedAgent = { idleTtlMs: opts.idleTtlMs, revive: opts.revive };
 		this.#adopted.set(id, adopted);
 		this.#armTimer(id, adopted);
+		this.#evictExcessLiveIdle(id);
+		this.#evictExcessAdopted(id);
 	}
 
 	/** True if the id is adopted (parked or live). */
@@ -139,8 +157,13 @@ export class AgentLifecycleManager {
 			} catch (error) {
 				logger.warn("AgentLifecycleManager.park: session dispose failed", { id, error: String(error) });
 			}
+			if (!this.#adopted.has(id)) return;
 			this.#registry.detachSession(id);
 			this.#registry.setStatus(id, "parked");
+			// a persisted-reviver factory can rebuild the session from sessionFile.
+			if (this.#persistedReviverFactory && ref.sessionFile) {
+				adopted.revive = undefined;
+			}
 		} finally {
 			this.#parking.delete(id);
 		}
@@ -264,7 +287,43 @@ export class AgentLifecycleManager {
 				adopted.timer = undefined;
 			}
 		} else if (event.ref.status === "idle") {
+			// Refresh MRU order so recently active agents stay live longest.
+			this.#adopted.delete(event.ref.id);
+			this.#adopted.set(event.ref.id, adopted);
 			this.#armTimer(event.ref.id, adopted);
+			this.#evictExcessLiveIdle(event.ref.id);
+		}
+	}
+
+	#evictExcessLiveIdle(keepId: string): void {
+		if (this.#maxLiveIdle <= 0) return;
+		const liveIdleIds: string[] = [];
+		for (const id of this.#adopted.keys()) {
+			if (this.#parking.has(id)) continue;
+			const ref = this.#registry.get(id);
+			if (ref?.session && ref.status === "idle") {
+				liveIdleIds.push(id);
+			}
+		}
+		let excess = liveIdleIds.length - this.#maxLiveIdle;
+		for (const id of liveIdleIds) {
+			if (excess <= 0) break;
+			if (id === keepId) continue;
+			excess -= 1;
+			void this.park(id);
+		}
+	}
+
+	#evictExcessAdopted(keepId: string): void {
+		if (this.#maxAdopted <= 0 || this.#adopted.size <= this.#maxAdopted) return;
+		let excess = this.#adopted.size - this.#maxAdopted;
+		for (const id of [...this.#adopted.keys()]) {
+			if (excess <= 0) break;
+			if (id === keepId) continue;
+			const ref = this.#registry.get(id);
+			if (ref?.status === "running") continue;
+			excess -= 1;
+			void this.release(id);
 		}
 	}
 }

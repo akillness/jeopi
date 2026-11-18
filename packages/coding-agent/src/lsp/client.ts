@@ -28,8 +28,9 @@ const fileOperationLocks = new Map<string, Promise<void>>();
 const INIT_FAILURE_BACKOFF_MS = 3 * 60 * 1000;
 const initFailures = new Map<string, { at: number; message: string }>();
 
-// Idle timeout configuration (disabled by default)
-let idleTimeoutMs: number | null = null;
+// Idle timeout configuration (5 minutes by default; pass null or <= 0 to disable)
+export const DEFAULT_LSP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+let idleTimeoutMs: number | null = DEFAULT_LSP_IDLE_TIMEOUT_MS;
 let idleCheckInterval: NodeJS.Timeout | null = null;
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
 
