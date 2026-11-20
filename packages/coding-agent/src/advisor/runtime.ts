@@ -519,8 +519,8 @@ export class AdvisorRuntime {
 						continue;
 					}
 					this.#consecutiveFailures++;
-					if (this.#consecutiveFailures >= 3) {
-						logger.warn("advisor failed consecutively 3 times; dropping backlog to prevent stall");
+					if (isPermanentAdvisorError(err) || this.#consecutiveFailures >= 3) {
+						logger.warn("advisor failure is non-retryable or repeated; dropping backlog");
 						if (!this.#failureNotified) {
 							this.#failureNotified = true;
 							try {
@@ -553,6 +553,11 @@ export class AdvisorRuntime {
 }
 
 type TextualContent = string | readonly (TextContent | ImageContent)[];
+
+function isPermanentAdvisorError(error: unknown): boolean {
+	return /Cloud Code Assist API error\s*\(404\)/i.test(String(error));
+}
+
 function getAdvisorEmptyResponseError(messages: readonly AgentMessage[]): Error | undefined {
 	let sawAssistant = false;
 	for (const message of messages) {

@@ -1117,6 +1117,45 @@ describe("advisor", () => {
 			expect(runtime.backlog).toBe(0);
 		});
 
+		it("drops Cloud Code Assist 404 batches without retrying and recovers on a later update", async () => {
+			const promptInputs: string[] = [];
+			const failures: unknown[] = [];
+			let shouldFail = true;
+			const agent: AdvisorAgent = {
+				prompt: async input => {
+					promptInputs.push(input);
+					if (shouldFail) throw new Error("Cloud Code Assist API error (404): model not found");
+				},
+				abort: () => {},
+				reset: () => {},
+				state: { messages: [] },
+			};
+			const messages: AgentMessage[] = [{ role: "user", content: "aaa", timestamp: 1 } as AgentMessage];
+			const host: AdvisorRuntimeHost = {
+				snapshotMessages: () => messages,
+				enqueueAdvice: () => {},
+				notifyFailure: error => failures.push(error),
+			};
+			const runtime = new AdvisorRuntime(agent, host, 0);
+
+			runtime.onTurnEnd(messages);
+			await Bun.sleep(0);
+
+			expect(promptInputs).toHaveLength(1);
+			expect(runtime.backlog).toBe(0);
+			expect(failures).toHaveLength(1);
+
+			shouldFail = false;
+			messages.push({ role: "user", content: "bbb", timestamp: 2 } as AgentMessage);
+			runtime.onTurnEnd(messages);
+			await Bun.sleep(0);
+
+			expect(promptInputs).toHaveLength(2);
+			expect(promptInputs[1]).toContain("bbb");
+			expect(runtime.backlog).toBe(0);
+			expect(failures).toHaveLength(1);
+		});
+
 		it("notifies the host once when consecutive prompt failures make the advisor unavailable", async () => {
 			const promptInputs: string[] = [];
 			const failures: unknown[] = [];

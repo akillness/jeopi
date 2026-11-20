@@ -39,7 +39,7 @@ describe("AgentSession tool-call loop guard", () => {
 		tempDir.removeSync();
 	});
 
-	it("injects a hidden redirect before the next model call", async () => {
+	it("redirects once, pauses an unchanged loop, and accepts the next prompt", async () => {
 		const model = createMockModel({ provider: "openai", id: "gpt-test" }).model;
 		const modelRegistry = new ModelRegistry(authStorage);
 		const contexts: Context[] = [];
@@ -57,7 +57,7 @@ describe("AgentSession tool-call loop guard", () => {
 			convertToLlm,
 			streamFn: (_model, context) => {
 				contexts.push(context);
-				const toolCallTurn = callCount < 5;
+				const toolCallTurn = callCount < 10;
 				const toolCallId = `tc-${callCount}`;
 				callCount++;
 				const message: AssistantMessage = toolCallTurn
@@ -105,10 +105,18 @@ describe("AgentSession tool-call loop guard", () => {
 			toolRegistry: new Map([[bashTool.name, bashTool]]),
 		});
 
+		const notices: string[] = [];
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+		});
 		await session.prompt("run checks");
 		await session.waitForIdle();
 
-		expect(contexts).toHaveLength(6);
+		expect(contexts).toHaveLength(10);
+		expect(notices.some(text => text.includes("Paused: repeated bash"))).toBe(true);
+		await session.prompt("summarize instead");
+		await session.waitForIdle();
+		expect(contexts).toHaveLength(11);
 		expect(JSON.stringify(contexts[5]!.messages)).toContain("tool_call_loop_detected");
 		expect(JSON.stringify(contexts[5]!.messages)).toContain("1263 passed, 4 skipped");
 		const redirects = session.agent.state.messages.filter(

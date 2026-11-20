@@ -36,7 +36,10 @@ export interface CyclicalToolCallDetection {
 	readonly windowSize: number;
 }
 
-export type ToolCallLoopDetection = RepeatedToolCallDetection | CyclicalToolCallDetection;
+export type ToolCallLoopDetection =
+	| RepeatedToolCallDetection
+	| CyclicalToolCallDetection
+	| { readonly kind: "stalled_tool_call"; readonly toolName: string };
 
 function canonicalizeToolCallValue(value: unknown): unknown {
 	if (Array.isArray(value)) {
@@ -166,6 +169,7 @@ export class ToolCallLoopGuard {
 	#threshold: number;
 	#exemptTools: ReadonlySet<string>;
 	#callStreaks = new Map<string, number>();
+	#unchanged: { fingerprint: bigint; count: number } | undefined;
 	#cycleWindowSize: number;
 	#recentCalls: Array<{ hash: string; toolNames: string[] }> = [];
 	#lastCycleSignature: string | undefined;
@@ -190,6 +194,7 @@ export class ToolCallLoopGuard {
 	}
 
 	#reset(): void {
+		this.#unchanged = undefined;
 		this.#callStreaks.clear();
 		this.#recentCalls = [];
 		this.#lastCycleSignature = undefined;
@@ -240,6 +245,7 @@ export class ToolCallLoopGuard {
 
 		const trackedCalls = allToolCalls.filter(call => !this.#isExemptToolCall(call));
 		if (trackedCalls.length === 0) {
+			this.#unchanged = undefined;
 			return null;
 		}
 
@@ -264,12 +270,38 @@ export class ToolCallLoopGuard {
 		for (const entry of turnEntries) {
 			const count = (this.#callStreaks.get(entry.lookupKey) ?? 0) + 1;
 			nextStreaks.set(entry.lookupKey, count);
-			if (count >= this.#threshold && (!hitEntry || count > hitEntry.count)) {
+			if (count === this.#threshold && !hitEntry) {
 				hitEntry = { toolCall: entry.toolCall, canonicalArgs: entry.canonicalArgs, count };
 			}
 		}
 
 		this.#callStreaks = nextStreaks;
+
+		// The redirect uses a broad semantic match. Pausing needs stronger evidence:
+		// one exact call and the same full text result, after a redirect was sent.
+		const entry = turnEntries[0];
+		const result = turn.toolResults[0];
+		if (
+			allToolCalls.length === 1 &&
+			entry &&
+			(nextStreaks.get(entry.lookupKey) ?? 0) > this.#threshold &&
+			turn.toolResults.length === 1 &&
+			result?.toolCallId === entry.toolCall.id &&
+			result.content.length &&
+			result.content.every(part => part.type === "text")
+		) {
+			const fingerprint = Bun.hash(
+				JSON.stringify([entry.toolCall.name, entry.canonicalArgs, result.isError, result.content]),
+			);
+			const count = this.#unchanged?.fingerprint === fingerprint ? this.#unchanged.count + 1 : 1;
+			this.#unchanged = { fingerprint, count };
+			if (count >= Math.max(2, this.#threshold)) {
+				this.#reset();
+				return { kind: "stalled_tool_call", toolName: entry.toolCall.name };
+			}
+		} else {
+			this.#unchanged = undefined;
+		}
 
 		if (hitEntry) {
 			return {

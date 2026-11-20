@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Send one redirect per repeated tool-call streak. If the same single call keeps returning identical text after the redirect, pause the run with a notice instead of requesting another model turn.
+- Stop retrying an advisor batch when Cloud Code Assist reports a missing endpoint or model (404); later updates can still recover.
+
 ## [16.7.0] - 2026-11-18
 
 ### Fixed

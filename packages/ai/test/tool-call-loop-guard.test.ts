@@ -38,6 +38,16 @@ function turn(id: string, name: string, args: Record<string, unknown>, resultTex
 }
 
 describe("ToolCallLoopGuard", () => {
+	test("redirects once while results advance, then pauses a sustained unchanged single-call loop", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		const observe = (n: number, text: string) =>
+			guard.recordTurn(turn(String(n), "bash", { command: "git status" }, text))?.kind;
+		const prefix = "x".repeat(250);
+		for (let i = 1; i <= 8; i++) expect(observe(i, `${prefix}${i}`)).toBe(i === 3 ? "repeated_tool_call" : undefined);
+		expect(observe(9, `${prefix}8`)).toBeUndefined();
+		expect(observe(10, `${prefix}8`)).toBe("stalled_tool_call");
+	});
+
 	test("detects the fifth consecutive identical tool call", () => {
 		const guard = new ToolCallLoopGuard({ threshold: 5, exemptTools: ["job", "irc"] });
 		let detection = null;

@@ -2190,6 +2190,14 @@ export class AgentSession {
 					message: context.message,
 					toolResults: context.toolResults,
 				});
+				if (detection?.kind === "stalled_tool_call") {
+					this.emitNotice(
+						"warning",
+						`Paused: repeated ${detection.toolName} calls returned unchanged output after a loop warning. Send a new instruction to continue.`,
+						"tool-call-loop",
+					);
+					return "stop";
+				}
 				if (detection) this.#maybeInjectToolCallLoopRedirect(messages, detection);
 			}
 			this.#advisorPrimaryTurnsCompleted++;
@@ -4950,7 +4958,10 @@ export class AgentSession {
 		return this.#toolCallLoopGuard;
 	}
 
-	#maybeInjectToolCallLoopRedirect(messages: AgentMessage[], detection: ToolCallLoopDetection): void {
+	#maybeInjectToolCallLoopRedirect(
+		messages: AgentMessage[],
+		detection: Exclude<ToolCallLoopDetection, { kind: "stalled_tool_call" }>,
+	): void {
 		if (detection.kind === "cyclical_tool_calls") {
 			const toolNames = detection.toolNames.join(" and ");
 			const content = prompt.render(toolCallCycleRedirectTemplate, {
