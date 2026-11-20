@@ -412,9 +412,9 @@ dependencies = [
 
 [[package]]
 name = "bstr"
-version = "1.13.1"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
+checksum = "a680398c10c7bc0488067c4612226ea905a85f607134b69f3068d505d58c4214"
 dependencies = [
  "memchr",
  "regex-automata",
@@ -615,9 +615,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.8"
+version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac230478587d0269d8d6998b82ae69ea51509d55df66d9e92edd1f986904cd4a"
+checksum = "844c5c0b65be192cb68d570cca1b21a6444431d24e39c084dc0336177015337c"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -638,9 +638,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.6.8"
+version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "895c9d8d2ac2dd8b8a29f3724a14e72aaaa6debcf8c38c82f97305c6a172767a"
+checksum = "b4c174f11f949b9ca8c60580925e282b9cbd5454750e506f08648b2038080cd7"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -2950,7 +2950,7 @@ dependencies = [
 
 [[package]]
 name = "pi-ast"
-version = "16.7.0"
+version = "16.7.1"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -3020,7 +3020,7 @@ dependencies = [
 
 [[package]]
 name = "pi-iso"
-version = "16.7.0"
+version = "16.7.1"
 dependencies = [
  "async-trait",
  "libc",
@@ -3032,7 +3032,7 @@ dependencies = [
 
 [[package]]
 name = "pi-natives"
-version = "16.7.0"
+version = "16.7.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3083,7 +3083,7 @@ dependencies = [
 
 [[package]]
 name = "pi-shell"
-version = "16.7.0"
+version = "16.7.1"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -3132,7 +3132,7 @@ dependencies = [
 
 [[package]]
 name = "pi-walker"
-version = "16.7.0"
+version = "16.7.1"
 dependencies = [
  "dashmap",
  "globset",
@@ -3160,9 +3160,9 @@ dependencies = [
 
 [[package]]
 name = "pin-project-lite"
-version = "0.2.17"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+checksum = "c938015719552d665fd0553b90d96cd7ff58e83e4c061ca99e6bb78865a72752"
 
 [[package]]
 name = "pkg-config"
@@ -4813,9 +4813,9 @@ dependencies = [
 
 [[package]]
 name = "ucd-trie"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
+checksum = "8f20bdbfc9915686faa18fb5bbe8b4552778505defbf9f12289beefbc44092a6"
 
 [[package]]
 name = "unic-langid"

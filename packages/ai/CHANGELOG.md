@@ -1,10 +1,12 @@
 # Changelog
 
 ## [Unreleased]
+
+## [16.7.1] - 2026-11-20
+
 ### Fixed
 
 - Enhanced `ToolCallLoopGuard` to normalize Python/JS subprocess array arguments (e.g. `["git", "status"]`), strip bash redirect and pipeline filters (`head`, `tail`, `cat`), and detect repetitive `read` offset patterns across turns to halt unproductive tool loops.
-
 
 ## [16.6.27] - 2026-11-17
 
