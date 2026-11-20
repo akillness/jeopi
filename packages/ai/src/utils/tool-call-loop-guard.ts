@@ -166,7 +166,6 @@ export class ToolCallLoopGuard {
 	#threshold: number;
 	#exemptTools: ReadonlySet<string>;
 	#callStreaks = new Map<string, number>();
-	#lastReadStartByPath = new Map<string, number>();
 	#cycleWindowSize: number;
 	#recentCalls: Array<{ hash: string; toolNames: string[] }> = [];
 	#lastCycleSignature: string | undefined;
@@ -192,12 +191,11 @@ export class ToolCallLoopGuard {
 
 	#reset(): void {
 		this.#callStreaks.clear();
-		this.#lastReadStartByPath.clear();
 		this.#recentCalls = [];
 		this.#lastCycleSignature = undefined;
 	}
 
-	#computeLookupKey(toolCall: ToolCall, canonicalArgs: string, nextReadStartByPath: Map<string, number>): string {
+	#computeLookupKey(toolCall: ToolCall, canonicalArgs: string, toolResults: readonly ToolResultMessage[]): string {
 		const args =
 			toolCall.arguments && typeof toolCall.arguments === "object" && !Array.isArray(toolCall.arguments)
 				? (toolCall.arguments as Record<string, unknown>)
@@ -217,12 +215,15 @@ export class ToolCallLoopGuard {
 		if (toolCall.name === "read" && args) {
 			const target = parseReadTarget(args);
 			if (target) {
-				const prevStart = this.#lastReadStartByPath.get(target.basePath);
-				nextReadStartByPath.set(target.basePath, target.startLine);
-				if (prevStart !== undefined && target.startLine > prevStart) {
-					return `read:page:${target.basePath}:${target.startLine}`;
+				// A changing selector is only progress if the read actually returns new content.
+				const result = toolResults.find(candidate => candidate.toolCallId === toolCall.id);
+				if (result && !result.isError && result.content.every(block => block.type === "text")) {
+					const textParts = result.content.map(block => block.text);
+					if (textParts.some(text => text.trim().length > 0)) {
+						return `read:result:${target.basePath}:${Bun.hash(JSON.stringify(textParts))}`;
+					}
 				}
-				return `read:file:${target.basePath}`;
+				return `read:page:${target.basePath}:${target.startLine}`;
 			}
 		}
 
@@ -242,7 +243,6 @@ export class ToolCallLoopGuard {
 			return null;
 		}
 
-		const nextReadStartByPath = new Map<string, number>(this.#lastReadStartByPath);
 		const turnEntries: Array<{
 			lookupKey: string;
 			toolCall: ToolCall;
@@ -252,13 +252,11 @@ export class ToolCallLoopGuard {
 
 		for (const toolCall of trackedCalls) {
 			const canonicalArgs = JSON.stringify(canonicalizeToolCallValue(toolCall.arguments));
-			const lookupKey = this.#computeLookupKey(toolCall, canonicalArgs, nextReadStartByPath);
+			const lookupKey = this.#computeLookupKey(toolCall, canonicalArgs, turn.toolResults);
 			if (seenLookupKeys.has(lookupKey)) continue;
 			seenLookupKeys.add(lookupKey);
 			turnEntries.push({ lookupKey, toolCall, canonicalArgs });
 		}
-
-		this.#lastReadStartByPath = nextReadStartByPath;
 
 		const nextStreaks = new Map<string, number>();
 		let hitEntry: { toolCall: ToolCall; canonicalArgs: string; count: number } | undefined;

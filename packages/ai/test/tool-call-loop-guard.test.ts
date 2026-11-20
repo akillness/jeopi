@@ -408,16 +408,50 @@ describe("ToolCallLoopGuard cyclical detection", () => {
 	test("allows progressive read paging but detects re-reading same file/offset", () => {
 		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
 		// Progressive reads: not a loop
-		expect(guard.recordTurn(turn("c1", "read", { filePath: "src/app.ts", lineRange: "1-50" }))).toBeNull();
-		expect(guard.recordTurn(turn("c2", "read", { filePath: "src/app.ts", lineRange: "51-100" }))).toBeNull();
-		expect(guard.recordTurn(turn("c3", "read", { filePath: "src/app.ts", lineRange: "101-150" }))).toBeNull();
+		expect(guard.recordTurn(turn("c1", "read", { filePath: "src/app.ts", lineRange: "1-50" }, "first"))).toBeNull();
+		expect(
+			guard.recordTurn(turn("c2", "read", { filePath: "src/app.ts", lineRange: "51-100" }, "second")),
+		).toBeNull();
+		expect(
+			guard.recordTurn(turn("c3", "read", { filePath: "src/app.ts", lineRange: "101-150" }, "third")),
+		).toBeNull();
 
-		// Reading same start line or re-reading from beginning repeatedly:
+		// Reading the same page with slightly different requests is still a loop.
 		const guard2 = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
 		expect(guard2.recordTurn(turn("c1", "read", { filePath: "src/app.ts", lineRange: "1-50" }))).toBeNull();
 		expect(guard2.recordTurn(turn("c2", "read", { filePath: "src/app.ts", lineRange: "1-50" }))).toBeNull();
 		const detection = guard2.recordTurn(turn("c3", "read", { filePath: "src/app.ts", lineRange: "1-100" }));
-		expect(detection).not.toBeNull();
 		expect(detection?.kind).toBe("repeated_tool_call");
+	});
+
+	test("detects repeated pages immediately after advancing to them", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		expect(guard.recordTurn(turn("first", "read", { path: "src/app.ts:1-50" }, "first page"))).toBeNull();
+		expect(guard.recordTurn(turn("second", "read", { path: "src/app.ts:51-100" }))).toBeNull();
+		expect(guard.recordTurn(turn("third", "read", { filePath: "src/app.ts", offset: 51 }))).toBeNull();
+		expect(guard.recordTurn(turn("fourth", "read", { filePath: "src/app.ts", lineRange: "51-120" }))).toMatchObject({
+			kind: "repeated_tool_call",
+			toolName: "read",
+			count: 3,
+		});
+	});
+
+	test("detects the same read output despite changing the requested start line", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		for (const [index, offset] of [1, 51, 101].entries()) {
+			const detection = guard.recordTurn(
+				turn(`read-${index}`, "read", { path: "src/app.ts", offset }, "first page"),
+			);
+			if (index < 2) expect(detection).toBeNull();
+			else expect(detection).toMatchObject({ kind: "repeated_tool_call", toolName: "read", count: 3 });
+		}
+	});
+
+	test("does not flag changed read output or identical output from a different file", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 2, exemptTools: [] });
+		const sharedPrefix = "unchanged header\n".repeat(20);
+		expect(guard.recordTurn(turn("first", "read", { path: "a.ts:1-10" }, `${sharedPrefix}old`))).toBeNull();
+		expect(guard.recordTurn(turn("expanded", "read", { path: "a.ts:1-20" }, `${sharedPrefix}new`))).toBeNull();
+		expect(guard.recordTurn(turn("other", "read", { path: "b.ts:1-20" }, `${sharedPrefix}new`))).toBeNull();
 	});
 });
