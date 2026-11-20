@@ -356,4 +356,68 @@ describe("ToolCallLoopGuard cyclical detection", () => {
 		}
 		expect(detection).toBeNull();
 	});
+	test("detects repeated eval calls with list vs string syntax for status commands", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		const turn1 = turn("c1", "eval", {
+			language: "python",
+			code: 'subprocess.run(["git", "status", "--short"], capture_output=True)\nsubprocess.run(["bun", "run", "typecheck"])',
+		});
+		const turn2 = turn("c2", "eval", {
+			language: "python",
+			code: 'sh("git status --short")\nsh("bun run typecheck")',
+		});
+		const turn3 = turn("c3", "eval", {
+			language: "python",
+			code: 'st = subprocess.run(["git", "status"])\ntc = subprocess.run(["bun", "typecheck"])',
+		});
+
+		expect(guard.recordTurn(turn1)).toBeNull();
+		expect(guard.recordTurn(turn2)).toBeNull();
+		const detection = guard.recordTurn(turn3);
+		expect(detection).not.toBeNull();
+		expect(detection?.kind).toBe("repeated_tool_call");
+		if (detection?.kind === "repeated_tool_call") {
+			expect(detection.toolName).toBe("eval");
+			expect(detection.count).toBe(3);
+		}
+	});
+
+	test("detects repeated bash calls with jev status and pipe/redirect noise", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		const turn1 = turn("c1", "bash", {
+			command: "node ~/.agents/jev/jev-harness.mjs --profile default status 2>&1 | head -c 600",
+		});
+		const turn2 = turn("c2", "bash", {
+			command: "node ~/.agents/jev/jev-harness.mjs --profile default status | tail -n 20",
+		});
+		const turn3 = turn("c3", "bash", {
+			command: "node ~/.agents/jev/jev-harness.mjs --profile default status",
+		});
+
+		expect(guard.recordTurn(turn1)).toBeNull();
+		expect(guard.recordTurn(turn2)).toBeNull();
+		const detection = guard.recordTurn(turn3);
+		expect(detection).not.toBeNull();
+		expect(detection?.kind).toBe("repeated_tool_call");
+		if (detection?.kind === "repeated_tool_call") {
+			expect(detection.toolName).toBe("bash");
+			expect(detection.count).toBe(3);
+		}
+	});
+
+	test("allows progressive read paging but detects re-reading same file/offset", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		// Progressive reads: not a loop
+		expect(guard.recordTurn(turn("c1", "read", { filePath: "src/app.ts", lineRange: "1-50" }))).toBeNull();
+		expect(guard.recordTurn(turn("c2", "read", { filePath: "src/app.ts", lineRange: "51-100" }))).toBeNull();
+		expect(guard.recordTurn(turn("c3", "read", { filePath: "src/app.ts", lineRange: "101-150" }))).toBeNull();
+
+		// Reading same start line or re-reading from beginning repeatedly:
+		const guard2 = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		expect(guard2.recordTurn(turn("c1", "read", { filePath: "src/app.ts", lineRange: "1-50" }))).toBeNull();
+		expect(guard2.recordTurn(turn("c2", "read", { filePath: "src/app.ts", lineRange: "1-50" }))).toBeNull();
+		const detection = guard2.recordTurn(turn("c3", "read", { filePath: "src/app.ts", lineRange: "1-100" }));
+		expect(detection).not.toBeNull();
+		expect(detection?.kind).toBe("repeated_tool_call");
+	});
 });
