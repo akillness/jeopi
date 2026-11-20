@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.3] - 2026-11-20
+
 ### Fixed
 
 - Send one redirect per repeated tool-call streak. If the same single call keeps returning identical text after the redirect, pause the run with a notice instead of requesting another model turn.

@@ -372,11 +372,11 @@ jeopi --model gpt-5 --smol gemini-2.5-flash
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.7.3]** (2026-11-20) — Send one redirect per repeated tool-call streak. If the same single call keeps returning identical text after the redirect, pause the run with a notice instead of requesting another model turn.
 - **[16.7.0]** (2026-11-18) — Disposed JS `eval` VM contexts per owner on `AgentSession` disposal and SDK creation failure so finished subagents and sessions do not leak live JS worker contexts.
 - **[16.6.29]** (2026-11-18) — Isolated third-party skill provider toggles (`claude`, `claude-plugins`, `codex`, `opencode`, `gemini`, etc.) from `native`/`agents` toggles and filtered pre-dedup skill entries so disabled…
 - **[16.6.28]** (2026-11-18) — Applied a `120_000ms` SSE idle timeout to unguarded `readSseJson` consumers (`image-gen`, Codex/Perplexity web search, and MCP HTTP POST responses) to prevent hangs on stalled streams.
 - **[16.6.27]** (2026-11-17) — Added fail-open 500ms local `qev:8017` Noul `rerank` support (`rerank` parameter / `JEOX_JEV_RERANK=1`) with a 15s negative-health circuit breaker on `jeox` `search`/`scope`.
-- **[16.6.26]** (2026-11-16) — Added the built-in `jeox` tool (`jeox.enabled`, default `true`) backed by `jeopi-mnemopi/code` and `<cwd>/.jeopi/db/jeo.db` for local code graph lookups (`where-defined`, `who-calls`, `what-calls`,…
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->
