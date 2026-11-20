@@ -786,6 +786,7 @@ import * as bundledPiCodingAgentTaskCommands from "jeopi-cli/task/commands";
 import * as bundledPiCodingAgentTaskCriticGate from "jeopi-cli/task/critic-gate";
 import * as bundledPiCodingAgentTaskDiscovery from "jeopi-cli/task/discovery";
 import * as bundledPiCodingAgentTaskExecutor from "jeopi-cli/task/executor";
+import * as bundledPiCodingAgentTaskGlobalConcurrency from "jeopi-cli/task/global-concurrency";
 import * as bundledPiCodingAgentTaskIsolationRunner from "jeopi-cli/task/isolation-runner";
 import * as bundledPiCodingAgentTaskModelTierClassifier from "jeopi-cli/task/model-tier-classifier";
 import * as bundledPiCodingAgentTaskNameGenerator from "jeopi-cli/task/name-generator";
@@ -2880,6 +2881,8 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 	"@oh-my-pi/pi-coding-agent/task/executor": bundledPiCodingAgentTaskExecutor as unknown as Readonly<
 		Record<string, unknown>
 	>,
+	"@oh-my-pi/pi-coding-agent/task/global-concurrency":
+		bundledPiCodingAgentTaskGlobalConcurrency as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-coding-agent/task/isolation-runner": bundledPiCodingAgentTaskIsolationRunner as unknown as Readonly<
 		Record<string, unknown>
 	>,
