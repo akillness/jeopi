@@ -2,9 +2,10 @@ import type { Database } from "bun:sqlite";
 import { type Dirent, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
-import { chunkMarkdown } from "./chunk-md";
+import { chunkText } from "./chunk-md";
 import { rebuildEdges } from "./edges";
 import { extractScript, isScript } from "./extract";
+import { refreshPairings } from "./pairings";
 
 const IGNORE_DIRS = new Set([
 	"node_modules",
@@ -40,10 +41,25 @@ const words = (name: string) =>
 
 function* walk(root: string, dir = root): Generator<string> {
 	for (const e of readdirSync(dir, { withFileTypes: true })) {
-		if (e.name.startsWith(".") && e.isDirectory() && e.name !== ".") continue;
+		if (e.name.startsWith(".")) continue;
 		if (e.isDirectory()) {
 			if (!IGNORE_DIRS.has(e.name)) yield* walk(root, join(dir, e.name));
-		} else if (e.isFile() && (isScript(e.name) || e.name.endsWith(".md"))) yield join(dir, e.name);
+		} else if (e.isFile()) yield join(dir, e.name);
+	}
+}
+
+const SECRET_PATH =
+	/(^|[/\\])(?:\.env(?:\..*)?|secrets?\.[^/\\]*|credentials?\.[^/\\]*|id_(?:rsa|ed25519)|[^/\\]+\.(?:pem|key|p12|pfx))$/i;
+const SECRET_CONTENT =
+	/-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----|\b(?:AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b|\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*["']?[^\s"']{8,}/i;
+
+function decodeSafeText(path: string, bytes: Buffer): string | undefined {
+	if (SECRET_PATH.test(path) || bytes.includes(0)) return undefined;
+	try {
+		const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+		return SECRET_CONTENT.test(text) ? undefined : text;
+	} catch {
+		return undefined;
 	}
 }
 
@@ -214,20 +230,17 @@ export function indexDir(db: Database, root: string, opts: { rebuild?: boolean; 
 	const work = db.transaction(() => {
 		const seen = new Set<string>();
 		for (const { rel, abs, isWiki } of allEntries) {
-			seen.add(rel);
 			st.scanned++;
 			const stat = statSync(abs);
 			if (stat.size > MAX_FILE_BYTES) continue;
+			const text = decodeSafeText(abs, readFileSync(abs));
+			if (text === undefined) continue;
+			seen.add(rel);
 			const mtime = Math.floor(stat.mtimeMs);
 			const prev = existing.get(rel);
-			if (prev && prev.mtime === mtime) {
-				st.unchanged++;
-				continue;
-			}
-			const text = readFileSync(abs, "utf8");
-			const digest = Bun.hash(text).toString(36);
+			const digest = `chunks-v2:${Bun.hash(text).toString(36)}`;
 			if (prev && prev.digest === digest) {
-				updFile.run(digest, mtime, new Date().toISOString(), prev.id);
+				if (prev.mtime !== mtime) updFile.run(digest, mtime, new Date().toISOString(), prev.id);
 				st.unchanged++;
 				continue;
 			}
@@ -241,7 +254,7 @@ export function indexDir(db: Database, root: string, opts: { rebuild?: boolean; 
 				fileId = prev.id;
 				st.changed++;
 			} else {
-				const lang = isWiki ? "wiki" : isScript(rel) ? "script" : "markdown";
+				const lang = isWiki ? "wiki" : isScript(rel) ? "script" : /\.(md|mdx)$/i.test(rel) ? "markdown" : "text";
 				fileId = (insFile.get(rel, lang, digest, mtime, new Date().toISOString()) as { id: number }).id;
 				st.added++;
 			}
@@ -255,18 +268,17 @@ export function indexDir(db: Database, root: string, opts: { rebuild?: boolean; 
 					if (n.kind !== "module") insNodeFts.run(id, n.name, words(n.name));
 					for (const r of n.refs) insRef.run(id, r.name, r.kind, r.recv);
 				}
-			} else {
-				for (const c of chunkMarkdown(text)) {
-					const id = (insChunk.get(fileId, c.heading, c.startLine, c.endLine, c.text) as { id: number }).id;
-					insChunkFts.run(id, c.heading, c.text);
-				}
-				if (isWiki) {
-					const refs = extractWikiRefs(text);
-					if (refs.length > 0) {
-						const lineCount = Math.max(1, text.split("\n").length);
-						const nodeId = (insNode.get(fileId, rel, "wiki", 1, lineCount, 0) as { id: number }).id;
-						for (const ident of refs) insRef.run(nodeId, ident, "references", "");
-					}
+			}
+			for (const c of chunkText(text)) {
+				const id = (insChunk.get(fileId, c.heading, c.startLine, c.endLine, c.text) as { id: number }).id;
+				insChunkFts.run(id, c.heading, c.text);
+			}
+			if (isWiki) {
+				const refs = extractWikiRefs(text);
+				if (refs.length > 0) {
+					const lineCount = Math.max(1, text.split("\n").length);
+					const nodeId = (insNode.get(fileId, rel, "wiki", 1, lineCount, 0) as { id: number }).id;
+					for (const ident of refs) insRef.run(nodeId, ident, "references", "");
 				}
 			}
 		}
@@ -284,6 +296,7 @@ export function indexDir(db: Database, root: string, opts: { rebuild?: boolean; 
 			(db.query("SELECT 1 FROM code_edges LIMIT 1").get() === null &&
 				db.query("SELECT 1 FROM code_refs LIMIT 1").get() !== null);
 		if (needsEdges) rebuildEdges(db);
+		refreshPairings(db);
 	});
 	work();
 	st.ms = +(performance.now() - t0).toFixed(1);

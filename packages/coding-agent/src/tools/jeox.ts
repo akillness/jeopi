@@ -8,11 +8,13 @@ import { ToolError } from "./tool-errors";
 
 const jeoxSchema = type({
 	action: type(
-		"'who-calls' | 'what-calls' | 'where-defined' | 'impact' | 'search' | 'scope' | 'build' | 'status'",
+		"'who-calls' | 'what-calls' | 'where-defined' | 'impact' | 'search' | 'scope' | 'paired' | 'rate-pair' | 'build' | 'status'",
 	).describe("code graph or search operation"),
 	"name?": type("string").describe("symbol name for who-calls, what-calls, or where-defined"),
 	"target?": type("string").describe("symbol name or relative file path for impact"),
 	"query?": type("string").describe("search query for search or scope"),
+	"pairId?": type("number").describe("pair ID from paired search"),
+	"helpful?": type("boolean").describe("explicit relevance feedback for rate-pair"),
 	"limit?": type("number").describe("maximum results to return (default 5)"),
 	"depth?": type("number").describe("traversal depth for impact (default 3)"),
 	"strict?": type("boolean").describe("exclude name-only heuristic edges"),
@@ -85,7 +87,7 @@ export class JeoxTool implements AgentTool<typeof jeoxSchema> {
 	readonly parameters = jeoxSchema;
 	readonly strict = true;
 	readonly loadMode = "discoverable" as const;
-	readonly summary = "Query local code graph and BM25 search index (.jeo/db/jeo.db)";
+	readonly summary = "Query local code graph and BM25 search index (project database)";
 
 	constructor(private readonly session: ToolSession) {}
 
@@ -144,6 +146,25 @@ export class JeoxTool implements AgentTool<typeof jeoxSchema> {
 						const hits = await rerankHitsWithQev(query, rawHits, params.rerank);
 						const text = hits.length > 0 ? JSON.stringify(hits, null, 2) : `0 search hits for "${query}".`;
 						return { content: [{ type: "text", text }], details: { action, hits, dbPath } };
+					}
+					case "paired": {
+						const query = params.query?.trim();
+						if (!query) throw new ToolError('jeox "paired" requires a query.');
+						const hits = code.paired(db, query, Math.min(50, limit));
+						return {
+							content: [{ type: "text", text: JSON.stringify(hits, null, 2) }],
+							details: { action, hits, dbPath },
+						};
+					}
+					case "rate-pair": {
+						const { pairId, helpful } = params;
+						if (pairId === undefined || !Number.isSafeInteger(pairId) || pairId <= 0 || helpful === undefined)
+							throw new ToolError('jeox "rate-pair" requires a positive integer pairId and boolean helpful.');
+						code.ratePair(db, pairId, helpful);
+						return {
+							content: [{ type: "text", text: `Recorded feedback for pair ${pairId}.` }],
+							details: { action, pairId, helpful, dbPath },
+						};
 					}
 					case "scope": {
 						const query = params.query?.trim() || params.name?.trim() || "";

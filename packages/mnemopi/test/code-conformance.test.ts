@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCli } from "../src/cli";
@@ -31,7 +31,7 @@ function fixture() {
 	return root;
 }
 
-test("openDatabase keeps memory DBs isolated from code_* schema while openCodeDatabase initializes SCHEMA v1", () => {
+test("openDatabase keeps memory DBs isolated from code_* schema while openCodeDatabase initializes SCHEMA v2", () => {
 	const memDb = openDatabase(":memory:");
 	try {
 		const codeTbl = memDb.query("SELECT name FROM sqlite_master WHERE type='table' AND name='code_files'").get();
@@ -45,7 +45,7 @@ test("openDatabase keeps memory DBs isolated from code_* schema while openCodeDa
 		const codeTbl = codeDb.query("SELECT name FROM sqlite_master WHERE type='table' AND name='code_files'").get();
 		expect(codeTbl).not.toBeNull();
 		const ver = codeDb.query("SELECT MAX(version) v FROM schema_versions").get() as { v: number | null };
-		expect(ver.v).toBe(1);
+		expect(ver.v).toBe(2);
 	} finally {
 		codeDb.close();
 	}
@@ -122,7 +122,7 @@ test("mnemopi code graph FTS5 supports Unicode/Korean and camelCase queries", ()
 	}
 });
 
-test("mnemopi MCP & CLI code tools target .jeo/db/jeo.db without leaking cwd DBs", async () => {
+test("mnemopi MCP & CLI code tools use the .jeopi project database without leaking cwd DBs", async () => {
 	const root = fixture();
 	const prevEnv = process.env.MNEMOPI_CODE_DB_PATH;
 	delete process.env.MNEMOPI_CODE_DB_PATH;
@@ -130,11 +130,11 @@ test("mnemopi MCP & CLI code tools target .jeo/db/jeo.db without leaking cwd DBs
 		const res = await handleToolCall("jeox_where_defined", { name: "readLedger", root });
 		expect(Array.isArray(res.results)).toBe(true);
 		expect((res.results as Array<{ path: string }>)[0]?.path).toBe("src/a.ts");
-		expect(existsSync(join(root, ".jeo", "db", "jeo.db"))).toBe(true);
-		expect(existsSync(join(root, ".jeopi"))).toBe(false);
+		expect(existsSync(join(root, ".jeopi", "db", "jeo.db"))).toBe(true);
+		expect(existsSync(join(root, ".jeo"))).toBe(false);
 
 		const lines: string[] = [];
-		const dbFile = join(root, ".jeo", "db", "jeo.db");
+		const dbFile = join(root, ".jeopi", "db", "jeo.db");
 		const code = await runCli(["where-defined", "--limit", "2", "--db", dbFile, "readLedger"], {
 			stdout: { write: s => lines.push(s) },
 			stderr: { write: () => {} },
@@ -148,25 +148,43 @@ test("mnemopi MCP & CLI code tools target .jeo/db/jeo.db without leaking cwd DBs
 	}
 });
 
-test("defaultCodeDbPath auto-migrates legacy .jeopi/db/jeo.db to .jeo/db/jeo.db", () => {
-	const root = mkdtempSync(join(tmpdir(), "mnemopi-migrate-"));
+test("defaultCodeDbPath preserves .jeopi DB, uses .jeo-only DB in place, and prefers .jeopi when both exist", () => {
+	const root = mkdtempSync(join(tmpdir(), "mnemopi-db-path-"));
 	const prevEnv = process.env.MNEMOPI_CODE_DB_PATH;
 	delete process.env.MNEMOPI_CODE_DB_PATH;
 	try {
-		writeFileSync(join(root, "legacy.ts"), "export function legacyOnlySymbol(): number { return 42; }\n");
-		const legacyDbPath = join(root, ".jeopi", "db", "jeo.db");
-		const legacyDb = openCodeDatabase(legacyDbPath);
-		indexDir(legacyDb, root);
-		legacyDb.close();
-		expect(existsSync(join(root, ".jeo", "db", "jeo.db"))).toBe(false);
+		const jeopiPath = join(root, ".jeopi", "db", "jeo.db");
+		const jeoPath = join(root, ".jeo", "db", "jeo.db");
+		mkdirSync(join(root, ".jeopi", "db"), { recursive: true });
+		writeFileSync(jeopiPath, "existing jeopi database");
+		expect(defaultCodeDbPath(root)).toBe(jeopiPath);
+		expect(readFileSync(jeopiPath, "utf8")).toBe("existing jeopi database");
 
-		const resolved = defaultCodeDbPath(root);
-		expect(resolved).toBe(join(root, ".jeo", "db", "jeo.db"));
-		expect(existsSync(resolved)).toBe(true);
+		rmSync(join(root, ".jeopi"), { recursive: true, force: true });
+		mkdirSync(join(root, ".jeo", "db"), { recursive: true });
+		writeFileSync(jeoPath, "existing jeo database");
+		expect(defaultCodeDbPath(root)).toBe(jeoPath);
+		expect(existsSync(jeopiPath)).toBe(false);
+		expect(readFileSync(jeoPath, "utf8")).toBe("existing jeo database");
 
-		const migratedDb = openCodeDatabase(resolved);
-		expect(whereDefined(migratedDb, "legacyOnlySymbol")).toHaveLength(1);
-		migratedDb.close();
+		mkdirSync(join(root, ".jeopi", "db"), { recursive: true });
+		writeFileSync(jeopiPath, "preferred jeopi database");
+		expect(defaultCodeDbPath(root)).toBe(jeopiPath);
+		expect(readFileSync(jeoPath, "utf8")).toBe("existing jeo database");
+	} finally {
+		if (prevEnv === undefined) delete process.env.MNEMOPI_CODE_DB_PATH;
+		else process.env.MNEMOPI_CODE_DB_PATH = prevEnv;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("defaultCodeDbPath preserves explicit database path overrides", () => {
+	const root = mkdtempSync(join(tmpdir(), "mnemopi-db-override-"));
+	const prevEnv = process.env.MNEMOPI_CODE_DB_PATH;
+	const override = join(root, "custom", "graph.sqlite");
+	process.env.MNEMOPI_CODE_DB_PATH = override;
+	try {
+		expect(defaultCodeDbPath(root)).toBe(override);
 	} finally {
 		if (prevEnv === undefined) delete process.env.MNEMOPI_CODE_DB_PATH;
 		else process.env.MNEMOPI_CODE_DB_PATH = prevEnv;

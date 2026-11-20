@@ -3,6 +3,7 @@ export * from "./chunk-md";
 export * from "./edges";
 export * from "./extract";
 export * from "./indexer";
+export * from "./pairings";
 export * from "./query";
 export { hasIndexedFiles } from "./query";
 export * from "./schema";

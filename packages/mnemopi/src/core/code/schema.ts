@@ -1,5 +1,4 @@
-export const CODE_SCHEMA_VERSION = 1;
-
+export const CODE_SCHEMA_VERSION = 2;
 export const CODE_DDL: readonly string[] = [
 	`CREATE TABLE IF NOT EXISTS schema_versions (version INTEGER NOT NULL, applied_at TEXT NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS code_files (
@@ -30,4 +29,13 @@ export const CODE_DDL: readonly string[] = [
      heading TEXT NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, text TEXT NOT NULL)`,
 	`CREATE VIRTUAL TABLE IF NOT EXISTS code_nodes_fts USING fts5(name, words)`,
 	`CREATE VIRTUAL TABLE IF NOT EXISTS code_chunks_fts USING fts5(heading, text)`,
+	`CREATE TABLE IF NOT EXISTS code_pairings (
+		id INTEGER PRIMARY KEY,
+		chunk_id INTEGER NOT NULL REFERENCES code_chunks(id) ON DELETE CASCADE,
+		file_id INTEGER NOT NULL REFERENCES code_files(id) ON DELETE CASCADE,
+		helpful INTEGER NOT NULL DEFAULT 0 CHECK(helpful BETWEEN 0 AND 5),
+		unhelpful INTEGER NOT NULL DEFAULT 0 CHECK(unhelpful BETWEEN 0 AND 5),
+		UNIQUE(chunk_id, file_id))`,
+	`CREATE INDEX IF NOT EXISTS idx_code_pairings_file ON code_pairings(file_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_code_pairings_chunk ON code_pairings(chunk_id)`,
 ];

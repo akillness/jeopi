@@ -6,7 +6,7 @@ export interface Chunk {
 }
 export const MAX_CHUNK = 3600;
 
-export function chunkMarkdown(text: string): Chunk[] {
+export function chunkText(text: string): Chunk[] {
 	const lines = text.split("\n");
 	const out: Chunk[] = [];
 	const outline: string[] = [];
@@ -35,6 +35,8 @@ export function chunkMarkdown(text: string): Chunk[] {
 	flush(lines.length);
 	return out;
 }
+
+export const chunkMarkdown = chunkText;
 
 function pushSplit(out: Chunk[], heading: string, start: number, end: number, buf: string[]) {
 	const whole = buf.join("\n");
