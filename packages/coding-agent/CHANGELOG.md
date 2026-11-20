@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Index UTF-8 project source by content and line range in the project database. Jeox can now search wiki passages paired with referenced project paths and use explicit relevance feedback to rank those pairs.
+
 ## [16.7.3] - 2026-11-20
 
 ### Fixed
