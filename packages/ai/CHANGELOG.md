@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.2] - 2026-11-20
+
 ### Fixed
 
 - Detect when consecutive reads of the same file return identical text even if the requested page changes, while allowing reads that return new content.
