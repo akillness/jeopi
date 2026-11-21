@@ -290,12 +290,19 @@ export class ToolCallLoopGuard {
 			result.content.length &&
 			result.content.every(part => part.type === "text")
 		) {
+			const normalizedContent = result.isError
+				? result.content.map(part =>
+						part.type === "text" ? { type: part.type, text: normalizeVolatileErrorText(part.text) } : part,
+					)
+				: result.content;
 			const fingerprint = Bun.hash(
-				JSON.stringify([entry.toolCall.name, entry.canonicalArgs, result.isError, result.content]),
+				JSON.stringify([entry.toolCall.name, entry.canonicalArgs, result.isError, normalizedContent]),
 			);
 			const count = this.#unchanged?.fingerprint === fingerprint ? this.#unchanged.count + 1 : 1;
 			this.#unchanged = { fingerprint, count };
-			if (count >= Math.max(2, this.#threshold)) {
+			const streak = nextStreaks.get(entry.lookupKey) ?? 0;
+			const pauseAfter = Math.max(2, this.#threshold);
+			if (count >= pauseAfter || (result.isError && streak >= this.#threshold + pauseAfter)) {
 				this.#reset();
 				return { kind: "stalled_tool_call", toolName: entry.toolCall.name };
 			}
@@ -345,4 +352,12 @@ export class ToolCallLoopGuard {
 		}
 		return { kind: "cyclical_tool_calls", toolNames, windowSize: this.#cycleWindowSize };
 	}
+}
+
+function normalizeVolatileErrorText(text: string): string {
+	return text
+		.replace(/\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b/g, "<ts>")
+		.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<uuid>")
+		.replace(/\b(request[_-]?id|trace[_-]?id|correlation[_-]?id|x-request-id)\s*[:=]\s*[^\s,;}"']+/gi, "$1=<id>")
+		.replace(/\b\d+(?:\.\d+)?\s*(?:ms|s)\b/g, "<dur>");
 }

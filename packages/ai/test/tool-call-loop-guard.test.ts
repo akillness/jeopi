@@ -464,4 +464,21 @@ describe("ToolCallLoopGuard cyclical detection", () => {
 		expect(guard.recordTurn(turn("expanded", "read", { path: "a.ts:1-20" }, `${sharedPrefix}new`))).toBeNull();
 		expect(guard.recordTurn(turn("other", "read", { path: "b.ts:1-20" }, `${sharedPrefix}new`))).toBeNull();
 	});
+
+	test("stalls out repeated 404 tool errors even when timestamps and request IDs vary", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		const errorTurn = (n: number) => {
+			const base = turn(`err-${n}`, "bash", { command: "gcloud projects describe missing-proj" });
+			base.toolResults[0]!.isError = true;
+			base.toolResults[0]!.content[0]!.text =
+				`2026-11-21T23:40:0${n}Z ERROR 404 Requested entity was not found (request_id=req-${n}00, 12${n}ms)`;
+			return base;
+		};
+		expect(guard.recordTurn(errorTurn(1))).toBeNull();
+		expect(guard.recordTurn(errorTurn(2))).toBeNull();
+		expect(guard.recordTurn(errorTurn(3))).toMatchObject({ kind: "repeated_tool_call", toolName: "bash", count: 3 });
+		expect(guard.recordTurn(errorTurn(4))).toBeNull();
+		expect(guard.recordTurn(errorTurn(5))).toBeNull();
+		expect(guard.recordTurn(errorTurn(6))).toEqual({ kind: "stalled_tool_call", toolName: "bash" });
+	});
 });

@@ -5041,8 +5041,14 @@ export class AgentSession {
 	 * first turn) so the very first reasoning block is guarded too.
 	 */
 	#maybeInterruptGeminiHeaderRunaway(message: AssistantMessage, event: AssistantMessageEvent): void {
-		if (event.type === "thinking_start") {
+		if (event.type === "start") {
 			this.#geminiHeaderDetector = this.#geminiHeaderGuardActive() ? new GeminiHeaderRunDetector() : undefined;
+			return;
+		}
+		if (event.type === "thinking_start") {
+			if (!this.#geminiHeaderDetector && this.#geminiHeaderGuardActive()) {
+				this.#geminiHeaderDetector = new GeminiHeaderRunDetector();
+			}
 			return;
 		}
 		const detector = this.#geminiHeaderDetector;
@@ -5051,9 +5057,9 @@ export class AgentSession {
 			if (detector.push(event.delta)) this.#interruptGeminiHeaderRunaway(detector.count, message.timestamp);
 			return;
 		}
-		// Leaving the reasoning channel ends the run: the consecutive-header count
-		// only matters within one uninterrupted stretch of reasoning.
-		if (event.type === "text_start" || event.type === "toolcall_start") {
+		// Leaving the reasoning channel via visible text or a tool call ends the run;
+		// whitespace-only text deltas (e.g. "\n" between Gemini thinking blocks) do not reset it.
+		if ((event.type === "text_delta" && event.delta.trim().length > 0) || event.type === "toolcall_start") {
 			detector.reset();
 		}
 	}
@@ -14094,7 +14100,7 @@ export class AgentSession {
 		// A thinking/response loop retried into identical context loops again. Inject a
 		// hidden redirect so the retried turn sees a directive to break the repeated
 		// pattern instead of re-sampling the same stalled reasoning.
-		this.#maybeInjectThinkingLoopRedirect(id);
+		this.#maybeInjectThinkingLoopRedirect(id, message);
 
 		// Wait with exponential backoff (abortable).
 		try {
@@ -14120,8 +14126,13 @@ export class AgentSession {
 	 * enabled. The notice is generic on purpose — the detector's detail can quote raw model
 	 * text, which must not be interpolated into a higher-priority developer message.
 	 */
-	#maybeInjectThinkingLoopRedirect(id: number): void {
-		if (!AIError.is(id, AIError.Flag.ThinkingLoop)) return;
+	#maybeInjectThinkingLoopRedirect(id: number, message: AssistantMessage): void {
+		const isThinkingLoop = AIError.is(id, AIError.Flag.ThinkingLoop);
+		const isThinkingOnlyEmptyResponse =
+			AIError.is(id, AIError.Flag.Transient) &&
+			/empty response/i.test(message.errorMessage ?? "") &&
+			message.content.some(block => block.type === "thinking" && block.thinking.trim().length > 0);
+		if (!isThinkingLoop && !isThinkingOnlyEmptyResponse) return;
 		if (this.settings.get("model.loopGuard.enabled") !== true) return;
 		this.agent.appendMessage({
 			role: "custom",

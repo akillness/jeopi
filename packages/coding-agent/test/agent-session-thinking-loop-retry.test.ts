@@ -374,4 +374,78 @@ describe("AgentSession thinking-loop retry", () => {
 		expect(assistants).toHaveLength(1);
 		expect(assistants[0].content).toEqual([{ type: "text", text: "Recovered after retry." }]);
 	});
+
+	it("injects a redirect notice before retrying a thinking-only empty response", async () => {
+		const model = createMockModel({ provider: "openrouter", id: "google/gemini-3.5-flash" }).model;
+		const modelRegistry = new ModelRegistry(authStorage);
+		const calls: string[] = [];
+		const agent = new Agent({
+			getApiKey: requestedModel => `${requestedModel.provider}-test-key`,
+			initialState: {
+				model,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
+			streamFn: requestedModel => {
+				calls.push(`${requestedModel.provider}/${requestedModel.id}`);
+				if (calls.length > 1) return successStream(requestedModel);
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					const errorId = AIError.classify(
+						new AIError.ProviderResponseError("Cloud Code Assist API returned an empty response", {
+							provider: requestedModel.provider,
+							kind: "empty-body",
+						}),
+					);
+					const message: AssistantMessage = {
+						role: "assistant",
+						content: [
+							{ type: "thinking", thinking: "Internal reasoning that ended without emitting a response." },
+							{ type: "text", text: "\n" },
+						],
+						api: requestedModel.api,
+						provider: requestedModel.provider,
+						model: requestedModel.id,
+						usage: emptyUsage(),
+						stopReason: "error",
+						errorId,
+						errorMessage: "Cloud Code Assist API returned an empty response",
+						timestamp: Date.now(),
+					};
+					stream.push({ type: "error", reason: "error", error: message });
+				});
+				return stream;
+			},
+		});
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"retry.enabled": true,
+			"retry.baseDelayMs": 0,
+			"retry.maxDelayMs": 5_000,
+			"retry.maxRetries": 2,
+			"retry.modelFallback": false,
+			"todo.enabled": false,
+			"model.loopGuard.enabled": true,
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry,
+		});
+		vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
+
+		await session.prompt("Trigger redirect injection after thinking-only empty response");
+		await session.waitForIdle();
+
+		expect(calls).toHaveLength(2);
+		const redirects = session.agent.state.messages.filter(
+			(message): message is CustomMessage =>
+				message.role === "custom" && message.customType === "thinking-loop-redirect",
+		);
+		expect(redirects).toHaveLength(1);
+		expect(redirects[0].content).toContain("thinking_loop_detected");
+	});
 });

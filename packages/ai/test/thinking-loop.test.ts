@@ -342,6 +342,18 @@ describe("ThinkingLoopDetector", () => {
 		const detector = new ThinkingLoopDetector();
 		expect(detector.push("🌊 ".repeat(26))).toBeNull();
 	});
+
+	test("trips immediately after 3 consecutive exact identical segments across flushes", () => {
+		const detector = new ThinkingLoopDetector();
+		const block =
+			"The GCP project probe returned HTTP 403 on the projects with generativelanguage.googleapis.com enabled, so I will inspect the native generation tools in the web app.";
+		expect(detector.push(block)).toBeNull();
+		expect(detector.flush()).toBeNull();
+		expect(detector.push(block)).toBeNull();
+		expect(detector.flush()).toBeNull();
+		expect(detector.push(block)).toBeNull();
+		expect(detector.flush()).toContain("consecutive");
+	});
 });
 
 describe("gemini thinking-loop guard (stream wrapper)", () => {
@@ -453,6 +465,40 @@ describe("gemini thinking-loop guard (stream wrapper)", () => {
 			expect(result.errorMessage).toContain(THINKING_LOOP_ERROR_MARKER);
 			expect(AIError.is(result.errorId, AIError.Flag.ThinkingLoop)).toBe(true);
 			expect(isRetryableError(new Error(result.errorMessage))).toBe(true);
+		} finally {
+			clearCustomApis();
+		}
+	});
+
+	test("guards multi-block thinking interleaved with whitespace text parts", async () => {
+		registerMockApi();
+		try {
+			const mock = createMockModel({ provider: "google-antigravity", id: "gemini-4-neon-xhigh" });
+			const repeatedBlock =
+				"The GCP project probe returned HTTP 403 on the projects with generativelanguage.googleapis.com enabled, yielding only an auto-created Firebase key on another project.";
+			mock.push({
+				content: [
+					{
+						type: "thinking",
+						thinking: "Initial inspection of available Google services and project credentials.",
+					},
+					"\n",
+					{ type: "thinking", thinking: repeatedBlock },
+					"\n",
+					{ type: "thinking", thinking: repeatedBlock },
+					"\n",
+					{ type: "thinking", thinking: repeatedBlock },
+					"\n",
+					{ type: "thinking", thinking: repeatedBlock },
+				],
+			});
+
+			const result = await stream(mock.model, context()).result();
+
+			expect(result.stopReason).toBe("error");
+			expect(result.content).toEqual([]);
+			expect(result.errorMessage).toContain(THINKING_LOOP_ERROR_MARKER);
+			expect(AIError.is(result.errorId, AIError.Flag.ThinkingLoop)).toBe(true);
 		} finally {
 			clearCustomApis();
 		}

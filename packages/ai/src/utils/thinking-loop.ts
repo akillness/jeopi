@@ -67,7 +67,9 @@ const SEGMENT_SIMILARITY = 0.8;
 const SEGMENT_MIN_COUNT = 8;
 /** Near-duplicate cluster size (current + matches) that trips the loop. */
 const SEGMENT_MIN_CLUSTER = 4;
-
+/** Consecutive identical normalized segments that trip an exact-block loop
+ *  without waiting for SEGMENT_MIN_COUNT (e.g. multi-block thinking loops). */
+const CONSECUTIVE_EXACT_MIN = 3;
 /** Recent segments whose pooled unigram vocabulary is the novelty baseline for
  *  progress-lexicon stall detection. */
 const LEX_NOVELTY_WINDOW = 8;
@@ -158,7 +160,9 @@ export class ThinkingLoopDetector {
 	 *  only broken by a *new* reference, so filler repeating one fixed
 	 *  path/identifier every paragraph is still caught. */
 	#anchorWindow: Set<string>[] = [];
-
+	/** Most recent normalized substantial segment and its consecutive run length. */
+	#lastNorm = "";
+	#consecutiveExact = 0;
 	push(delta: string): string | null {
 		if (!delta) return null;
 
@@ -221,6 +225,16 @@ export class ThinkingLoopDetector {
 		const normalized = normalizeSegment(segment);
 		if (normalized.length < SEGMENT_MIN_NORM_CHARS) return null;
 
+		const exact = segment.trim();
+		if (exact === this.#lastNorm) {
+			this.#consecutiveExact++;
+		} else {
+			this.#lastNorm = exact;
+			this.#consecutiveExact = 1;
+		}
+		if (this.#consecutiveExact >= CONSECUTIVE_EXACT_MIN) {
+			return `repeated identical segment ${this.#consecutiveExact}× consecutively`;
+		}
 		// (a) Near-duplicate trigram cluster: the same paragraph reused with
 		// cosmetic wording drift (high word-trigram overlap).
 		const fingerprint = trigramShingles(normalized);
@@ -377,20 +391,37 @@ export function guardThinkingLoopStream(
 	void (async () => {
 		let thinkingArmed = true;
 		let textArmed = checkAssistantContent;
+		let sawVisibleText = false;
+		let sawToolCall = false;
 		try {
 			for await (const event of inner) {
 				let detail: string | null = null;
-				if (thinkingArmed && event.type === "thinking_delta") {
+				if (event.type === "thinking_start") {
+					if (!sawVisibleText && !sawToolCall) {
+						thinkingArmed = true;
+					}
+				} else if (thinkingArmed && event.type === "thinking_delta") {
 					detail = thinkingDetector.push(event.delta);
 				} else if (thinkingArmed && event.type === "thinking_end") {
 					detail = thinkingDetector.flush();
-					thinkingArmed = false;
-				} else if (event.type === "text_start" || event.type === "text_delta") {
-					thinkingArmed = false;
-					if (textArmed && event.type === "text_delta") {
+				} else if (event.type === "text_start") {
+					if (checkAssistantContent && !sawToolCall) {
+						textArmed = true;
+					}
+				} else if (event.type === "text_delta") {
+					if (event.delta.trim().length > 0) {
+						sawVisibleText = true;
+						thinkingArmed = false;
+					}
+					if (textArmed) {
 						detail = textDetector.push(event.delta);
 					}
+				} else if (event.type === "text_end") {
+					if (textArmed) {
+						detail = textDetector.flush();
+					}
 				} else if (event.type === "toolcall_start" || event.type === "toolcall_delta") {
+					sawToolCall = true;
 					thinkingArmed = false;
 					textArmed = false;
 				} else if (event.type === "done") {

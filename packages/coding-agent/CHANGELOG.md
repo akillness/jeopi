@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve `GeminiHeaderRunDetector` across multi-block `thinking` parts separated by whitespace-only text within the same assistant message instead of resetting it on every `thinking_start`.
+- Inject the loop-guard redirect before retrying transient empty-response errors when the failed turn already emitted `thinking` content, preventing blind re-sampling into the same reasoning loop.
+
 ## [16.7.5] - 2026-11-21
 
 ### Fixed
