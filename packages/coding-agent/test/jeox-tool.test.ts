@@ -16,7 +16,7 @@ function createTestSession(cwd: string, jeoxEnabled = true): ToolSession {
 }
 
 describe("JeoxTool", () => {
-	it("creates .jeo/db/jeo.db (never .jeopi) and serves code graph + Korean/symbol search", async () => {
+	it("creates .jeopi/db/jeo.db and serves code graph + Korean/symbol search", async () => {
 		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "jeopi-jeox-tool-"));
 		const prevEnv = process.env.MNEMOPI_CODE_DB_PATH;
 		delete process.env.MNEMOPI_CODE_DB_PATH;
@@ -37,8 +37,8 @@ describe("JeoxTool", () => {
 			const defRes = await tool.execute("call-1", { action: "where-defined", name: "targetFunc" });
 			const defText = (defRes.content[0] as { text: string }).text;
 			expect(defText).toContain("src/ledger.ts");
-			expect(fs.existsSync(path.join(tmp, ".jeo", "db", "jeo.db"))).toBe(true);
-			expect(fs.existsSync(path.join(tmp, ".jeopi"))).toBe(false);
+			expect(fs.existsSync(path.join(tmp, ".jeopi", "db", "jeo.db"))).toBe(true);
+			expect(fs.existsSync(path.join(tmp, ".jeo", "db", "jeo.db"))).toBe(false);
 
 			const whoRes = await tool.execute("call-2", { action: "who-calls", name: "targetFunc", strict: true });
 			expect((whoRes.content[0] as { text: string }).text).toContain("callerFunc");

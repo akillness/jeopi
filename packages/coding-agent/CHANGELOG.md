@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Verify the `.jeopi/db` default in the Jeox tool integration test, restoring release validation for the new project index.
+
 ## [16.7.4] - 2026-11-20
 
 ### Added
