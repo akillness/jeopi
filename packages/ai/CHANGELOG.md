@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.6] - 2026-11-21
+
 ### Fixed
 
 - Keep `guardThinkingLoopStream` armed across multi-block `thinking` and `text` parts separated by whitespace-only text deltas (such as Gemini Cloud Code Assist `\n` separators), disarming only after visible non-whitespace text or a tool call, and trigger `ThinkingLoopDetector` after 3 consecutive identical segments.

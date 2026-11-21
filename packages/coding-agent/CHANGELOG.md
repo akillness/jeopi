@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.6] - 2026-11-21
+
 ### Fixed
 
 - Preserve `GeminiHeaderRunDetector` across multi-block `thinking` parts separated by whitespace-only text within the same assistant message instead of resetting it on every `thinking_start`.
