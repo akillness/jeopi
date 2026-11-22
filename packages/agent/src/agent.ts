@@ -53,6 +53,7 @@ import type {
 } from "./types";
 import { isSoftToolRequirement } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";
+import type { WorkflowGuardStop, WorkflowLoopGuardConfig } from "./workflow-guard";
 
 /**
  * Default convertToLlm: Keep only LLM-compatible replay messages.
@@ -192,6 +193,15 @@ export interface AgentOptions {
 	 * Called when GPT-5 Harmony protocol leakage is detected and mitigated.
 	 */
 	onHarmonyLeak?: (event: HarmonyAuditEvent) => void | Promise<void>;
+	/**
+	 * Structural workflow loop guard configuration (progress-scored StepBudget,
+	 * consecutive failure breaker, outer-cycle cap, stall watchdog). Pass `false` to disable.
+	 */
+	workflowGuard?: WorkflowLoopGuardConfig | false;
+	/**
+	 * Called when the workflow loop guard stops a stalled or runaway run.
+	 */
+	onWorkflowGuardStop?: (stop: WorkflowGuardStop) => void | Promise<void>;
 	/**
 	 * Custom token budgets for thinking levels (token-based providers only).
 	 */
@@ -397,6 +407,8 @@ export class Agent {
 	#asideMessageProvider?: () => AsideMessage[] | Promise<AsideMessage[]>;
 	#telemetry?: AgentLoopConfig["telemetry"];
 	#appendOnlyContext?: AppendOnlyContextManager;
+	#workflowGuard?: WorkflowLoopGuardConfig | false;
+	#onWorkflowGuardStop?: (stop: WorkflowGuardStop) => void | Promise<void>;
 
 	/** Buffered Cursor tool results with text length at time of call (for correct ordering) */
 	#cursorToolResultBuffer: CursorToolResultEntry[] = [];
@@ -474,6 +486,8 @@ export class Agent {
 		this.#telemetry = opts.telemetry;
 		this.#appendOnlyContext = opts.appendOnlyContext;
 		this.#transformProviderContext = opts.transformProviderContext;
+		this.#workflowGuard = opts.workflowGuard;
+		this.#onWorkflowGuardStop = opts.onWorkflowGuardStop;
 	}
 
 	/**
@@ -569,6 +583,20 @@ export class Agent {
 	 */
 	setTelemetry(telemetry: AgentLoopConfig["telemetry"] | undefined): void {
 		this.#telemetry = telemetry;
+	}
+
+	/**
+	 * Configure the structural workflow loop guard (or pass `false` to opt out).
+	 */
+	setWorkflowGuard(config: WorkflowLoopGuardConfig | false | undefined): void {
+		this.#workflowGuard = config;
+	}
+
+	/**
+	 * Register a callback invoked whenever the workflow loop guard stops a run.
+	 */
+	setOnWorkflowGuardStop(handler: ((stop: WorkflowGuardStop) => void | Promise<void>) | undefined): void {
+		this.#onWorkflowGuardStop = handler;
 	}
 
 	/**
@@ -1120,6 +1148,10 @@ export class Agent {
 					}
 				: undefined;
 
+		// Consume a per-prompt `options.toolChoice` at most once so forcing
+		// `"required"` / `"any"` / `{ type: "tool", ... }` on a prompt cannot
+		// trap subsequent turns in an infinite tool-call loop.
+		let pendingPromptToolChoice = options?.toolChoice;
 		const getToolChoice = (): ToolChoiceDirective | undefined => {
 			const queued = this.#getToolChoice?.();
 			if (queued !== undefined) {
@@ -1128,7 +1160,9 @@ export class Agent {
 				}
 				return refreshToolChoiceForActiveTools(queued, this.#state.tools);
 			}
-			return refreshToolChoiceForActiveTools(options?.toolChoice, this.#state.tools);
+			const oneShot = pendingPromptToolChoice;
+			pendingPromptToolChoice = undefined;
+			return refreshToolChoiceForActiveTools(oneShot, this.#state.tools);
 		};
 
 		const config: AgentLoopConfig = {
@@ -1216,6 +1250,8 @@ export class Agent {
 			getAsideMessages: async () => (await this.#asideMessageProvider?.()) ?? [],
 			onBeforeYield: () => this.#onBeforeYield?.(),
 			telemetry: this.#telemetry,
+			workflowGuard: this.#workflowGuard,
+			onWorkflowGuardStop: this.#onWorkflowGuardStop,
 		};
 
 		let partial: AgentMessage | null = null;

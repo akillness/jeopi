@@ -22,3 +22,5 @@ export * from "./tokenizer";
 export * from "./types";
 // Yield utilities for Bun event-loop busy-wait prevention
 export * from "./utils/yield";
+// Workflow loop guards and progress-scored step budget
+export * from "./workflow-guard";

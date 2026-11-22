@@ -32,6 +32,7 @@ import {
 	type AsideMessage,
 	type CompactionSummaryMessage,
 	countTokens,
+	isGenuineUserMessage,
 	resolveTelemetry,
 	type StreamFn,
 	ThinkingLevel,
@@ -667,6 +668,14 @@ const COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION: CompactionCheckResult = {
 	continuationScheduled: false,
 	automaticContinuationBlocked: true,
 };
+/** Maximum automatic session-level continuations per genuine user prompt before pausing. */
+const USER_PROMPT_CONTINUATION_MAX_COUNT = 24;
+/** Maximum compaction/promotion retries triggered by `stopReason === "length"` per user prompt. */
+const LENGTH_COMPACTION_MAX_RETRIES = 2;
+/** Maximum rewind-before-yield reminders injected per user prompt. */
+const REWIND_REMINDER_MAX_COUNT = 3;
+/** Maximum Gemini planning-header runaway interrupts per user prompt. */
+const GEMINI_HEADER_INTERRUPT_MAX_COUNT = 3;
 
 /**
  * User-facing notice for a compaction dead end: maintenance freed too little
@@ -1549,7 +1558,8 @@ type AgentContinueSkipReason =
 	| PostPromptSkipReason
 	| "session-unavailable"
 	| "should-continue-false"
-	| "post-restore-unavailable";
+	| "post-restore-unavailable"
+	| "continuation-cap";
 
 type ScheduledAgentContinueOptions = {
 	delayMs?: number;
@@ -1716,6 +1726,11 @@ export class AgentSession {
 	#retryPromise: Promise<void> | undefined = undefined;
 	#retryResolve: (() => void) | undefined = undefined;
 	#activeRetryFallback: ActiveRetryFallbackState | undefined = undefined;
+	// Per-user-prompt continuation & loop-guard budgets
+	#userPromptContinuationCount = 0;
+	#lengthCompactionRetryCount = 0;
+	#rewindReminderCount = 0;
+	#geminiHeaderInterruptCount = 0;
 	// Todo completion reminder state
 	#todoReminderCount = 0;
 	/**
@@ -2191,6 +2206,7 @@ export class AgentSession {
 					toolResults: context.toolResults,
 				});
 				if (detection?.kind === "stalled_tool_call") {
+					this.#yieldTerminationPending = true;
 					this.emitNotice(
 						"warning",
 						`Paused: repeated ${detection.toolName} calls returned unchanged output after a loop warning. Send a new instruction to continue.`,
@@ -2214,11 +2230,21 @@ export class AgentSession {
 			}
 			return await this.#maintainContextMidRun(messages, signal, context);
 		});
+		this.agent.setOnWorkflowGuardStop(stop => {
+			this.#yieldTerminationPending = true;
+			this.emitNotice(
+				"warning",
+				`Paused by workflow loop guard (${stop.stopClass}): ${stop.reason}. Send a new instruction to continue.`,
+				"loop-guard",
+			);
+		});
 		this.yieldQueue = new YieldQueue({
 			isStreaming: () => this.isStreaming,
 			injectIdle: async messages => {
 				const first = messages[0];
 				if (!first) return;
+				if (this.#yieldTerminationPending) return;
+				if (!this.#consumeUserPromptContinuation("yield-queue")) return;
 				await this.agent.prompt(messages.length === 1 ? first : messages);
 			},
 			scheduleIdleFlush: run => {
@@ -4142,7 +4168,7 @@ export class AgentSession {
 				return;
 			}
 			if (msg.stopReason !== "error") {
-				if (this.#enforceRewindBeforeYield()) {
+				if (this.#enforceRewindBeforeYield(msg)) {
 					await emitAgentEndNotification();
 					return;
 				}
@@ -4241,6 +4267,55 @@ export class AgentSession {
 		this.#trackPostPromptTask(scheduled);
 	}
 
+	#resetUserPromptContinuationBudgets(): void {
+		this.#todoReminderCount = 0;
+		this.#midRunNudgeCount = 0;
+		this.#emptyStopRetryCount = 0;
+		this.#unexpectedStopRetryCount = 0;
+		this.#userPromptContinuationCount = 0;
+		this.#lengthCompactionRetryCount = 0;
+		this.#rewindReminderCount = 0;
+		this.#geminiHeaderInterruptCount = 0;
+	}
+
+	#hasQueuedUserMessages(): boolean {
+		const isRealUser = (message: AgentMessage): boolean =>
+			isUserQueuedMessage(message) && isGenuineUserMessage(message);
+		return this.agent.peekSteeringQueue().some(isRealUser) || this.agent.peekFollowUpQueue().some(isRealUser);
+	}
+
+	#hasQueuedNonAgentMessages(): boolean {
+		const isNonAgent = (message: AgentMessage): boolean => {
+			if (isAdvisorCard(message)) return false;
+			if (message.role === "developer") return false;
+			if ("attribution" in message && message.attribution === "agent") return false;
+			return true;
+		};
+		return this.agent.peekSteeringQueue().some(isNonAgent) || this.agent.peekFollowUpQueue().some(isNonAgent);
+	}
+
+	#consumeUserPromptContinuation(source: string): boolean {
+		if (this.#hasQueuedUserMessages()) {
+			return true;
+		}
+		if (this.#userPromptContinuationCount >= USER_PROMPT_CONTINUATION_MAX_COUNT) {
+			logger.warn("Automatic session continuation cap reached; pausing until next user prompt", {
+				source,
+				count: this.#userPromptContinuationCount,
+				max: USER_PROMPT_CONTINUATION_MAX_COUNT,
+			});
+			this.#yieldTerminationPending = true;
+			this.emitNotice(
+				"warning",
+				`Paused after ${this.#userPromptContinuationCount} automatic continuations without user input. Send a new prompt to continue.`,
+				"loop-guard",
+			);
+			return false;
+		}
+		this.#userPromptContinuationCount++;
+		return true;
+	}
+
 	#skipAgentContinue(reason: AgentContinueSkipReason, options: ScheduledAgentContinueOptions | undefined): void {
 		logger.debug("agent.continue skipped after scheduling", { reason });
 		options?.onSkip?.(reason);
@@ -4302,6 +4377,10 @@ export class AgentSession {
 							this.#skipAgentContinue("should-continue-false", options);
 							return;
 						}
+						if (!this.#consumeUserPromptContinuation("agent-continue")) {
+							this.#skipAgentContinue("continuation-cap", options);
+							return;
+						}
 						await this.agent.continue();
 					} catch (error) {
 						logger.warn("agent.continue failed after scheduling", {
@@ -4344,6 +4423,7 @@ export class AgentSession {
 				autoContinuePrompt,
 				{
 					skipPostPromptRecoveryWait: true,
+					preserveContinuationCounters: true,
 					prependMessages: eagerNudges.length > 0 ? eagerNudges : undefined,
 				},
 			);
@@ -4352,6 +4432,7 @@ export class AgentSession {
 			async signal => {
 				await Promise.resolve();
 				if (signal.aborted) return;
+				if (!this.#consumeUserPromptContinuation("auto-continue-prompt")) return;
 				await continuePrompt();
 			},
 			{ generation },
@@ -4855,6 +4936,10 @@ export class AgentSession {
 					);
 					this.#markTtsrInjected(details.rules);
 				}
+				if (!this.#consumeUserPromptContinuation("ttsr")) {
+					this.#resolveTtsrResume();
+					return;
+				}
 				try {
 					await this.agent.continue();
 				} catch {
@@ -5045,6 +5130,10 @@ export class AgentSession {
 			this.#geminiHeaderDetector = this.#geminiHeaderGuardActive() ? new GeminiHeaderRunDetector() : undefined;
 			return;
 		}
+		if (event.type === "done" || event.type === "error") {
+			this.#geminiHeaderDetector = undefined;
+			return;
+		}
 		if (event.type === "thinking_start") {
 			if (!this.#geminiHeaderDetector && this.#geminiHeaderGuardActive()) {
 				this.#geminiHeaderDetector = new GeminiHeaderRunDetector();
@@ -5073,10 +5162,31 @@ export class AgentSession {
 	 * can drop exactly it.
 	 */
 	#interruptGeminiHeaderRunaway(headerCount: number, targetTimestamp: number): void {
+		// Clear the detector so the next assistant turn arms a fresh instance
+		// instead of inheriting this already-triggered detector.
+		this.#geminiHeaderDetector = undefined;
+		if (this.#geminiHeaderInterruptCount >= GEMINI_HEADER_INTERRUPT_MAX_COUNT) {
+			logger.warn("Gemini reasoning-header runaway interrupt cap reached; aborting without auto-continue", {
+				model: this.model?.id,
+				provider: this.model?.provider,
+				headers: headerCount,
+				attempts: this.#geminiHeaderInterruptCount,
+			});
+			this.#yieldTerminationPending = true;
+			this.emitNotice(
+				"warning",
+				`Stopped after ${this.#geminiHeaderInterruptCount} repeated planning-header runaways. Send a new prompt to continue.`,
+				"loop-guard",
+			);
+			this.agent.abort(GEMINI_HEADER_INTERRUPT_REASON);
+			return;
+		}
+		this.#geminiHeaderInterruptCount++;
 		logger.warn("Gemini reasoning-header runaway; interrupting to require a tool call", {
 			model: this.model?.id,
 			provider: this.model?.provider,
 			headers: headerCount,
+			attempt: this.#geminiHeaderInterruptCount,
 		});
 		this.emitNotice(
 			"warning",
@@ -5094,6 +5204,7 @@ export class AgentSession {
 				(m): m is AssistantMessage => m.role === "assistant" && m.timestamp === targetTimestamp,
 			);
 			if (aborted) this.#discardAssistantTurn(aborted);
+			if (!this.#consumeUserPromptContinuation("gemini-header-runaway")) return;
 			const content = prompt.render(geminiToolReminderTemplate, { count: headerCount });
 			const details = { headers: headerCount };
 			this.agent.appendMessage({
@@ -7627,6 +7738,7 @@ export class AgentSession {
 			await this.#promptWithMessage(message, expandedText, {
 				...options,
 				images: normalizedImages,
+				preserveContinuationCounters: options?.synthetic === true || promptAttribution === "agent",
 				prependMessages:
 					preludeMessages.length > 0 || keywordNotices.length > 0 || imageDescriptionNotice
 						? [...preludeMessages, ...keywordNotices, ...(imageDescriptionNotice ? [imageDescriptionNotice] : [])]
@@ -7701,10 +7813,10 @@ export class AgentSession {
 			attribution: message.attribution ?? "agent",
 			timestamp: Date.now(),
 		};
-
 		await this.#promptWithMessage(customMessage, textContent, {
 			...options,
 			prependMessages: keywordNotices.length > 0 ? keywordNotices : undefined,
+			preserveContinuationCounters: customMessage.attribution !== "user",
 		});
 	}
 
@@ -7715,6 +7827,7 @@ export class AgentSession {
 			prependMessages?: AgentMessage[];
 			skipPostPromptRecoveryWait?: boolean;
 			acceptTerminalEmptyStop?: boolean;
+			preserveContinuationCounters?: boolean;
 		},
 	): Promise<void> {
 		this.#beginInFlight();
@@ -7725,13 +7838,15 @@ export class AgentSession {
 			this.#flushPendingPythonMessages();
 			this.#flushPendingIrcAsides();
 
-			// Reset todo reminder count on new user prompt
-			this.#todoReminderCount = 0;
-			this.#todoReminderAwaitingProgress = false;
-			this.#mutationsSinceLastTodoTouch = 0;
-			this.#midRunNudgeCount = 0;
-			this.#emptyStopRetryCount = 0;
-			this.#unexpectedStopRetryCount = 0;
+			// Reset continuation and reminder budgets only on genuine user prompts.
+			// Synthetic/agent re-entries (e.g., post-compaction auto-continue, hidden
+			// next-turn messages) preserve the current user prompt's budgets so
+			// compaction or follow-up cascades cannot regenerate unbounded retries.
+			if (!options?.preserveContinuationCounters) {
+				this.#resetUserPromptContinuationBudgets();
+				this.#todoReminderAwaitingProgress = false;
+				this.#mutationsSinceLastTodoTouch = 0;
+			}
 			this.#acceptTerminalEmptyStopForPrompt = options?.acceptTerminalEmptyStop === true;
 			// A new prompt cycle starts: drop any sticky yield-termination from the
 			// previous run so empty-stop / unexpected-stop / compaction maintenance
@@ -8205,6 +8320,7 @@ export class AgentSession {
 			await this.#promptWithMessage(message, textContent, {
 				prependMessages,
 				skipPostPromptRecoveryWait: true,
+				preserveContinuationCounters: !isGenuineUserMessage(message),
 			});
 		} catch (error) {
 			this.#pendingNextTurnMessages = [...queuedMessages, ...this.#pendingNextTurnMessages];
@@ -8809,10 +8925,9 @@ export class AgentSession {
 			this.#getConfiguredDefaultSelectedMCPToolNames(),
 		);
 
-		this.#todoReminderCount = 0;
+		this.#resetUserPromptContinuationBudgets();
 		this.#todoReminderAwaitingProgress = false;
 		this.#mutationsSinceLastTodoTouch = 0;
-		this.#midRunNudgeCount = 0;
 		this.#planReferenceSent = false;
 		this.#planReferencePath = "local://PLAN.md";
 		this.#criticGateState = undefined;
@@ -10382,10 +10497,9 @@ export class AgentSession {
 			await this.#resetMemoryContextForNewTranscript();
 			this.#pendingNextTurnMessages = [];
 			this.#scheduledHiddenNextTurnGeneration = undefined;
-			this.#todoReminderCount = 0;
+			this.#resetUserPromptContinuationBudgets();
 			this.#todoReminderAwaitingProgress = false;
 			this.#mutationsSinceLastTodoTouch = 0;
-			this.#midRunNudgeCount = 0;
 
 			// Inject the handoff document as a custom message
 			const handoffContent = createHandoffContext(handoffText);
@@ -10681,6 +10795,18 @@ export class AgentSession {
 		// otherwise compaction/handoff. Unlike overflow, the *input* is fine, so we
 		// allow the handoff strategy to actually run.
 		if (sameModel && !errorIsFromBeforeCompaction && assistantMessage.stopReason === "length") {
+			if (this.#lengthCompactionRetryCount >= LENGTH_COMPACTION_MAX_RETRIES) {
+				logger.warn("response.incomplete (length stop) recovery cap reached; stopping automatic retry", {
+					model: `${assistantMessage.provider}/${assistantMessage.model}`,
+					attempts: this.#lengthCompactionRetryCount,
+				});
+				this.emitNotice(
+					"warning",
+					"Response hit the output token limit repeatedly. Try breaking the task into smaller steps.",
+					"compaction",
+				);
+				return COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION;
+			}
 			// Same active-context vs persisted-history split as the overflow path
 			// above: clear the dead turn from agent state so it cannot be replayed,
 			// but keep it on the branch unless promotion or compaction actually runs.
@@ -10688,6 +10814,7 @@ export class AgentSession {
 
 			const promoted = await this.#tryContextPromotion(assistantMessage);
 			if (promoted) {
+				this.#lengthCompactionRetryCount++;
 				await this.#dropPersistedAssistantTurn(assistantMessage);
 				logger.debug("Context promotion triggered by response.incomplete (length stop)", {
 					from: `${assistantMessage.provider}/${assistantMessage.model}`,
@@ -10698,9 +10825,11 @@ export class AgentSession {
 
 			const incompleteCompactionSettings = this.settings.getGroup("compaction");
 			if (incompleteCompactionSettings.enabled && incompleteCompactionSettings.strategy !== "off") {
+				this.#lengthCompactionRetryCount++;
 				logger.debug("Compaction triggered by response.incomplete (length stop, no promotion target)", {
 					model: `${assistantMessage.provider}/${assistantMessage.model}`,
 					strategy: incompleteCompactionSettings.strategy,
+					attempt: this.#lengthCompactionRetryCount,
 				});
 				return await this.#runRecoveryCompactionWithRollback("incomplete", assistantMessage, allowDefer, {
 					autoContinue,
@@ -11088,10 +11217,23 @@ export class AgentSession {
 		);
 	}
 
-	#enforceRewindBeforeYield(): boolean {
+	#enforceRewindBeforeYield(message?: AssistantMessage): boolean {
 		if (!this.#checkpointState || this.#pendingRewindReport) {
 			return false;
 		}
+		if (!this.getActiveToolNames().includes("rewind")) {
+			return false;
+		}
+		if (message && isAwaitingUserAnswer(message)) {
+			return false;
+		}
+		if (this.#rewindReminderCount >= REWIND_REMINDER_MAX_COUNT) {
+			logger.warn("Rewind-before-yield reminder cap reached; yielding without further reminders", {
+				attempts: this.#rewindReminderCount,
+			});
+			return false;
+		}
+		this.#rewindReminderCount++;
 		const reminder = [
 			"<system-warning>",
 			"You are in an active checkpoint. You MUST call rewind with your investigation findings before yielding. Do NOT yield without completing the checkpoint.",
@@ -12529,11 +12671,15 @@ export class AgentSession {
 				});
 				const noProgressDeadEnd = reason !== "idle";
 				let continuationScheduled = false;
-				if (!suppressContinuation && this.agent.hasQueuedMessages()) {
+				const hasQueuedContinuation = noProgressDeadEnd
+					? this.#hasQueuedNonAgentMessages()
+					: this.agent.hasQueuedMessages();
+				if (!suppressContinuation && hasQueuedContinuation) {
 					this.#scheduleAgentContinue({
 						delayMs: 100,
 						generation,
-						shouldContinue: () => this.agent.hasQueuedMessages(),
+						shouldContinue: () =>
+							noProgressDeadEnd ? this.#hasQueuedNonAgentMessages() : this.agent.hasQueuedMessages(),
 					});
 					continuationScheduled = true;
 				}
@@ -12945,14 +13091,19 @@ export class AgentSession {
 					noProgressDeadEnd = true;
 				}
 			}
-			if (!continuationScheduled && !suppressContinuation && this.agent.hasQueuedMessages()) {
+			const hasQueuedContinuation = noProgressDeadEnd
+				? this.#hasQueuedNonAgentMessages()
+				: this.agent.hasQueuedMessages();
+			if (!continuationScheduled && !suppressContinuation && hasQueuedContinuation) {
 				// Auto-compaction can complete while follow-up/steering/custom messages are waiting.
-				// Kick the loop so queued messages are actually delivered. This remains separate
-				// from the no-progress warning: pausing maintenance must not strand user input.
+				// Kick the loop so queued messages are actually delivered. When compaction hit a
+				// no-progress dead-end, ignore agent-attributed synthetic/advisor messages so they
+				// cannot loop compaction indefinitely.
 				this.#scheduleAgentContinue({
 					delayMs: 100,
 					generation,
-					shouldContinue: () => this.agent.hasQueuedMessages(),
+					shouldContinue: () =>
+						noProgressDeadEnd ? this.#hasQueuedNonAgentMessages() : this.agent.hasQueuedMessages(),
 				});
 				continuationScheduled = true;
 			}

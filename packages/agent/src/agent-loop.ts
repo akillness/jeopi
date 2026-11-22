@@ -73,6 +73,7 @@ import type {
 } from "./types";
 import { isSoftToolRequirement } from "./types";
 import { yieldIfDue } from "./utils/yield";
+import { isGenuineUserMessage, type WorkflowGuardStop, WorkflowLoopGuard } from "./workflow-guard";
 
 /** Stop-details marker for a provider error after assistant content/tool args already streamed. */
 export const STREAM_INTERRUPTED_AFTER_CONTENT_STOP_DETAIL = "stream_interrupted_after_content";
@@ -101,6 +102,18 @@ const MAX_LENGTH_TRUNCATE_CONTINUATIONS = 8;
  * spin the loop. Reset whenever the requirement id changes or clears.
  */
 const MAX_SOFT_TOOL_ESCALATIONS = 3;
+
+/**
+ * Total cap on soft tool escalations across all requirement IDs in a single run
+ * so alternating `softReq.id` values cannot bypass the per-id escalation ceiling.
+ */
+const MAX_TOTAL_SOFT_TOOL_ESCALATIONS = 6;
+
+/**
+ * Cap on recovering transient stream-read errors after completed tool calls in a
+ * single run so a perpetually disconnecting proxy cannot spin the loop forever.
+ */
+const MAX_TRANSIENT_TOOL_TURN_RECOVERIES = 3;
 
 /**
  * Whether a hard `toolChoice` for a turn conflicts with a pending soft tool
@@ -761,6 +774,42 @@ async function runLoopBody(
 		signal = signal ? AbortSignal.any([signal, deadlineAbortController.signal]) : deadlineAbortController.signal;
 	}
 
+	const workflowGuard = config.workflowGuard === false ? undefined : new WorkflowLoopGuard(config.workflowGuard);
+	const stallAbortController = workflowGuard && workflowGuard.stallTimeoutMs > 0 ? new AbortController() : undefined;
+	let stallTimer: Timer | undefined;
+	let stallTimedOut = false;
+	const clearStallTimer = (): void => {
+		if (stallTimer !== undefined) {
+			clearTimeout(stallTimer);
+			stallTimer = undefined;
+		}
+	};
+	const armStallTimer = (): void => {
+		if (stallTimedOut || !workflowGuard || !stallAbortController || workflowGuard.stallTimeoutMs <= 0) return;
+		clearStallTimer();
+		stallTimer = setTimeout(() => {
+			stallTimedOut = true;
+			stallAbortController.abort("workflow-stall-timeout");
+		}, workflowGuard.stallTimeoutMs);
+	};
+	if (stallAbortController) {
+		signal = signal ? AbortSignal.any([signal, stallAbortController.signal]) : stallAbortController.signal;
+		armStallTimer();
+	}
+
+	const stopForWorkflowGuard = async (stop: WorkflowGuardStop): Promise<void> => {
+		logger.warn("Workflow loop guard stopped run", {
+			stopClass: stop.stopClass,
+			step: stop.step,
+			limit: stop.limit,
+			consecutiveFailures: stop.consecutiveFailures,
+			outerCycles: stop.outerCycles,
+			reason: stop.reason,
+		});
+		await config.onWorkflowGuardStop?.(stop);
+		endAgentStream(stream, newMessages, telemetry, stepCounter.count);
+	};
+
 	try {
 		let firstTurn = true;
 		if (isDeadlineExceeded(config.deadline)) {
@@ -771,10 +820,21 @@ async function runLoopBody(
 		// Skip when the run is already externally aborted — dequeuing would strand
 		// the messages in a run that is about to die.
 		let pendingMessages: AgentMessage[] = signal?.aborted ? [] : (await config.getSteeringMessages?.()) || [];
+		const flushPendingMessages = (): void => {
+			if (pendingMessages.length === 0) return;
+			for (const message of pendingMessages) {
+				stream.push({ type: "message_start", message });
+				stream.push({ type: "message_end", message });
+				currentContext.messages.push(message);
+				newMessages.push(message);
+			}
+			pendingMessages = [];
+		};
 		let harmonyRetryAttempt = 0;
 		let harmonyTruncateResumeCount = 0;
 		let pausedTurnContinuations = 0;
 		let lengthTruncateContinuations = 0;
+		const transientToolTurnRecoveries = { count: 0 };
 
 		// Soft tool requirement lifecycle (reminder → escalate; see SoftToolRequirement).
 		// `forcedToolChoice` carries a one-turn escalation into the next model call. It
@@ -782,6 +842,7 @@ async function runLoopBody(
 		let softRequirementId: string | undefined;
 		let forcedToolChoice: ToolChoice | undefined;
 		let softEscalations = 0;
+		let softEscalationsTotal = 0;
 		// Resolved once per logical turn at the fetch site below and reused across
 		// Harmony-leak re-samples (which re-enter the same turn) so the consuming
 		// getToolChoice is never advanced twice; the flag resets at the message boundary.
@@ -799,25 +860,32 @@ async function runLoopBody(
 					endAgentStream(stream, newMessages, telemetry, stepCounter.count);
 					return;
 				}
+				if (stallTimedOut && workflowGuard) {
+					await stopForWorkflowGuard(workflowGuard.createStallTimeoutStop());
+					return;
+				}
+				if (!firstTurn && signal?.aborted) {
+					endAgentStream(stream, newMessages, telemetry, stepCounter.count);
+					return;
+				}
 				// Yield at the top of each iteration to prevent busy-wait when
 				// the agent loop is executing tool calls back-to-back.
 				await yieldIfDue();
+				if (workflowGuard) {
+					const stepStop = workflowGuard.beforeModelCall();
+					if (stepStop) {
+						flushPendingMessages();
+						await stopForWorkflowGuard(stepStop);
+						return;
+					}
+				}
 				if (!firstTurn) {
 					stream.push({ type: "turn_start" });
 				} else {
 					firstTurn = false;
 				}
-
 				// Process pending messages (inject before next assistant response)
-				if (pendingMessages.length > 0) {
-					for (const message of pendingMessages) {
-						stream.push({ type: "message_start", message });
-						stream.push({ type: "message_end", message });
-						currentContext.messages.push(message);
-						newMessages.push(message);
-					}
-					pendingMessages = [];
-				}
+				flushPendingMessages();
 
 				// Refresh prompt/tool context from live state before each model call
 				if (config.syncContextBeforeModelCall) {
@@ -875,9 +943,10 @@ async function runLoopBody(
 						harmonyRetryAttempt,
 						hostToolChoice,
 						forcedToolChoice,
+						transientToolTurnRecoveries,
+						armStallTimer,
 					);
 					harmonyRetryAttempt = 0;
-					harmonyTruncateResumeCount = 0;
 				} catch (err) {
 					if (!(err instanceof HarmonyLeakInterruption)) throw err;
 					if (err.recovered) {
@@ -946,6 +1015,10 @@ async function runLoopBody(
 						});
 					}
 					await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, { willContinue: false });
+					if (stallTimedOut && workflowGuard) {
+						await stopForWorkflowGuard(workflowGuard.createStallTimeoutStop());
+						return;
+					}
 
 					stream.push(buildAgentEndEvent(newMessages, telemetry, stepCounter.count));
 					stream.end(newMessages);
@@ -988,10 +1061,14 @@ async function runLoopBody(
 				const softNonCompliant = softGateActive && !calledOnlyRequiredTool;
 
 				const toolResults: ToolResultMessage[] = [];
+				let workflowBatchStop: WorkflowGuardStop | undefined;
 				if (softNonCompliant && softRequiredTool !== undefined) {
-					if (softEscalations >= MAX_SOFT_TOOL_ESCALATIONS) {
+					if (
+						softEscalations >= MAX_SOFT_TOOL_ESCALATIONS ||
+						softEscalationsTotal >= MAX_TOTAL_SOFT_TOOL_ESCALATIONS
+					) {
 						throw new Error(
-							`Soft tool requirement '${softRequiredTool}' was not satisfied after ${MAX_SOFT_TOOL_ESCALATIONS} forced turns; aborting to avoid an unbounded force loop.`,
+							`Soft tool requirement '${softRequiredTool}' was not satisfied after ${softEscalations} forced turns (${softEscalationsTotal} total); aborting to avoid an unbounded force loop.`,
 						);
 					}
 					// A soft-required tool is pending but the model called something else
@@ -1018,6 +1095,7 @@ async function runLoopBody(
 					}
 					forcedToolChoice = { type: "tool", name: softRequiredTool };
 					softEscalations++;
+					softEscalationsTotal++;
 					hasMoreToolCalls = true;
 				} else if (hasMoreToolCalls) {
 					const executionResult = await executeToolCalls(
@@ -1028,9 +1106,17 @@ async function runLoopBody(
 						config,
 						telemetry,
 						invokeAgentSpan,
+						armStallTimer,
 					);
 
 					toolResults.push(...executionResult.toolResults);
+					armStallTimer();
+					if (workflowGuard) {
+						workflowBatchStop = workflowGuard.recordToolBatch(toolCalls, executionResult.toolResults);
+						if (workflowBatchStop) {
+							hasMoreToolCalls = false;
+						}
+					}
 
 					for (const result of toolResults) {
 						currentContext.messages.push(result);
@@ -1052,16 +1138,23 @@ async function runLoopBody(
 							status: deadlinePassed ? "aborted" : "skipped",
 						});
 					}
-					if (message.stopReason === "length" && toolResults.length > 0 && !deadlinePassed) {
+					if (
+						message.stopReason === "length" &&
+						toolResults.length > 0 &&
+						!deadlinePassed &&
+						lengthTruncateContinuations < MAX_LENGTH_TRUNCATE_CONTINUATIONS
+					) {
+						lengthTruncateContinuations++;
 						hasMoreToolCalls = true;
 					}
 				}
 
 				if (toolCalls.length > 0) {
 					pausedTurnContinuations = 0;
-					lengthTruncateContinuations = 0;
+					if (message.stopReason !== "length") {
+						lengthTruncateContinuations = 0;
+					}
 				} else if (
-					!hasMoreToolCalls &&
 					message.stopReason === "stop" &&
 					message.stopDetails?.type === "pause_turn" &&
 					pausedTurnContinuations < MAX_PAUSED_TURN_CONTINUATIONS
@@ -1092,8 +1185,12 @@ async function runLoopBody(
 				}
 
 				const turnEndResult = await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, {
-					willContinue: hasMoreToolCalls && !isDeadlineExceeded(config.deadline),
+					willContinue: hasMoreToolCalls && !workflowBatchStop && !isDeadlineExceeded(config.deadline),
 				});
+				if (workflowBatchStop) {
+					await stopForWorkflowGuard(workflowBatchStop);
+					return;
+				}
 				if (turnEndResult === "stop") {
 					endAgentStream(stream, newMessages, telemetry, stepCounter.count);
 					return;
@@ -1110,12 +1207,24 @@ async function runLoopBody(
 				// mid-batch interrupt poll only peeks (hasSteeringMessages), so the queue
 				// still owns every message until this dequeue.
 				const steering = signal?.aborted ? [] : (await config.getSteeringMessages?.()) || [];
+				const hasGenuineUserSteering = steering.some(isGenuineUserMessage);
+				if (hasGenuineUserSteering) {
+					workflowGuard?.noteUserSteer();
+					armStallTimer();
+				}
 				if (hasMoreToolCalls) {
 					// Mid-work: fold any non-interrupting asides into the next turn alongside steering.
 					const asides = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
 					const basePending = asides.length > 0 ? [...steering, ...asides] : steering;
 					pendingMessages = [...pendingMessages, ...basePending];
 				} else {
+					if (steering.length > 0 && !hasGenuineUserSteering && workflowGuard) {
+						const outerStop = workflowGuard.recordOuterCycle();
+						if (outerStop) {
+							await stopForWorkflowGuard(outerStop);
+							return;
+						}
+					}
 					// Stop boundary: only steering (live user input) forces another turn here. Leave
 					// asides for the outer drain below so a passive aside can't trigger an extra model
 					// turn ahead of a queued follow-up — the outer drain batches asides + follow-ups together.
@@ -1127,9 +1236,15 @@ async function runLoopBody(
 				endAgentStream(stream, newMessages, telemetry, stepCounter.count);
 				return;
 			}
+			if (stallTimedOut && workflowGuard) {
+				await stopForWorkflowGuard(workflowGuard.createStallTimeoutStop());
+				return;
+			}
 
 			// Agent would stop here. Drain non-interrupting asides + follow-up messages.
-			await config.onBeforeYield?.();
+			if (!signal?.aborted) {
+				await config.onBeforeYield?.();
+			}
 
 			if (isDeadlineExceeded(config.deadline)) {
 				endAgentStream(stream, newMessages, telemetry, stepCounter.count);
@@ -1143,8 +1258,19 @@ async function runLoopBody(
 			const asideMessages = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
 			const followUpMessages = signal?.aborted ? [] : (await config.getFollowUpMessages?.()) || [];
 			if (lateSteering.length > 0 || asideMessages.length > 0 || followUpMessages.length > 0) {
+				const nextBatch = [...lateSteering, ...asideMessages, ...followUpMessages];
+				if (nextBatch.some(isGenuineUserMessage)) {
+					workflowGuard?.noteUserSteer();
+					armStallTimer();
+				} else if (workflowGuard) {
+					const outerStop = workflowGuard.recordOuterCycle();
+					if (outerStop) {
+						await stopForWorkflowGuard(outerStop);
+						return;
+					}
+				}
 				// Set as pending so the inner loop processes them before stopping.
-				pendingMessages = [...lateSteering, ...asideMessages, ...followUpMessages];
+				pendingMessages = nextBatch;
 				continue;
 			}
 
@@ -1153,7 +1279,14 @@ async function runLoopBody(
 		}
 
 		endAgentStream(stream, newMessages, telemetry, stepCounter.count);
+	} catch (err) {
+		if (stallTimedOut && workflowGuard) {
+			await stopForWorkflowGuard(workflowGuard.createStallTimeoutStop());
+			return;
+		}
+		throw err;
 	} finally {
+		clearStallTimer();
 		if (deadlineTimer) {
 			clearTimeout(deadlineTimer);
 		}
@@ -1193,6 +1326,8 @@ async function streamAssistantResponse(
 	harmonyRetryAttempt = 0,
 	hostToolChoice?: ToolChoice,
 	forcedToolChoice?: ToolChoice,
+	transientToolTurnRecoveries?: { count: number },
+	onProgress?: () => void,
 ): Promise<AssistantMessage> {
 	// Apply context transform if configured (AgentMessage[] → AgentMessage[])
 	let messages = context.messages;
@@ -1422,11 +1557,23 @@ async function streamAssistantResponse(
 					if (next.done) break;
 
 					const event = next.value;
+					if (event.type !== "error") {
+						onProgress?.();
+					}
 					if (event.type === "done" || event.type === "error") {
-						let finalMessage = recoverTransientErrorToolTurn(
-							retainCompletedToolCalls(await response.result(), completedToolCallIds),
-							context.tools ?? [],
-						);
+						const retained = retainCompletedToolCalls(await response.result(), completedToolCallIds);
+						let finalMessage =
+							transientToolTurnRecoveries === undefined ||
+							transientToolTurnRecoveries.count < MAX_TRANSIENT_TOOL_TURN_RECOVERIES
+								? recoverTransientErrorToolTurn(retained, context.tools ?? [])
+								: retained;
+						if (
+							transientToolTurnRecoveries &&
+							retained.stopReason === "error" &&
+							finalMessage.stopReason === "toolUse"
+						) {
+							transientToolTurnRecoveries.count++;
+						}
 						if (harmonyMitigationEnabled) {
 							const detection = detectHarmonyLeakInAssistantMessage(finalMessage);
 							if (detection) {
@@ -1737,6 +1884,7 @@ async function executeToolCalls(
 	config: AgentLoopConfig,
 	telemetry: AgentTelemetry | undefined,
 	invokeAgentSpan: Span | undefined,
+	onProgress?: () => void,
 ): Promise<{ toolResults: ToolResultMessage[] }> {
 	const tools = currentContext.tools;
 	const {
@@ -2027,6 +2175,7 @@ async function executeToolCalls(
 					executionArgs,
 					record.signal,
 					partialResult => {
+						onProgress?.();
 						stream.push({
 							type: "tool_execution_update",
 							toolCallId: toolCall.id,

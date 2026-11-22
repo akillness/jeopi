@@ -23,6 +23,7 @@ import type { HarmonyAuditEvent } from "jeopi-ai/utils/harmony-leak";
 import type { AppendOnlyContextManager } from "./append-only-context";
 import type { AgentRunCoverage, AgentRunSummary } from "./run-collector";
 import type { AgentTelemetryConfig } from "./telemetry";
+import type { WorkflowGuardStop, WorkflowLoopGuardConfig } from "./workflow-guard";
 
 /** Stream function - can return sync or Promise for async config lookup */
 export type StreamFn = (
@@ -321,6 +322,19 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * Called when GPT-5 Harmony protocol leakage is detected and mitigated.
 	 */
 	onHarmonyLeak?: (event: HarmonyAuditEvent) => void | Promise<void>;
+
+	/**
+	 * Structural workflow loop guard configuration (progress-scored StepBudget,
+	 * consecutive non-trivial tool failure circuit breaker, outer-loop cap, and
+	 * optional stall watchdog). Defaults to enabled with dynamic step budget;
+	 * pass `false` to opt out explicitly.
+	 */
+	workflowGuard?: WorkflowLoopGuardConfig | false;
+
+	/**
+	 * Called when the workflow loop guard terminates a stalled or runaway run.
+	 */
+	onWorkflowGuardStop?: (stop: WorkflowGuardStop) => void | Promise<void>;
 
 	/**
 	 * Dynamic tool-choice directive, resolved once per turn. Returns a hard

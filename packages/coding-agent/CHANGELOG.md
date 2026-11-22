@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Bounded automatic `AgentSession` re-entry continuations (unexpected-stop retry, thinking-loop retry, yield-queue idle injection, TTSR resume, and length-compaction retries) per user prompt and surfaced `WorkflowGuard` stops as structured session notices.
+- Ignored agent-attributed queued messages when deciding whether to override a no-progress compaction dead-end pause, preventing synthetic follow-ups from looping compaction indefinitely.
+
 ## [16.7.6] - 2026-11-21
 
 ### Fixed
