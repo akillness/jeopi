@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.7] - 2026-11-22
+
 ### Fixed
 
 - Bounded automatic `AgentSession` re-entry continuations (unexpected-stop retry, thinking-loop retry, yield-queue idle injection, TTSR resume, and length-compaction retries) per user prompt and surfaced `WorkflowGuard` stops as structured session notices.

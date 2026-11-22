@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.7] - 2026-11-22
+
 ### Added
 
 - Added `WorkflowGuard` and adaptive `StepBudget` to `agentLoop`/`Agent` with bounded model steps, consecutive-failure stop, non-user outer-cycle cap (including stop-boundary non-user steering), total soft-tool escalation cap, length-truncated tool-call continuation cap, and progress-resetting stall watchdog timeout.
