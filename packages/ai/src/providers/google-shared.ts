@@ -748,7 +748,7 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 			const cachedTokens = chunk.usageMetadata.cachedContentTokenCount || 0;
 			const thinkingTokens = chunk.usageMetadata.thoughtsTokenCount || 0;
 			output.usage = {
-				input: (chunk.usageMetadata.promptTokenCount || 0) - cachedTokens,
+				input: Math.max(0, (chunk.usageMetadata.promptTokenCount || 0) - cachedTokens),
 				output: (chunk.usageMetadata.candidatesTokenCount || 0) + thinkingTokens,
 				cacheRead: cachedTokens,
 				cacheWrite: 0,

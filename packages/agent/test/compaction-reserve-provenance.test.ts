@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { CompactionSettings } from "jeopi-agent-core/compaction/compaction";
 import {
 	DEFAULT_COMPACTION_SETTINGS,
+	DEFAULT_MAX_AUTO_COMPACT_THRESHOLD_TOKENS,
 	DEFAULT_RESERVE_TOKENS,
 	effectiveReserveTokens,
 	resolveBudgetReserveTokens,
@@ -94,5 +95,55 @@ describe("compaction reserve provenance", () => {
 		// of the field is the provenance signal, not its value.
 		expect(DEFAULT_COMPACTION_SETTINGS.reserveTokens).toBeUndefined();
 		expect(DEFAULT_RESERVE_TOKENS).toBe(16384);
+	});
+});
+
+describe("default auto-compaction ceiling", () => {
+	it("caps fully defaulted 1M-window auto-compaction threshold at 180K while leaving 200K windows at 170K", () => {
+		const defaulted: CompactionSettings = {
+			enabled: true,
+			thresholdPercent: -1,
+			thresholdTokens: -1,
+			keepRecentTokens: 20000,
+		};
+
+		expect(resolveThresholdTokens(1_000_000, defaulted)).toBe(DEFAULT_MAX_AUTO_COMPACT_THRESHOLD_TOKENS);
+		expect(resolveThresholdTokens(1_000_000, defaulted)).toBe(180_000);
+		expect(shouldCompact(180_000, 1_000_000, defaulted)).toBe(false);
+		expect(shouldCompact(180_001, 1_000_000, defaulted)).toBe(true);
+
+		// Spread of DEFAULT_COMPACTION_SETTINGS preserves the same defaulted provenance.
+		expect(resolveThresholdTokens(1_000_000, { ...DEFAULT_COMPACTION_SETTINGS })).toBe(180_000);
+
+		// 200K window: 200_000 - floor(200_000 * 0.15) = 170_000, below the 180K ceiling so unaffected.
+		expect(resolveThresholdTokens(200_000, defaulted)).toBe(170_000);
+		expect(shouldCompact(170_000, 200_000, defaulted)).toBe(false);
+		expect(shouldCompact(170_001, 200_000, defaulted)).toBe(true);
+	});
+
+	it("bypasses the 180K default ceiling when thresholdPercent, thresholdTokens, or reserveTokens is explicitly configured", () => {
+		const cw = 1_000_000;
+		const base: CompactionSettings = {
+			enabled: true,
+			thresholdPercent: -1,
+			thresholdTokens: -1,
+			keepRecentTokens: 20000,
+		};
+
+		// Explicit thresholdPercent bypasses the ceiling.
+		expect(resolveThresholdTokens(cw, { ...base, thresholdPercent: 80 })).toBe(800_000);
+		expect(shouldCompact(500_000, cw, { ...base, thresholdPercent: 80 })).toBe(false);
+		expect(shouldCompact(800_001, cw, { ...base, thresholdPercent: 80 })).toBe(true);
+
+		// Explicit thresholdTokens bypasses the ceiling.
+		expect(resolveThresholdTokens(cw, { ...base, thresholdTokens: 500_000 })).toBe(500_000);
+		expect(shouldCompact(500_000, cw, { ...base, thresholdTokens: 500_000 })).toBe(false);
+		expect(shouldCompact(500_001, cw, { ...base, thresholdTokens: 500_000 })).toBe(true);
+
+		// Explicit reserveTokens — even equal to DEFAULT_RESERVE_TOKENS — signals user ownership and bypasses the ceiling.
+		expect(resolveThresholdTokens(cw, { ...base, reserveTokens: DEFAULT_RESERVE_TOKENS })).toBe(850_000);
+		expect(resolveThresholdTokens(cw, { ...base, reserveTokens: 200_000 })).toBe(800_000);
+		expect(shouldCompact(799_999, cw, { ...base, reserveTokens: 200_000 })).toBe(false);
+		expect(shouldCompact(800_001, cw, { ...base, reserveTokens: 200_000 })).toBe(true);
 	});
 });

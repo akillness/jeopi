@@ -8,7 +8,7 @@ import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { Settings } from "jeopi-cli/config/settings";
 import { createAgentSession } from "jeopi-cli/sdk";
 import { SessionManager } from "jeopi-cli/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "jeopi-utils";
+import { getAgentDir, removeSyncWithRetries, Snowflake, setAgentDir } from "jeopi-utils";
 import { SERVER_INSTRUCTIONS } from "./fixtures/instructions-mcp";
 
 // Contract: a deferred interactive (`hasUI`) session runs MCP discovery off the
@@ -25,6 +25,7 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 	let tempDir: string;
 	let authStorage: AuthStorage;
 	let modelRegistry: ModelRegistry;
+	let originalAgentDir: string;
 	// Discovery resolves user-level MCP config from `os.homedir()`; redirect it
 	// to an empty dir so the test connects ONLY to the fixture server and never
 	// spawns the developer's real MCP servers.
@@ -35,6 +36,7 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 		fs.mkdirSync(registryDir, { recursive: true });
 		isolatedHome = path.join(os.tmpdir(), `pi-sdk-mcp-instr-home-${Snowflake.next()}`);
 		fs.mkdirSync(isolatedHome, { recursive: true });
+		originalAgentDir = getAgentDir();
 		authStorage = await AuthStorage.create(path.join(registryDir, "auth.db"));
 		modelRegistry = new ModelRegistry(authStorage);
 	});
@@ -51,6 +53,7 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 	beforeEach(() => {
 		tempDir = path.join(os.tmpdir(), `pi-sdk-mcp-instr-${Snowflake.next()}`);
 		fs.mkdirSync(tempDir, { recursive: true });
+		setAgentDir(tempDir);
 		spyOn(os, "homedir").mockReturnValue(isolatedHome);
 		fs.writeFileSync(
 			path.join(tempDir, ".mcp.json"),
@@ -63,6 +66,7 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 	});
 
 	afterEach(() => {
+		setAgentDir(originalAgentDir);
 		if (tempDir && fs.existsSync(tempDir)) {
 			removeSyncWithRetries(tempDir);
 		}
@@ -109,6 +113,120 @@ describe("createAgentSession MCP server instructions (deferred UI)", () => {
 			expect(prompt).toContain(SERVER_INSTRUCTIONS);
 			// The instructions are framed under the MCP section, not pasted raw.
 			expect(prompt).toContain("MCP Server Instructions");
+		} finally {
+			await session.dispose();
+		}
+	}, 20_000);
+
+	it("omits deferred server instructions when mcpDiscoveryEnabled is true until a server tool is activated", async () => {
+		const { session, mcpManager } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			modelRegistry,
+			sessionManager: SessionManager.inMemory(),
+			settings: Settings.isolated({ "mcp.discoveryMode": true }),
+			model: getBundledModel("openai", "gpt-4o-mini"),
+			disableExtensionDiscovery: true,
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableLsp: false,
+			skipPythonPreflight: true,
+			enableMCP: true,
+			hasUI: false,
+		});
+		expect(mcpManager).toBeDefined();
+		try {
+			// Genuine integration wait: real stdio subprocess connect may outlive
+			// STARTUP_TIMEOUT_MS (250 ms) and finish via background refresh.
+			const deadline = Date.now() + 12_000;
+			while (
+				(!mcpManager!.getServerInstructions().has("instr") ||
+					!session.getDiscoverableTools({ source: "mcp" }).some(tool => tool.name === "mcp__instr_do_thing")) &&
+				Date.now() < deadline
+			) {
+				await Bun.sleep(50);
+			}
+
+			expect(session.isMCPDiscoveryEnabled()).toBe(true);
+			// Confirm instructions are loaded on the manager so omission is non-vacuous.
+			expect(mcpManager!.getServerInstructions().get("instr")).toBe(SERVER_INSTRUCTIONS);
+			const initialPrompt = session.systemPrompt.join("\n");
+			expect(initialPrompt).not.toContain("## MCP Server Instructions");
+			expect(initialPrompt).not.toContain(SERVER_INSTRUCTIONS);
+
+			const activated = await session.activateDiscoveredMCPTools(["mcp__instr_do_thing"]);
+			expect(activated).toEqual(["mcp__instr_do_thing"]);
+
+			const afterActivation = session.systemPrompt.join("\n");
+			expect(afterActivation).toContain("## MCP Server Instructions");
+			expect(afterActivation).toContain("### instr");
+			expect(afterActivation).toContain(SERVER_INSTRUCTIONS);
+		} finally {
+			await session.dispose();
+		}
+	}, 20_000);
+
+	it("includes only discoveryDefaultServers instructions initially and adds other servers when activated", async () => {
+		fs.writeFileSync(
+			path.join(tempDir, ".mcp.json"),
+			JSON.stringify({
+				mcpServers: {
+					alpha: { type: "stdio", command: process.execPath, args: [FIXTURE_PATH] },
+					beta: { type: "stdio", command: process.execPath, args: [FIXTURE_PATH] },
+				},
+			}),
+		);
+		const { session, mcpManager } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			modelRegistry,
+			sessionManager: SessionManager.inMemory(),
+			settings: Settings.isolated({
+				"mcp.discoveryMode": true,
+				"mcp.discoveryDefaultServers": ["alpha"],
+			}),
+			model: getBundledModel("openai", "gpt-4o-mini"),
+			disableExtensionDiscovery: true,
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableLsp: false,
+			skipPythonPreflight: true,
+			enableMCP: true,
+			hasUI: false,
+		});
+		expect(mcpManager).toBeDefined();
+		try {
+			// Genuine integration wait: wait until both real stdio subprocesses
+			// have finished connecting and registered their tools & instructions.
+			const deadline = Date.now() + 12_000;
+			while (
+				(!mcpManager!.getServerInstructions().has("alpha") ||
+					!mcpManager!.getServerInstructions().has("beta") ||
+					!session.getDiscoverableTools({ source: "mcp" }).some(tool => tool.name === "mcp__beta_do_thing") ||
+					!session.systemPrompt.join("\n").includes("### alpha")) &&
+				Date.now() < deadline
+			) {
+				await Bun.sleep(50);
+			}
+
+			expect(session.isMCPDiscoveryEnabled()).toBe(true);
+			expect(mcpManager!.getServerInstructions().get("alpha")).toBe(SERVER_INSTRUCTIONS);
+			expect(mcpManager!.getServerInstructions().get("beta")).toBe(SERVER_INSTRUCTIONS);
+			const initialPrompt = session.systemPrompt.join("\n");
+			expect(initialPrompt).toContain("## MCP Server Instructions");
+			expect(initialPrompt).toContain("### alpha");
+			expect(initialPrompt).not.toContain("### beta");
+
+			const activated = await session.activateDiscoveredMCPTools(["mcp__beta_do_thing"]);
+			expect(activated).toEqual(["mcp__beta_do_thing"]);
+
+			const afterBetaActivation = session.systemPrompt.join("\n");
+			expect(afterBetaActivation).toContain("### alpha");
+			expect(afterBetaActivation).toContain("### beta");
 		} finally {
 			await session.dispose();
 		}

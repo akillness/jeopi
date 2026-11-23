@@ -18,19 +18,48 @@ function isProtectedCustomMessage(message: AgentMessage): boolean {
 	return typeof customType === "string" && PROTECTED_CUSTOM_TYPES.has(customType);
 }
 
-function getTrailingActiveToolCallIds(messages: readonly AgentMessage[]): Set<string> {
-	const ids = new Set<string>();
+const COMPRESSION_MARKERS = ["[head] ", "[signal] ", "[compressed"] as const;
+const MIN_ACTIVE_TOOL_RESULT_CHARS_FOR_SHRINK_CHECK = 400;
+
+function extractToolCallId(msg: AgentMessage): string | undefined {
+	if (!msg || typeof msg !== "object" || !("toolCallId" in msg)) return undefined;
+	return typeof msg.toolCallId === "string" && msg.toolCallId.length > 0 ? msg.toolCallId : undefined;
+}
+
+function extractMessageText(msg: AgentMessage): string {
+	if (!msg || typeof msg !== "object" || !("content" in msg)) return "";
+	const content = msg.content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	let out = "";
+	for (const block of content) {
+		if (
+			block &&
+			typeof block === "object" &&
+			"type" in block &&
+			block.type === "text" &&
+			"text" in block &&
+			typeof block.text === "string"
+		) {
+			out += block.text;
+		}
+	}
+	return out;
+}
+
+function getTrailingActiveToolResults(messages: readonly AgentMessage[]): Map<string, AgentMessage> {
+	const results = new Map<string, AgentMessage>();
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const msg = messages[i];
 		if (msg.role === "assistant") break;
 		if (msg.role === "toolResult") {
-			const toolCallId = (msg as { toolCallId?: unknown }).toolCallId;
-			if (typeof toolCallId === "string" && toolCallId.length > 0) {
-				ids.add(toolCallId);
+			const toolCallId = extractToolCallId(msg);
+			if (toolCallId !== undefined) {
+				results.set(toolCallId, msg);
 			}
 		}
 	}
-	return ids;
+	return results;
 }
 
 function findLastCoreMessage(messages: readonly AgentMessage[]): AgentMessage | undefined {
@@ -75,20 +104,21 @@ export function guardContextHookMessages(
 		return { messages: inputMessages, rejectedReason: "emptied_context" };
 	}
 
-	// 1. Trailing tool results for the active tool batch must stay paired.
-	const activeToolCallIds = getTrailingActiveToolCallIds(inputMessages);
-	if (activeToolCallIds.size > 0) {
-		const presentIds = new Set<string>();
+	// 1. Trailing tool results for the active tool batch must stay paired and intact.
+	const activeToolResults = getTrailingActiveToolResults(inputMessages);
+	if (activeToolResults.size > 0) {
+		const outputById = new Map<string, AgentMessage>();
 		for (const msg of outputMessages) {
 			if (msg.role === "toolResult") {
-				const toolCallId = (msg as { toolCallId?: unknown }).toolCallId;
-				if (typeof toolCallId === "string" && toolCallId.length > 0) {
-					presentIds.add(toolCallId);
+				const toolCallId = extractToolCallId(msg);
+				if (toolCallId !== undefined) {
+					outputById.set(toolCallId, msg);
 				}
 			}
 		}
-		for (const requiredId of activeToolCallIds) {
-			if (!presentIds.has(requiredId)) {
+		for (const [requiredId, inputMsg] of activeToolResults) {
+			const outputMsg = outputById.get(requiredId);
+			if (!outputMsg) {
 				logger.warn("Ignoring context hook result that dropped active tool results", {
 					source,
 					inputCount: inputMessages.length,
@@ -96,6 +126,25 @@ export function guardContextHookMessages(
 					missingToolCallId: requiredId,
 				});
 				return { messages: inputMessages, rejectedReason: "dropped_active_tool_results" };
+			}
+			const inputText = extractMessageText(inputMsg);
+			const outputText = extractMessageText(outputMsg);
+			const shrunk =
+				inputText.length > MIN_ACTIVE_TOOL_RESULT_CHARS_FOR_SHRINK_CHECK &&
+				outputText.length < inputText.length * 0.5;
+			const injectedMarker = COMPRESSION_MARKERS.some(
+				marker => !inputText.includes(marker) && outputText.includes(marker),
+			);
+			if (shrunk || injectedMarker) {
+				logger.warn("Ignoring context hook result that compressed active tool results", {
+					source,
+					toolCallId: requiredId,
+					inputTextLength: inputText.length,
+					outputTextLength: outputText.length,
+					shrunk,
+					injectedMarker,
+				});
+				return { messages: inputMessages, rejectedReason: "compressed_active_tool_results" };
 			}
 		}
 	}

@@ -684,6 +684,121 @@ describe("Agent and agentLoop bounded execution", () => {
 			),
 		).toBe(true);
 	});
+
+	it("fires onWorkflowGuardSoftWarning on a terminal final answer without injecting a synthetic turn or extra LLM call", async () => {
+		const mock = createMockModel({
+			responses: [
+				{
+					content: ["Final answer."],
+					usage: {
+						input: 100,
+						output: 850,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 950,
+						cost: { input: 0.01, output: 0.84, cacheRead: 0, cacheWrite: 0, total: 0.85 },
+					},
+				},
+				{ content: ["Spurious second turn that must never run."] },
+			],
+		});
+		const warnings: WorkflowGuardSoftWarning[] = [];
+		const stops: WorkflowGuardStop[] = [];
+		const config: AgentLoopConfig = {
+			model: mock.model,
+			convertToLlm: identityConverter,
+			workflowGuard: { maxCostUsd: 1.0, softBudgetWarningRatio: 0.8 },
+			onWorkflowGuardSoftWarning: warning => {
+				warnings.push(warning);
+			},
+			onWorkflowGuardStop: stop => {
+				stops.push(stop);
+			},
+		};
+		const context: AgentContext = { systemPrompt: ["sys"], messages: [], tools: [] };
+
+		const stream = agentLoop([createUserMessage("summarize")], context, config, undefined, mock.stream);
+		for await (const _ of stream) {
+			// drain
+		}
+		const newMessages = await stream.result();
+
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]?.kind).toBe("cost");
+		expect(stops).toHaveLength(0);
+		expect(mock.calls).toHaveLength(1);
+		expect(newMessages.map(m => m.role)).toEqual(["user", "assistant"]);
+	});
+
+	it("injects the soft-warning wrap-up prompt on the next turn when crossing the soft ratio on a tool-call turn", async () => {
+		const pingTool: AgentTool<typeof emptySchema, Record<string, never>> = {
+			name: "ping",
+			label: "Ping",
+			description: "Ping tool",
+			parameters: emptySchema,
+			async execute() {
+				return { content: [{ type: "text", text: "pong" }], details: {} };
+			},
+		};
+		const secondCallMessages: Message[] = [];
+		const mock = createMockModel({
+			responses: [
+				{
+					content: [{ type: "toolCall" as const, id: "t1", name: "ping", arguments: {} }],
+					usage: {
+						input: 100,
+						output: 850,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 950,
+						cost: { input: 0.01, output: 0.84, cacheRead: 0, cacheWrite: 0, total: 0.85 },
+					},
+				},
+				ctx => {
+					secondCallMessages.push(...ctx.messages);
+					return {
+						content: ["Wrapped up concisely."],
+						usage: {
+							input: 100,
+							output: 40,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 140,
+							cost: { input: 0.01, output: 0.04, cacheRead: 0, cacheWrite: 0, total: 0.05 },
+						},
+					};
+				},
+			],
+		});
+		const warnings: WorkflowGuardSoftWarning[] = [];
+		const config: AgentLoopConfig = {
+			model: mock.model,
+			convertToLlm: identityConverter,
+			workflowGuard: { maxCostUsd: 1.0, softBudgetWarningRatio: 0.8 },
+			onWorkflowGuardSoftWarning: warning => {
+				warnings.push(warning);
+			},
+		};
+		const context: AgentContext = { systemPrompt: ["sys"], messages: [], tools: [pingTool] };
+
+		const stream = agentLoop([createUserMessage("run ping")], context, config, undefined, mock.stream);
+		for await (const _ of stream) {
+			// drain
+		}
+		await stream.result();
+
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]?.kind).toBe("cost");
+		expect(mock.calls).toHaveLength(2);
+		expect(
+			secondCallMessages.some(
+				m =>
+					m.role === "user" &&
+					typeof m.content === "string" &&
+					m.content.includes("Approaching per-run cost budget"),
+			),
+		).toBe(true);
+	});
 });
 
 describe("WorkflowLoopGuard hardening contracts", () => {
@@ -865,5 +980,121 @@ describe("WorkflowLoopGuard hardening contracts", () => {
 		externalTokens = 1050;
 		const third = guard.recordAssistantUsage({ input: 50, output: 50, cost: { total: 0.01 } });
 		expect(third.stop?.stopClass).toBe("token_budget_exceeded");
+	});
+
+	it("disables soft budget warnings when softBudgetWarningRatio is explicitly 0 without affecting hard caps", () => {
+		const guard = new WorkflowLoopGuard({
+			maxCostUsd: 1.0,
+			maxOutputTokens: 1000,
+			softBudgetWarningRatio: 0,
+		});
+
+		// 85% cost and 90% output tokens would both trigger under the 0.8 fallback,
+		// but softBudgetWarningRatio: 0 must suppress soft warnings completely.
+		const nearCap = guard.recordAssistantUsage({
+			input: 100,
+			output: 900,
+			cost: { total: 0.85 },
+		});
+		expect(nearCap.softWarning).toBeUndefined();
+		expect(nearCap.stop).toBeUndefined();
+
+		// Hard caps remain enforced.
+		const overCap = guard.recordAssistantUsage({
+			input: 50,
+			output: 50,
+			cost: { total: 0.2 },
+		});
+		expect(overCap.softWarning).toBeUndefined();
+		expect(overCap.stop?.stopClass).toBe("cost_budget_exceeded");
+	});
+
+	it("tracks cost and output-token soft warnings independently in both orders", () => {
+		// Order 1: cost soft ratio crossed first, then output_tokens soft ratio crossed.
+		const costFirst = new WorkflowLoopGuard({
+			maxCostUsd: 1.0,
+			maxOutputTokens: 1000,
+			softBudgetWarningRatio: 0.8,
+		});
+		const c1 = costFirst.recordAssistantUsage({ input: 50, output: 200, cost: { total: 0.85 } });
+		expect(c1.softWarning?.kind).toBe("cost");
+		expect(c1.stop).toBeUndefined();
+
+		const c2 = costFirst.recordAssistantUsage({ input: 50, output: 650, cost: { total: 0.05 } });
+		expect(c2.softWarning?.kind).toBe("output_tokens");
+		expect(c2.stop).toBeUndefined();
+
+		// Neither warning re-emits once emitted.
+		const c3 = costFirst.recordAssistantUsage({ input: 10, output: 20, cost: { total: 0.01 } });
+		expect(c3.softWarning).toBeUndefined();
+		expect(c3.stop).toBeUndefined();
+
+		// Order 2: output_tokens soft ratio crossed first, then cost soft ratio crossed.
+		const tokensFirst = new WorkflowLoopGuard({
+			maxCostUsd: 1.0,
+			maxOutputTokens: 1000,
+			softBudgetWarningRatio: 0.8,
+		});
+		const t1 = tokensFirst.recordAssistantUsage({ input: 50, output: 850, cost: { total: 0.2 } });
+		expect(t1.softWarning?.kind).toBe("output_tokens");
+		expect(t1.stop).toBeUndefined();
+
+		const t2 = tokensFirst.recordAssistantUsage({ input: 50, output: 50, cost: { total: 0.65 } });
+		expect(t2.softWarning?.kind).toBe("cost");
+		expect(t2.stop).toBeUndefined();
+
+		const t3 = tokensFirst.recordAssistantUsage({ input: 10, output: 20, cost: { total: 0.01 } });
+		expect(t3.softWarning).toBeUndefined();
+		expect(t3.stop).toBeUndefined();
+	});
+
+	it("treats glob as read-only for failure masking and produces distinct toolTarget keys for glob and ast_grep", () => {
+		// glob is read-only: a succeeding glob in the same batch as a failing mutating tool
+		// must not mask the failure or reset consecutiveFailures.
+		const guard = new WorkflowLoopGuard({ maxConsecutiveFailures: 2, maxSteps: 20 });
+		expect(
+			guard.recordToolBatch(
+				[
+					{ name: "glob", arguments: { paths: ["packages/agent/**/*.ts"] } },
+					{ name: "edit", arguments: { path: "packages/agent/src/a.ts" } },
+				],
+				[
+					{ toolName: "glob", isError: false },
+					{ toolName: "edit", isError: true },
+				],
+			),
+		).toBeUndefined();
+		expect(guard.consecutiveFailures).toBe(1);
+
+		const stop = guard.recordToolBatch(
+			[
+				{ name: "glob", arguments: { paths: ["packages/ai/**/*.ts"] } },
+				{ name: "edit", arguments: { path: "packages/agent/src/a.ts" } },
+			],
+			[
+				{ toolName: "glob", isError: false },
+				{ toolName: "edit", isError: true },
+			],
+		);
+		expect(stop?.stopClass).toBe("consecutive_failure");
+		expect(stop?.consecutiveFailures).toBe(2);
+
+		// glob target keys distinguish distinct args.paths entries (instead of collapsing to bare "glob").
+		const globA = toolTarget("glob", { paths: ["packages/agent/**/*.ts"] });
+		const globB = toolTarget("glob", { paths: ["packages/ai/**/*.ts"] });
+		expect(globA).toBe("glob:packages/agent/**/*.ts");
+		expect(globB).toBe("glob:packages/ai/**/*.ts");
+		expect(globA).not.toBe(globB);
+
+		// ast_grep target keys distinguish distinct args.pat and args.paths combinations.
+		const astPatA = toolTarget("ast_grep", { pat: "foo($A)", paths: ["packages/agent"] });
+		const astPatB = toolTarget("ast_grep", { pat: "bar($A)", paths: ["packages/agent"] });
+		const astPathB = toolTarget("ast_grep", { pat: "foo($A)", paths: ["packages/ai"] });
+		const astPatOnly = toolTarget("ast_grep", { pat: "baz($A)" });
+		const astPathOnly = toolTarget("ast_grep", { paths: ["packages/utils"] });
+		expect(new Set([astPatA, astPatB, astPathB, astPatOnly, astPathOnly]).size).toBe(5);
+		expect(astPatA).toBe("ast_grep:foo($A)@packages/agent");
+		expect(astPatOnly).toBe("ast_grep:baz($A)");
+		expect(astPathOnly).toBe("ast_grep:packages/utils");
 	});
 });

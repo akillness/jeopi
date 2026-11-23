@@ -13,6 +13,7 @@ import { findConfigFile } from "./config";
 import type { Personality, SkillsSettings } from "./config/settings";
 import { type ContextFile, loadCapability, type SystemPrompt as SystemPromptFile } from "./discovery";
 import { expandAtImports } from "./discovery/at-imports";
+import { compareSkillOrder } from "./discovery/helpers";
 import { loadSkills, type Skill } from "./extensibility/skills";
 import { hasObsidian } from "./internal-urls/vault-protocol";
 import activeRepoContextTemplate from "./prompts/system/active-repo-context.md" with { type: "text" };
@@ -501,6 +502,95 @@ export interface BuildSystemPromptResult {
 	systemPrompt: string[];
 }
 
+const DEFAULT_MAX_PROMPT_SKILLS = 40;
+const DEFAULT_MAX_PROMPT_CHARS = 16_000;
+const DEFAULT_MAX_PROMPT_SKILL_DESCRIPTION_CHARS = 180;
+
+export interface PromptSkillEntry {
+	name: string;
+	description: string;
+}
+
+export interface SelectPromptSkillsOptions {
+	/** Max number of skills to include inline in the system prompt (0 = unlimited). Default: 40. */
+	maxSkills?: number;
+	/** Max total rendered characters for inline skill lines (0 = unlimited). Default: 16000. */
+	maxChars?: number;
+	/** Max single-line description characters per skill (0 = unlimited). Default: 180. */
+	maxDescriptionChars?: number;
+}
+
+export interface SelectPromptSkillsResult {
+	included: PromptSkillEntry[];
+	omittedCount: number;
+	totalCount: number;
+}
+
+function isProjectScopedSkill(skill: Skill): boolean {
+	if (skill._source?.level === "project") return true;
+	return skill.source === "project" || skill.source.endsWith(":project");
+}
+
+function normalizePromptSkillDescription(description: string, maxChars: number): string {
+	const normalized = description.replace(/\s+/g, " ").trim();
+	if (maxChars <= 0 || normalized.length <= maxChars) return normalized;
+	if (maxChars === 1) return "…";
+	return `${normalized.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+/**
+ * Select a bounded, deterministic subset of skills to inline in the system prompt.
+ * Prioritizes project-scoped skills ahead of user/global skills, preserving alphabetical
+ * order within each tier for prompt-cache stability.
+ */
+export function selectPromptSkills(
+	skills: readonly Skill[],
+	options?: SelectPromptSkillsOptions,
+): SelectPromptSkillsResult {
+	const totalCount = skills.length;
+	if (totalCount === 0) {
+		return { included: [], omittedCount: 0, totalCount: 0 };
+	}
+
+	const maxSkills =
+		options?.maxSkills !== undefined && Number.isFinite(options.maxSkills)
+			? Math.max(0, Math.floor(options.maxSkills))
+			: DEFAULT_MAX_PROMPT_SKILLS;
+	const maxChars =
+		options?.maxChars !== undefined && Number.isFinite(options.maxChars)
+			? Math.max(0, Math.floor(options.maxChars))
+			: DEFAULT_MAX_PROMPT_CHARS;
+	const maxDescriptionChars =
+		options?.maxDescriptionChars !== undefined && Number.isFinite(options.maxDescriptionChars)
+			? Math.max(0, Math.floor(options.maxDescriptionChars))
+			: DEFAULT_MAX_PROMPT_SKILL_DESCRIPTION_CHARS;
+
+	const ordered = [...skills].sort((a, b) => {
+		const aProject = isProjectScopedSkill(a) ? 0 : 1;
+		const bProject = isProjectScopedSkill(b) ? 0 : 1;
+		if (aProject !== bProject) return aProject - bProject;
+		return compareSkillOrder(a.name, a.filePath ?? "", b.name, b.filePath ?? "");
+	});
+
+	const included: PromptSkillEntry[] = [];
+	let usedChars = 0;
+	for (const skill of ordered) {
+		if (maxSkills > 0 && included.length >= maxSkills) break;
+		const description = normalizePromptSkillDescription(skill.description ?? "", maxDescriptionChars);
+		// Matches rendered `- ${name}: ${description}\n` line length.
+		const lineChars = skill.name.length + description.length + 5;
+		if (maxChars > 0 && usedChars + lineChars > maxChars) break;
+		included.push({ name: skill.name, description });
+		usedChars += lineChars;
+	}
+
+	return {
+		included,
+		omittedCount: totalCount - included.length,
+		totalCount,
+	};
+}
+
 /** Build the system prompt with tools, guidelines, and context */
 export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}): Promise<BuildSystemPromptResult> {
 	if ($env.NULL_PROMPT === "true") {
@@ -726,6 +816,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// - drop skills with frontmatter `hide: true` (still loadable via skill:// and /skill:<name>).
 	const hasRead = toolNames.includes("read");
 	const filteredSkills = hasRead ? skills.filter(skill => skill.hide !== true) : [];
+	const promptSkills = selectPromptSkills(filteredSkills, {
+		maxSkills: skillsSettings?.maxPromptSkills,
+		maxChars: skillsSettings?.maxPromptChars,
+	});
 
 	const effectiveSystemPromptCustomization = dedupePromptSource(systemPromptCustomization, [
 		resolvedCustomPrompt,
@@ -755,7 +849,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		contextFiles,
 		agentsMdSearch: { files: agentsMdFiles },
 		workspaceTree,
-		skills: filteredSkills,
+		skills: promptSkills.included,
+		omittedSkillCount: promptSkills.omittedCount,
+		totalSkillCount: promptSkills.totalCount,
 		rules: rules ?? [],
 		alwaysApplyRules: injectedAlwaysApplyRules,
 		date,

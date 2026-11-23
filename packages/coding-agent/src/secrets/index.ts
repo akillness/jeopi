@@ -53,6 +53,46 @@ export function collectEnvSecrets(): SecretEntry[] {
 	return entries;
 }
 
+/**
+ * Built-in linear-time regex patterns for deterministic PII and credential redaction.
+ * Used when `secrets.redactPii` is enabled so providers, advisor transcripts, and
+ * `/share` snapshots receive reversible `#HASH#` placeholders instead of raw PII/tokens.
+ */
+const BUILTIN_PII_PATTERNS: readonly SecretEntry[] = [
+	// Private key PEM blocks
+	{
+		type: "regex",
+		content:
+			"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----[\\s\\S]*?-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+		mode: "obfuscate",
+	},
+	// High-confidence API / cloud / VCS tokens and JWTs
+	{ type: "regex", content: "\\bsk-ant-[A-Za-z0-9_-]{20,}\\b", mode: "obfuscate" },
+	{ type: "regex", content: "\\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\\b", mode: "obfuscate" },
+	{ type: "regex", content: "\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b", mode: "obfuscate" },
+	{ type: "regex", content: "\\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\\b", mode: "obfuscate" },
+	{ type: "regex", content: "\\bgithub_pat_[A-Za-z0-9_]{20,}\\b", mode: "obfuscate" },
+	{
+		type: "regex",
+		content: "\\beyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b",
+		mode: "obfuscate",
+	},
+	// Email addresses
+	{ type: "regex", content: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", mode: "obfuscate" },
+	// US SSN & Korean RRN
+	{ type: "regex", content: "\\b\\d{3}-\\d{2}-\\d{4}\\b", mode: "obfuscate" },
+	{ type: "regex", content: "\\b\\d{6}-[1-4]\\d{6}\\b", mode: "obfuscate" },
+	// Korean mobile phone numbers
+	{ type: "regex", content: "\\b01[016789]-\\d{3,4}-\\d{4}\\b", mode: "obfuscate" },
+	// 16-digit payment card numbers (hyphen or space separated)
+	{ type: "regex", content: "\\b(?:\\d{4}[- ]){3}\\d{4}\\b", mode: "obfuscate" },
+];
+
+/** Return built-in deterministic PII and credential redaction entries. */
+export function collectBuiltinPiiPatterns(): SecretEntry[] {
+	return BUILTIN_PII_PATTERNS.map(entry => ({ ...entry }));
+}
+
 async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 	try {
 		const text = await Bun.file(filePath).text();

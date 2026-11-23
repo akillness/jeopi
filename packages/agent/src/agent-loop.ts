@@ -1047,20 +1047,12 @@ async function runLoopBody(
 				const runnableStop = message.stopReason === "toolUse" || message.stopReason === "stop";
 				hasMoreToolCalls = runnableStop && toolCalls.length > 0;
 
+				let pendingSoftWarning: { message: string } | undefined;
 				if (workflowGuard) {
 					const usageCheck = workflowGuard.recordAssistantUsage(message.usage);
 					if (usageCheck.softWarning) {
-						pendingMessages = [
-							...pendingMessages,
-							{
-								role: "user",
-								content: usageCheck.softWarning.message,
-								synthetic: true,
-								attribution: "agent",
-								timestamp: Date.now(),
-							} as AgentMessage,
-						];
 						await config.onWorkflowGuardSoftWarning?.(usageCheck.softWarning);
+						pendingSoftWarning = usageCheck.softWarning;
 					}
 					if (usageCheck.stop) {
 						const abortedResults: ToolResultMessage[] = [];
@@ -1220,8 +1212,21 @@ async function runLoopBody(
 						synthetic: true,
 						timestamp: Date.now(),
 					};
-					pendingMessages = [continuationMessage];
+					pendingMessages = [...pendingMessages, continuationMessage];
 					hasMoreToolCalls = true;
+				}
+
+				if (pendingSoftWarning && hasMoreToolCalls && !workflowBatchStop && !isDeadlineExceeded(config.deadline)) {
+					pendingMessages = [
+						{
+							role: "user",
+							content: pendingSoftWarning.message,
+							synthetic: true,
+							attribution: "agent",
+							timestamp: Date.now(),
+						} as AgentMessage,
+						...pendingMessages,
+					];
 				}
 
 				const turnEndResult = await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, {

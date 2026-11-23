@@ -10,6 +10,7 @@ import type {
 	AgentToolContext,
 	ToolCallContext,
 } from "jeopi-agent-core/types";
+import type { WorkflowGuardSoftWarning } from "jeopi-agent-core/workflow-guard";
 import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage, UserMessage } from "jeopi-ai";
 import { createMockModel, type MockResponse } from "jeopi-ai/providers/mock";
 import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
@@ -197,6 +198,71 @@ describe("agentLoop with AgentMessage", () => {
 		expect((assistant2 as AssistantMessage).content).toEqual([{ type: "text", text: "rest of response" }]);
 		expect(secondCallRoles).toEqual(["user", "assistant", "user"]);
 		expect(events.filter(e => e.type === "turn_start")).toHaveLength(2);
+	});
+
+	it("preserves a queued soft budget warning alongside length-truncation continuation messages", async () => {
+		const context: AgentContext = { systemPrompt: ["You are helpful."], messages: [], tools: [] };
+		const secondCallMessages: Message[] = [];
+		const warnings: WorkflowGuardSoftWarning[] = [];
+		const mock = createMockModel({
+			responses: [
+				{
+					content: ["truncated first half"],
+					stopReason: "length",
+					usage: {
+						input: 100,
+						output: 850,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 950,
+						cost: { input: 0.01, output: 0.84, cacheRead: 0, cacheWrite: 0, total: 0.85 },
+					},
+				},
+				ctx => {
+					secondCallMessages.push(...ctx.messages);
+					return {
+						content: ["concise completion"],
+						usage: {
+							input: 100,
+							output: 50,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 150,
+							cost: { input: 0.01, output: 0.04, cacheRead: 0, cacheWrite: 0, total: 0.05 },
+						},
+					};
+				},
+			],
+		});
+		const config: AgentLoopConfig = {
+			model: mock.model,
+			convertToLlm: identityConverter,
+			workflowGuard: { maxCostUsd: 1.0, softBudgetWarningRatio: 0.8 },
+			onWorkflowGuardSoftWarning: warning => {
+				warnings.push(warning);
+			},
+		};
+
+		const messages = await agentLoop([createUserMessage("Hello")], context, config, undefined, mock.stream).result();
+
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]?.kind).toBe("cost");
+		expect(mock.calls).toHaveLength(2);
+
+		const secondTurnUsers = secondCallMessages.filter(m => m.role === "user");
+		expect(
+			secondTurnUsers.some(
+				m => typeof m.content === "string" && m.content.includes("Approaching per-run cost budget"),
+			),
+		).toBe(true);
+		expect(
+			secondTurnUsers.some(
+				m =>
+					typeof m.content === "string" &&
+					m.content === "Continue your response exactly from where it was cut off.",
+			),
+		).toBe(true);
+		expect(messages.map(m => m.role)).toEqual(["user", "assistant", "user", "user", "assistant"]);
 	});
 
 	it("caps consecutive length continuations", async () => {

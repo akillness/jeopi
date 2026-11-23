@@ -92,7 +92,7 @@ export interface WorkflowLoopGuardConfig {
 	maxCostUsd?: number;
 	/** Optional per-run output token cap (`0` or omitted disables). */
 	maxOutputTokens?: number;
-	/** Fraction (0..1) of cost/token cap at which a one-shot wrap-up warning fires (default 0.8). */
+	/** Fraction (0..1) of cost/token cap at which a one-shot wrap-up warning fires (default 0.8; `0` disables). */
 	softBudgetWarningRatio?: number;
 	/** Optional callback supplying external/cumulative output tokens (e.g. including subagents). */
 	getExternalOutputTokens?: () => number;
@@ -109,6 +109,7 @@ const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
 	"read",
 	"find",
 	"grep",
+	"glob",
 	"search",
 	"ls",
 	"lsp",
@@ -118,6 +119,7 @@ const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
 	"fetch",
 	"jeox",
 	"status",
+	"search_tool_bm25",
 ]);
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
@@ -243,12 +245,39 @@ export function toolTarget(tool: string, rawArgs: unknown): string {
 			if (cmd) return `${tool}:${cmd.replace(/\s+/g, " ").slice(0, 64)}`;
 			break;
 		}
+		case "glob": {
+			const firstPath = Array.isArray(args.paths)
+				? args.paths.find((p): p is string => typeof p === "string" && p.trim().length > 0)?.trim()
+				: undefined;
+			const target = firstPath ?? firstStr(["pattern", "glob", "globPattern", "path", "dirPath"]);
+			if (target) return `${tool}:${target.slice(0, 64)}`;
+			break;
+		}
+		case "ast_grep": {
+			const pat = firstStr(["pat", "pattern", "query"]);
+			const firstPath =
+				(Array.isArray(args.paths)
+					? args.paths.find((p): p is string => typeof p === "string" && p.trim().length > 0)?.trim()
+					: undefined) ?? firstStr(["path", "dirPath"]);
+			if (pat && firstPath) return `${tool}:${pat.slice(0, 40)}@${firstPath.slice(0, 23)}`;
+			if (pat) return `${tool}:${pat.slice(0, 64)}`;
+			if (firstPath) return `${tool}:${firstPath.slice(0, 64)}`;
+			break;
+		}
 		case "find":
 		case "grep":
 		case "search":
-		case "ast_grep": {
+		case "search_tool_bm25": {
 			const query = firstStr(["pattern", "query", "glob", "globPattern", "path", "dirPath"]);
 			if (query) return `${tool}:${query.slice(0, 64)}`;
+			break;
+		}
+		case "jeox": {
+			const action = firstStr(["action"]);
+			const subject = firstStr(["name", "query", "target"]);
+			if (action && subject) return `${tool}:${action}:${subject.slice(0, 64)}`;
+			if (subject) return `${tool}:${subject.slice(0, 64)}`;
+			if (action) return `${tool}:${action}`;
 			break;
 		}
 		case "fetch":
@@ -574,7 +603,8 @@ export class WorkflowLoopGuard {
 		total: 0,
 	};
 	#costUsd = 0;
-	#softWarningEmitted = false;
+	#costSoftWarningEmitted = false;
+	#tokenSoftWarningEmitted = false;
 	#mutationEpoch = 0;
 	#lastEvalOutcomeByLang = new Map<string, { epoch: number; resultHash: string }>();
 	#seenSignatures = new Set<string>();
@@ -603,13 +633,13 @@ export class WorkflowLoopGuard {
 			config?.maxOutputTokens !== undefined && Number.isFinite(config.maxOutputTokens) && config.maxOutputTokens > 0
 				? Math.floor(config.maxOutputTokens)
 				: 0;
+		const softRatio = config?.softBudgetWarningRatio;
 		this.#softBudgetWarningRatio =
-			config?.softBudgetWarningRatio !== undefined &&
-			Number.isFinite(config.softBudgetWarningRatio) &&
-			config.softBudgetWarningRatio > 0 &&
-			config.softBudgetWarningRatio < 1
-				? config.softBudgetWarningRatio
-				: 0.8;
+			softRatio === 0
+				? 0
+				: softRatio !== undefined && Number.isFinite(softRatio) && softRatio > 0 && softRatio < 1
+					? softRatio
+					: 0.8;
 		this.#getExternalOutputTokens = config?.getExternalOutputTokens;
 	}
 
@@ -660,10 +690,15 @@ export class WorkflowLoopGuard {
 	}
 
 	/**
-	 * Gate before each LLM turn. Increments the step counter and checks whether
-	 * the rolling StepBudget permits another model call.
+	 * Gate before each LLM turn. Checks configured cost and output-token budgets
+	 * pre-flight (including external token trackers) before incrementing the step
+	 * counter and consulting the rolling StepBudget.
 	 */
 	beforeModelCall(): WorkflowGuardStop | undefined {
+		const budgetStop = this.#checkBudgetStop(this.#step);
+		if (budgetStop) {
+			return budgetStop;
+		}
 		this.#step++;
 		if (this.#step <= this.#budget.limit()) {
 			return undefined;
@@ -678,6 +713,30 @@ export class WorkflowLoopGuard {
 			`Stopped after ${this.#step - 1} steps (limit ${this.#budget.limit()}): ${decision.reason}.`,
 			this.#step - 1,
 		);
+	}
+
+	#effectiveOutputTokens(): number {
+		const externalOutput = this.#getExternalOutputTokens?.() ?? 0;
+		return Math.max(this.#tokens.output, Number.isFinite(externalOutput) && externalOutput > 0 ? externalOutput : 0);
+	}
+
+	#checkBudgetStop(stepOverride?: number): WorkflowGuardStop | undefined {
+		if (this.#maxCostUsd > 0 && this.#costUsd >= this.#maxCostUsd) {
+			return this.#makeStop(
+				"cost_budget_exceeded",
+				`Stopped: per-run cost budget exceeded ($${this.#costUsd.toFixed(4)} >= $${this.#maxCostUsd.toFixed(4)}).`,
+				stepOverride,
+			);
+		}
+		const effectiveOutput = this.#effectiveOutputTokens();
+		if (this.#maxOutputTokens > 0 && effectiveOutput >= this.#maxOutputTokens) {
+			return this.#makeStop(
+				"token_budget_exceeded",
+				`Stopped: per-run output token budget exceeded (${effectiveOutput.toLocaleString()} >= ${this.#maxOutputTokens.toLocaleString()} tokens).`,
+				stepOverride,
+			);
+		}
+		return undefined;
 	}
 
 	/**
@@ -715,35 +774,17 @@ export class WorkflowLoopGuard {
 		this.#tokens.total += total;
 		this.#costUsd += cost;
 
-		const externalOutput = this.#getExternalOutputTokens?.() ?? 0;
-		const effectiveOutput = Math.max(
-			this.#tokens.output,
-			Number.isFinite(externalOutput) && externalOutput > 0 ? externalOutput : 0,
-		);
-
-		if (this.#maxCostUsd > 0 && this.#costUsd >= this.#maxCostUsd) {
-			return {
-				stop: this.#makeStop(
-					"cost_budget_exceeded",
-					`Stopped: per-run cost budget exceeded ($${this.#costUsd.toFixed(4)} >= $${this.#maxCostUsd.toFixed(4)}).`,
-				),
-			};
+		const budgetStop = this.#checkBudgetStop();
+		if (budgetStop) {
+			return { stop: budgetStop };
 		}
+		const effectiveOutput = this.#effectiveOutputTokens();
 
-		if (this.#maxOutputTokens > 0 && effectiveOutput >= this.#maxOutputTokens) {
-			return {
-				stop: this.#makeStop(
-					"token_budget_exceeded",
-					`Stopped: per-run output token budget exceeded (${effectiveOutput.toLocaleString()} >= ${this.#maxOutputTokens.toLocaleString()} tokens).`,
-				),
-			};
-		}
-
-		if (!this.#softWarningEmitted && this.#softBudgetWarningRatio > 0 && this.#softBudgetWarningRatio < 1) {
-			if (this.#maxCostUsd > 0) {
+		if (this.#softBudgetWarningRatio > 0 && this.#softBudgetWarningRatio < 1) {
+			if (!this.#costSoftWarningEmitted && this.#maxCostUsd > 0) {
 				const costRatio = this.#costUsd / this.#maxCostUsd;
 				if (costRatio >= this.#softBudgetWarningRatio) {
-					this.#softWarningEmitted = true;
+					this.#costSoftWarningEmitted = true;
 					return {
 						softWarning: {
 							kind: "cost",
@@ -755,10 +796,10 @@ export class WorkflowLoopGuard {
 					};
 				}
 			}
-			if (this.#maxOutputTokens > 0) {
+			if (!this.#tokenSoftWarningEmitted && this.#maxOutputTokens > 0) {
 				const tokenRatio = effectiveOutput / this.#maxOutputTokens;
 				if (tokenRatio >= this.#softBudgetWarningRatio) {
-					this.#softWarningEmitted = true;
+					this.#tokenSoftWarningEmitted = true;
 					return {
 						softWarning: {
 							kind: "output_tokens",
@@ -771,7 +812,6 @@ export class WorkflowLoopGuard {
 				}
 			}
 		}
-
 		return {};
 	}
 

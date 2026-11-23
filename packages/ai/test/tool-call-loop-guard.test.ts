@@ -32,6 +32,7 @@ function turn(id: string, name: string, args: Record<string, unknown>, resultTex
 				content: [{ type: "text" as const, text: resultText }],
 				isError: false,
 				timestamp: Date.now(),
+				useless: undefined as boolean | undefined,
 			},
 		],
 	};
@@ -417,6 +418,57 @@ describe("ToolCallLoopGuard cyclical detection", () => {
 		}
 	});
 
+	test("does not collapse distinct read-only eval snippets that merely mention jev in paths or strings", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		const snippets = [
+			'print(open("packages/coding-agent/src/jev/config.ts").read())',
+			'print(open("packages/coding-agent/src/jev/router.ts").read())',
+			'print("inspecting jev profile metadata in ~/.agents/jev/profiles.json")',
+			'print("reading jev-harness.mjs helper without status")',
+		];
+		for (const [idx, code] of snippets.entries()) {
+			expect(
+				guard.recordTurn(turn(`jev-mention-${idx}`, "eval", { language: "python", code }, `out-${idx}`)),
+			).toBeNull();
+		}
+	});
+
+	test("still triggers repeated_tool_call for repeated eval jev status invocations", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
+		const turn1 = turn(
+			"jev-s1",
+			"eval",
+			{ language: "python", code: 'subprocess.run(["jev", "status"], capture_output=True)' },
+			"ok-1",
+		);
+		const turn2 = turn(
+			"jev-s2",
+			"eval",
+			{
+				language: "python",
+				code: 'sh("node ~/.agents/jev/jev-harness.mjs --profile default status")',
+			},
+			"ok-2",
+		);
+		const turn3 = turn(
+			"jev-s3",
+			"eval",
+			{
+				language: "python",
+				code: 'subprocess.run(["node", "~/.agents/jev/jev-harness.mjs", "--profile", "ci", "status"])',
+			},
+			"ok-3",
+		);
+
+		expect(guard.recordTurn(turn1)).toBeNull();
+		expect(guard.recordTurn(turn2)).toBeNull();
+		expect(guard.recordTurn(turn3)).toMatchObject({
+			kind: "repeated_tool_call",
+			toolName: "eval",
+			count: 3,
+		});
+	});
+
 	test("allows progressive read paging but detects re-reading same file/offset", () => {
 		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
 		// Progressive reads: not a loop
@@ -616,5 +668,54 @@ describe("ToolCallLoopGuard cyclical detection", () => {
 		guard.reset();
 		expect(guard.recordTurn(stepA(15))).toBeNull();
 		expect(guard.recordTurn(stepB(16))).toBeNull();
+	});
+
+	test("exemptionAlias maps dynamic transport calls onto exempt tool policy", () => {
+		const guard = new ToolCallLoopGuard({
+			threshold: 2,
+			exemptTools: ["await"],
+			exemptionAlias: call =>
+				call.name === "transport" &&
+				call.arguments &&
+				typeof call.arguments === "object" &&
+				typeof (call.arguments as Record<string, unknown>).target === "string"
+					? ((call.arguments as Record<string, unknown>).target as string)
+					: undefined,
+		});
+
+		expect(guard.recordTurn(turn("t1", "transport", { target: "await", id: "1" }, "done"))).toBeNull();
+		expect(guard.recordTurn(turn("t2", "transport", { target: "await", id: "1" }, "done"))).toBeNull();
+		expect(guard.recordTurn(turn("t3", "transport", { target: "bash", id: "1" }, "err"))).toBeNull();
+		expect(guard.recordTurn(turn("t4", "transport", { target: "bash", id: "1" }, "err"))).toMatchObject({
+			kind: "repeated_tool_call",
+			toolName: "transport",
+			count: 2,
+		});
+	});
+
+	test("productive exempt turns and injectedContext reset streaks, while idle useless polls preserve them", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 2, exemptTools: ["job"] });
+
+		// First bash call builds streak=1, followed by an idle useless poll -> streak preserved, next bash hits threshold=2.
+		expect(guard.recordTurn(turn("b1", "bash", { command: "make test" }, "fail"))).toBeNull();
+		const idlePoll = turn("p1", "job", { poll: ["j1"] }, "still running");
+		idlePoll.toolResults[0]!.useless = true;
+		expect(guard.recordTurn(idlePoll)).toBeNull();
+		expect(guard.recordTurn(turn("b2", "bash", { command: "make test" }, "fail"))).toMatchObject({
+			kind: "repeated_tool_call",
+			toolName: "bash",
+			count: 2,
+		});
+
+		// Productive exempt turn (useless !== true) resets the prior streak.
+		expect(guard.recordTurn(turn("b3", "bash", { command: "make build" }, "out"))).toBeNull();
+		expect(guard.recordTurn(turn("p2", "job", { poll: ["j1"] }, "finished"))).toBeNull();
+		expect(guard.recordTurn(turn("b4", "bash", { command: "make build" }, "out"))).toBeNull();
+
+		// Even a useless poll resets the streak when external injectedContext arrived on that turn.
+		const idleWithContext = turn("p3", "job", { poll: ["j2"] }, "still running");
+		idleWithContext.toolResults[0]!.useless = true;
+		expect(guard.recordTurn({ ...idleWithContext, injectedContext: true })).toBeNull();
+		expect(guard.recordTurn(turn("b5", "bash", { command: "make build" }, "out"))).toBeNull();
 	});
 });

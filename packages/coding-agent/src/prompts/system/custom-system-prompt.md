@@ -28,9 +28,10 @@ Main branch: {{git.mainBranch}}
 {{/if}}
 </project>
 {{/ifAny}}
-{{#if skills.length}}
+{{#ifAny skills.length omittedSkillCount}}
 Skills are specialized knowledge. Scan descriptions for your task domain.
 If a skill applies, you MUST read `skill://<name>` before proceeding.
+{{#if skills.length}}
 <skills>
 {{#list skills join="\n"}}
 <skill name="{{name}}">
@@ -38,7 +39,13 @@ If a skill applies, you MUST read `skill://<name>` before proceeding.
 </skill>
 {{/list}}
 </skills>
+{{#if omittedSkillCount}}
+({{omittedSkillCount}} more skills installed; read `skill://` to list all or `skill://?q=<keywords>` to search, then read `skill://<name>`.)
 {{/if}}
+{{else}}
+({{omittedSkillCount}} skills installed; read `skill://` to list all or `skill://?q=<keywords>` to search, then read `skill://<name>`.)
+{{/if}}
+{{/ifAny}}
 {{#if alwaysApplyRules.length}}
 {{#each alwaysApplyRules}}
 {{content}}

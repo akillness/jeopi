@@ -5,9 +5,12 @@
  * different model entries, and handles mixed-case tier names.
  */
 import { describe, expect, it } from "bun:test";
-import type { FetchImpl } from "jeopi-ai/types";
+import { streamGoogle } from "jeopi-ai/providers/google";
+import { streamGoogleGeminiCli } from "jeopi-ai/providers/google-gemini-cli";
+import type { Context, FetchImpl, Model } from "jeopi-ai/types";
 import type { UsageFetchContext, UsageFetchParams, UsageLimit } from "jeopi-ai/usage";
 import { antigravityRankingStrategy, antigravityUsageProvider } from "jeopi-ai/usage/google-antigravity";
+import { buildModel } from "jeopi-catalog/build";
 
 const accessTokenFixture = (() => {
 	const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
@@ -394,5 +397,134 @@ describe("antigravity ranking strategy", () => {
 		// ranked unfairly.
 		expect(antigravityRankingStrategy.windowDefaults.primaryMs).toBe(24 * 60 * 60 * 1000);
 		expect(antigravityRankingStrategy.windowDefaults.secondaryMs).toBe(24 * 60 * 60 * 1000);
+	});
+});
+
+describe("Google streaming usageMetadata input clamp", () => {
+	function sseResponse(payload: unknown): Response {
+		return new Response(`data: ${JSON.stringify(payload)}\n\n`, {
+			status: 200,
+			headers: { "content-type": "text/event-stream" },
+		});
+	}
+
+	const userContext: Context = { messages: [{ role: "user", content: "hello", timestamp: 1 }] };
+
+	const antigravityModel: Model<"google-gemini-cli"> = buildModel({
+		id: "gemini-3-flash",
+		name: "Gemini 3 Flash (Antigravity)",
+		api: "google-gemini-cli",
+		provider: "google-antigravity",
+		baseUrl: "https://example.com",
+		reasoning: true,
+		input: ["text"],
+		cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0 },
+		contextWindow: 1_000_000,
+		maxTokens: 32_000,
+	});
+
+	const directGoogleModel: Model<"google-generative-ai"> = buildModel({
+		id: "gemini-3-flash",
+		name: "Gemini 3 Flash",
+		api: "google-generative-ai",
+		provider: "google",
+		baseUrl: "",
+		reasoning: true,
+		input: ["text"],
+		cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0 },
+		contextWindow: 1_000_000,
+		maxTokens: 32_000,
+	});
+
+	it("clamps usage.input to 0 in google-gemini-cli when cachedContentTokenCount exceeds promptTokenCount", async () => {
+		const fetchMock: FetchImpl = async () =>
+			sseResponse({
+				response: {
+					candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+					usageMetadata: {
+						promptTokenCount: 1_200,
+						cachedContentTokenCount: 1_500,
+						candidatesTokenCount: 50,
+						thoughtsTokenCount: 10,
+						totalTokenCount: 1_560,
+					},
+				},
+			});
+
+		const result = await streamGoogleGeminiCli(antigravityModel, userContext, {
+			apiKey: JSON.stringify({ token: "token", projectId: "proj-1" }),
+			fetch: fetchMock,
+		}).result();
+
+		expect(result.usage.input).toBe(0);
+		expect(result.usage.cacheRead).toBe(1_500);
+		expect(result.usage.output).toBe(60);
+		expect(result.usage.cost.input).toBe(0);
+		expect(result.usage.cost.total).toBeGreaterThan(0);
+	});
+
+	it("clamps usage.input to 0 in google-shared when cachedContentTokenCount exceeds promptTokenCount", async () => {
+		const fetchMock: FetchImpl = async () =>
+			sseResponse({
+				candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+				usageMetadata: {
+					promptTokenCount: 800,
+					cachedContentTokenCount: 1_000,
+					candidatesTokenCount: 40,
+					thoughtsTokenCount: 5,
+					totalTokenCount: 1_045,
+				},
+			});
+
+		const result = await streamGoogle(directGoogleModel, userContext, {
+			apiKey: "test-key",
+			fetch: fetchMock,
+			useInteractionsApi: false,
+		}).result();
+
+		expect(result.usage.input).toBe(0);
+		expect(result.usage.cacheRead).toBe(1_000);
+		expect(result.usage.output).toBe(45);
+		expect(result.usage.cost.input).toBe(0);
+		expect(result.usage.cost.total).toBeGreaterThan(0);
+	});
+
+	it("subtracts cachedContentTokenCount from promptTokenCount normally when cached <= prompt", async () => {
+		const ccaFetch: FetchImpl = async () =>
+			sseResponse({
+				response: {
+					candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+					usageMetadata: {
+						promptTokenCount: 2_000,
+						cachedContentTokenCount: 1_400,
+						candidatesTokenCount: 50,
+						totalTokenCount: 2_050,
+					},
+				},
+			});
+		const ccaResult = await streamGoogleGeminiCli(antigravityModel, userContext, {
+			apiKey: JSON.stringify({ token: "token", projectId: "proj-1" }),
+			fetch: ccaFetch,
+		}).result();
+		expect(ccaResult.usage.input).toBe(600);
+		expect(ccaResult.usage.cacheRead).toBe(1_400);
+
+		const directFetch: FetchImpl = async () =>
+			sseResponse({
+				candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+				usageMetadata: {
+					promptTokenCount: 2_000,
+					cachedContentTokenCount: 1_400,
+					candidatesTokenCount: 50,
+					totalTokenCount: 2_050,
+				},
+			});
+		const directResult = await streamGoogle(directGoogleModel, userContext, {
+			apiKey: "test-key",
+			fetch: directFetch,
+			useInteractionsApi: false,
+		}).result();
+		expect(directResult.usage.input).toBe(600);
+		expect(directResult.usage.cacheRead).toBe(1_400);
 	});
 });

@@ -181,6 +181,14 @@ export interface CompactionSettings {
 /** Reserve applied when {@link CompactionSettings.reserveTokens} is unset. */
 export const DEFAULT_RESERVE_TOKENS = 16384;
 
+/**
+ * Default upper cap on auto-compaction threshold when neither `thresholdTokens`,
+ * `thresholdPercent`, nor `reserveTokens` is explicitly configured. Keeps
+ * 1M-window models below the 200K long-context 2x pricing cliff while remaining
+ * a no-op on <=200K windows (where `200_000 - 30_000 = 170_000`).
+ */
+export const DEFAULT_MAX_AUTO_COMPACT_THRESHOLD_TOKENS = 180_000;
+
 // reserveTokens is deliberately absent: an unset reserve is what marks it as
 // defaulted, which resolveBudgetReserveTokens needs to distinguish "user never
 // chose a reserve" from "user explicitly configured the default value".
@@ -321,10 +329,14 @@ export function resolveThresholdTokens(contextWindow: number, settings: Compacti
 	// never reaches the whole window even when the reserve resolves to 0.
 	const thresholdPercent = settings.thresholdPercent;
 	if (typeof thresholdPercent !== "number" || !Number.isFinite(thresholdPercent) || thresholdPercent <= 0) {
-		return Math.max(
+		const reserveBasedThreshold = Math.max(
 			0,
 			Math.min(contextWindow - 1, contextWindow - resolveBudgetReserveTokens(contextWindow, settings)),
 		);
+		if (settings.reserveTokens === undefined) {
+			return Math.min(DEFAULT_MAX_AUTO_COMPACT_THRESHOLD_TOKENS, reserveBasedThreshold);
+		}
+		return reserveBasedThreshold;
 	}
 	const clampedThresholdPercent = Math.min(99, Math.max(1, thresholdPercent));
 	return Math.floor(contextWindow * (clampedThresholdPercent / 100));

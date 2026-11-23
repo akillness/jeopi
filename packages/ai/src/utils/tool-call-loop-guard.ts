@@ -9,6 +9,8 @@ const ARGUMENT_SUMMARY_LIMIT = 400;
 export interface ToolCallLoopGuardOptions {
 	readonly threshold: number;
 	readonly exemptTools: readonly string[];
+	/** Lets transport calls inherit an exemption from their dispatched tool without exempting the transport itself. */
+	readonly exemptionAlias?: (call: ToolCall) => string | undefined;
 	/** Window size for alternating-pattern (A,B,A,B,…) cycle detection; defaults to 6. */
 	readonly cycleWindowSize?: number;
 	/** Redirects allowed before escalating to stalled_tool_call (`0` disables redirect-count escalation; default `2`). */
@@ -19,6 +21,8 @@ export interface ToolCallLoopGuardOptions {
 export interface ToolCallLoopTurn {
 	readonly message: AssistantMessage;
 	readonly toolResults: readonly ToolResultMessage[];
+	/** The turn also delivered context outside its tool results (extension `additionalContext`). */
+	readonly injectedContext?: boolean;
 }
 
 /** Details needed to steer the model away from a repeated tool call. */
@@ -88,7 +92,7 @@ function summarizeToolResult(toolResults: readonly ToolResultMessage[], toolCall
 const EVAL_MUTATION_RE =
 	/\b(?:write_text|write_bytes|os\.remove|os\.unlink|os\.rename|os\.replace|shutil\.\w+|os\.mkdir|os\.makedirs|Bun\.write|fs\.write\w*|fs\.rm\w*|fs\.unlink\w*|git\s+(?:commit|checkout|reset|apply|merge|rebase)|sed\s+-i|perl\s+-pi)\b|\.write\s*\(|open\s*\([^)]*,\s*["'][wa+]/;
 const EVAL_CMD_TOKEN_RE =
-	/\b(?:git\s+(?:status|diff|log|show|branch|rev-parse)|bun\s+(?:run\s+)?(?:typecheck|test|check|lint)|pytest|tsc|cargo\s+(?:test|check|clippy)|jev(?:\s+status)?|node\s+.*?jev-harness\.mjs\s+.*status)\b/g;
+	/\b(?:git\s+(?:status|diff|log|show|branch|rev-parse)|bun\s+(?:run\s+)?(?:typecheck|test|check|lint)|pytest|tsc|cargo\s+(?:test|check|clippy)|jev\s+status|node\s+.*?jev-harness\.mjs\s+.*status)\b/g;
 const EVAL_PATH_LITERAL_RE =
 	/["']((?:\.\/|\.\.\/|\/|~\/|src\/|packages\/|test\/|tests\/|crates\/|python\/)[^"'\n]{1,120})["']/g;
 const EVAL_API_TOKEN_RE = /\b(?:os\.walk|glob\.glob|os\.listdir|subprocess\.(?:run|check_output|Popen)|read_text)\b/g;
@@ -174,6 +178,7 @@ function buildEvalLookupKey(args: Record<string, unknown>, canonicalArgs: string
 export class ToolCallLoopGuard {
 	#threshold: number;
 	#exemptTools: ReadonlySet<string>;
+	#exemptionAlias: ((call: ToolCall) => string | undefined) | undefined;
 	#callStreaks = new Map<string, number>();
 	#unchanged: { fingerprint: bigint; count: number } | undefined;
 	#cycleWindowSize: number;
@@ -186,6 +191,7 @@ export class ToolCallLoopGuard {
 	constructor(options: ToolCallLoopGuardOptions) {
 		this.#threshold = Math.max(1, Math.trunc(options.threshold));
 		this.#exemptTools = new Set(options.exemptTools);
+		this.#exemptionAlias = options.exemptionAlias;
 		this.#cycleWindowSize = Math.max(3, Math.trunc(options.cycleWindowSize ?? 6));
 		this.#maxRedirectsBeforeStop = Math.max(0, Math.trunc(options.maxRedirectsBeforeStop ?? 2));
 	}
@@ -213,9 +219,11 @@ export class ToolCallLoopGuard {
 	}
 
 	#isExemptToolCall(toolCall: ToolCall): boolean {
-		if (!this.#exemptTools.has(toolCall.name)) return false;
+		const alias = this.#exemptionAlias?.(toolCall);
+		const effectiveName = alias !== undefined && this.#exemptTools.has(alias) ? alias : toolCall.name;
+		if (!this.#exemptTools.has(effectiveName)) return false;
 		if (
-			(toolCall.name === "subagent" || toolCall.name === "job") &&
+			(effectiveName === "subagent" || effectiveName === "job") &&
 			toolCall.arguments &&
 			typeof toolCall.arguments === "object" &&
 			(toolCall.arguments as Record<string, unknown>).action === "list"
@@ -270,7 +278,14 @@ export class ToolCallLoopGuard {
 
 		const trackedCalls = allToolCalls.filter(call => !this.#isExemptToolCall(call));
 		if (trackedCalls.length === 0) {
-			this.#unchanged = undefined;
+			const idle =
+				!turn.injectedContext &&
+				allToolCalls.every(tc => turn.toolResults.find(r => r.toolCallId === tc.id)?.useless === true);
+			if (!idle) {
+				this.#reset();
+			} else {
+				this.#unchanged = undefined;
+			}
 			return null;
 		}
 

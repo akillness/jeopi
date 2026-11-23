@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Capped fully defaulted auto-compaction thresholds on large-context (>200K) windows at `DEFAULT_MAX_AUTO_COMPACT_THRESHOLD_TOKENS` (`180_000`) in `resolveThresholdTokens` while preserving existing behavior for <=200K windows and explicit `thresholdTokens`, `thresholdPercent`, or `reserveTokens` overrides.
+
+### Fixed
+
+- Fixed `WorkflowLoopGuard` so `softBudgetWarningRatio: 0` explicitly disables soft budget warnings instead of resetting to `0.8`, tracked cost and output-token soft warnings independently, added `glob`/`search_tool_bm25` to `READ_ONLY_TOOLS`, and improved `toolTarget()` target keys for `glob` and `ast_grep`.
+- Fixed `agentLoop` so soft budget warnings firing on terminal final answers (`hasMoreToolCalls === false`) still notify `onWorkflowGuardSoftWarning` without injecting a spurious extra LLM turn, while preserving soft warnings alongside length-truncation continuation messages when the loop continues.
+
 ## [16.7.8] - 2026-11-23
 
 ### Added

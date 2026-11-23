@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `skills.maxPromptSkills` (default `40`) and `skills.maxPromptChars` (default `16000`) settings and `selectPromptSkills()` to deterministically bound inline `<skills>` prompt metadata (prioritizing project-scoped skills with truncated single-line descriptions and an omission discovery notice) instead of injecting unbounded skill catalogs into every session and subagent.
+- Added bare listing (`skill://`) and ranked keyword search (`skill://?q=<keywords>&limit=<n>`) to `SkillProtocolHandler` so omitted skills remain discoverable on demand.
+- Added opt-in `secrets.redactPii` setting (default `false`) and `collectBuiltinPiiPatterns()` wired into `SecretObfuscator` for deterministic, reversible redaction of common PII and credential patterns (emails, SSN/RRN, Korean mobile numbers, payment card numbers, PEM private keys, API keys, and JWTs) across provider contexts, advisor transcripts, and `/share` snapshots.
+
+### Changed
+
+- Recalibrated `model.workflowGuard.maxCostUsdPerRun` default from `$2.00` to `$10.00` now that prompt bloat and cache-invalidation root causes are resolved.
+- Gated `## MCP Server Instructions` injection on active MCP servers (and `mcp.discoveryDefaultServers`) when tool discovery is enabled so deferred servers do not inflate Turn-1 prompts before activation.
+
+### Fixed
+
+- Fixed deferred MCP auto-discovery race condition where incremental `onToolsChanged` callbacks during in-flight `discoverAndConnect` force-activated and persisted fast-connecting MCP servers into `mcp_tool_selection` before `tools.discoveryMode: "auto"` flipped on; bulk `activateAll` refreshes no longer persist fake `mcp_tool_selection` entries, and `enableMCPDiscovery()` drops non-persisted bulk activations.
+- Strengthened `guardContextHookMessages` to reject `context` hooks that compress or strip trailing active `toolResult` messages (`compressed_active_tool_results`), preventing repeated re-read loops while allowing historical summarization.
+- Synced live `model.workflowGuard.*` settings before `agent.continue()` continuations as well as fresh prompts.
+
 ## [16.7.10] - 2026-11-23
 
 ### Fixed

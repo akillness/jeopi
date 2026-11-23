@@ -326,6 +326,55 @@ describe("AgentSession MCP discovery", () => {
 		expect(session.systemPrompt).toEqual(["tools:read,mcp__docs_search,mcp__slack_send_message"]);
 	});
 
+	it("does not persist mcp_tool_selection on activateAll and drops bulk-activated tools when enableMCPDiscovery flips on", async () => {
+		const readTool = createBasicTool("read", "Read");
+		const toolRegistry = new Map([[readTool.name, readTool]]);
+		const sessionManager = SessionManager.inMemory();
+		const agent = new Agent({
+			initialState: {
+				model: createModel(),
+				systemPrompt: ["initial"],
+				tools: [readTool],
+				messages: [],
+			},
+		});
+		const session = new AgentSession({
+			agent,
+			sessionManager,
+			settings: Settings.isolated({ "mcp.discoveryMode": false }),
+			modelRegistry: {} as never,
+			toolRegistry,
+			mcpDiscoveryEnabled: false,
+			defaultSelectedMCPServerNames: ["slack"],
+			rebuildSystemPrompt: async toolNames => ({
+				systemPrompt: [`tools:${toolNames.join(",")}`],
+			}),
+		});
+		sessions.push(session);
+
+		const mcpTools = [
+			createMcpCustomTool("mcp__docs_search", "docs", "search", "Search internal docs", ["query"]),
+			createMcpCustomTool("mcp__slack_send_message", "slack", "send_message", "Send a Slack message", [
+				"channel",
+				"text",
+			]),
+		];
+		await session.refreshMCPTools(mcpTools, { activateAll: true });
+
+		expect(session.getActiveToolNames()).toEqual(["read", "mcp__docs_search", "mcp__slack_send_message"]);
+		// Bulk activation must NOT persist an mcp_tool_selection entry into the session.
+		expect(sessionManager.getEntries().filter(entry => entry.type === "mcp_tool_selection")).toEqual([]);
+
+		// Flipping discovery on must drop non-persisted bulk-activated tools (keeping only configured defaults).
+		session.enableMCPDiscovery();
+		expect(session.isMCPDiscoveryEnabled()).toBe(true);
+		expect(session.getSelectedMCPToolNames()).toEqual(["mcp__slack_send_message"]);
+
+		await session.refreshMCPTools(mcpTools);
+		expect(session.getActiveToolNames()).toEqual(["read", "mcp__slack_send_message"]);
+		expect(session.getActiveToolNames()).not.toContain("mcp__docs_search");
+	});
+
 	it("preserves directly activated MCP tools across refreshes in discovery mode", async () => {
 		const readTool = createBasicTool("read", "Read");
 		const docsSearchTool = createMcpTool("mcp__docs_search", "docs", "search", "Search internal docs", ["query"]);

@@ -1125,7 +1125,7 @@ export const SETTINGS_SCHEMA = {
 
 	"model.workflowGuard.maxCostUsdPerRun": {
 		type: "number",
-		default: 2.0,
+		default: 10.0,
 		ui: {
 			tab: "model",
 			group: "Thinking",
@@ -1133,10 +1133,10 @@ export const SETTINGS_SCHEMA = {
 			description: "Maximum cumulative USD cost allowed per autonomous run before stopping (0 disables).",
 			options: [
 				{ value: "0", label: "Disabled", description: "No per-run USD cost cap." },
-				{ value: "1", label: "$1.00", description: "Stop run after $1.00 cumulative cost." },
-				{ value: "2", label: "$2.00", description: "Stop run after $2.00 cumulative cost (default)." },
+				{ value: "2", label: "$2.00", description: "Stop run after $2.00 cumulative cost." },
 				{ value: "5", label: "$5.00", description: "Stop run after $5.00 cumulative cost." },
-				{ value: "10", label: "$10.00", description: "Stop run after $10.00 cumulative cost." },
+				{ value: "10", label: "$10.00", description: "Stop run after $10.00 cumulative cost (default)." },
+				{ value: "25", label: "$25.00", description: "Stop run after $25.00 cumulative cost." },
 			],
 		},
 	},
@@ -4405,6 +4405,30 @@ export const SETTINGS_SCHEMA = {
 
 	"skills.includeSkills": { type: "array", default: [] as string[] },
 
+	"skills.maxPromptSkills": {
+		type: "number",
+		default: 40,
+		ui: {
+			tab: "tasks",
+			group: "Commands & Skills",
+			label: "Max Skills In Prompt",
+			description:
+				"Maximum number of skills listed inline in the system prompt (0 = unlimited). Additional skills remain discoverable via skill://.",
+		},
+	},
+
+	"skills.maxPromptChars": {
+		type: "number",
+		default: 16000,
+		ui: {
+			tab: "tasks",
+			group: "Commands & Skills",
+			label: "Max Skill Prompt Chars",
+			description:
+				"Maximum total characters for inline <skills> metadata in the system prompt (0 = unlimited). Additional skills remain discoverable via skill://.",
+		},
+	},
+
 	// Commands
 	"commands.enableClaudeUser": {
 		type: "boolean",
@@ -4463,6 +4487,18 @@ export const SETTINGS_SCHEMA = {
 			group: "Privacy",
 			label: "Hide Secrets",
 			description: "Obfuscate secrets before sending to AI providers",
+		},
+	},
+
+	"secrets.redactPii": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "providers",
+			group: "Privacy",
+			label: "Redact PII & Credentials",
+			description:
+				"Obfuscate common PII and credential patterns (emails, SSN/RRN, phone numbers, card numbers, API keys, JWTs, private keys) before sending to AI providers",
 		},
 	},
 
@@ -5286,6 +5322,8 @@ export interface SkillsSettings {
 	ignoredSkills?: string[];
 	includeSkills?: string[];
 	disabledExtensions?: string[];
+	maxPromptSkills?: number;
+	maxPromptChars?: number;
 }
 
 export interface CommitSettings {

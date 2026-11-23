@@ -2,14 +2,17 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage } from "jeopi-ai";
+import { type } from "arktype";
+import { AuthStorage, type TSchema } from "jeopi-ai";
 import { getBundledModel } from "jeopi-catalog/models";
 import { ModelRegistry } from "jeopi-cli/config/model-registry";
 import { Settings } from "jeopi-cli/config/settings";
+import type { CustomTool } from "jeopi-cli/extensibility/custom-tools/types";
+import { type MCPLoadResult, MCPManager, type MCPToolDetails } from "jeopi-cli/mcp";
 import { createAgentSession } from "jeopi-cli/sdk";
 import { SessionManager } from "jeopi-cli/session/session-manager";
 import { getAgentDir, removeSyncWithRetries, Snowflake, setAgentDir } from "jeopi-utils";
-import { MANY_TOOL_COUNT } from "./fixtures/many-tools-mcp";
+import { MANY_TOOL_COUNT, manyToolName } from "./fixtures/many-tools-mcp";
 
 // Contracts for deferred (hasUI) MCP discovery follow-ups:
 //
@@ -24,6 +27,7 @@ import { MANY_TOOL_COUNT } from "./fixtures/many-tools-mcp";
 //    by the late discovery result: no tools resurrected onto the disposed
 //    session and the manager's transports disconnected.
 const FIXTURE_PATH = path.join(import.meta.dir, "fixtures", "many-tools-mcp.ts");
+const SMALL_FIXTURE_PATH = path.join(import.meta.dir, "fixtures", "instructions-mcp.ts");
 
 describe("createAgentSession deferred MCP auto discovery", () => {
 	let registryDir: string;
@@ -122,6 +126,138 @@ describe("createAgentSession deferred MCP auto discovery", () => {
 			expect(activeNames.filter(name => name.startsWith("mcp__"))).toEqual([]);
 			const discoverable = session.getDiscoverableTools({ source: "mcp" });
 			expect(discoverable.length).toBe(MANY_TOOL_COUNT);
+		} finally {
+			await session.dispose();
+		}
+	}, 40_000);
+
+	it("does not force-activate or persist incremental onToolsChanged tools while deferred discoverAndConnect is in flight", async () => {
+		const makeMcpCustomTool = (serverName: string, mcpToolName: string): CustomTool<TSchema, MCPToolDetails> =>
+			({
+				name: `mcp__${serverName}_${mcpToolName}`,
+				label: `${serverName}/${mcpToolName}`,
+				description: `Stub tool ${serverName}/${mcpToolName}`,
+				parameters: type({}),
+				mcpServerName: serverName,
+				mcpToolName,
+				async execute() {
+					return { content: [{ type: "text", text: "ok" }] };
+				},
+			}) as unknown as CustomTool<TSchema, MCPToolDetails>;
+
+		let onToolsChangedHandler: ((tools: CustomTool<TSchema, MCPToolDetails>[]) => void) | undefined;
+		const origSetOnToolsChanged = MCPManager.prototype.setOnToolsChanged;
+		spyOn(MCPManager.prototype, "setOnToolsChanged").mockImplementation(function (
+			this: MCPManager,
+			handler: (tools: CustomTool<TSchema, MCPToolDetails>[]) => void,
+		) {
+			onToolsChangedHandler = handler;
+			return origSetOnToolsChanged.call(this, handler);
+		});
+
+		const discoverStarted = Promise.withResolvers<void>();
+		const discoverDeferred = Promise.withResolvers<MCPLoadResult>();
+		spyOn(MCPManager.prototype, "discoverAndConnect").mockImplementation(() => {
+			discoverStarted.resolve();
+			return discoverDeferred.promise;
+		});
+
+		const sessionManager = SessionManager.inMemory();
+		const { session } = await createAgentSession({
+			...baseOptions(),
+			sessionManager,
+			settings: Settings.isolated({ "tools.discoveryMode": "auto" }),
+		});
+		try {
+			await discoverStarted.promise;
+			expect(onToolsChangedHandler).toBeDefined();
+			expect(session.isMCPDiscoveryEnabled()).toBe(false);
+
+			// Observe each `refreshMCPTools` completion deterministically without timers.
+			const origRefresh = session.refreshMCPTools.bind(session);
+			const firstRefreshDone = Promise.withResolvers<void>();
+			const secondRefreshDone = Promise.withResolvers<void>();
+			let refreshCalls = 0;
+			spyOn(session, "refreshMCPTools").mockImplementation(async (tools, opts) => {
+				await origRefresh(tools, opts);
+				refreshCalls += 1;
+				if (refreshCalls === 1) firstRefreshDone.resolve();
+				if (refreshCalls === 2) secondRefreshDone.resolve();
+			});
+
+			// Fire incremental `onToolsChanged` for a small fast server while `discoverAndConnect` is still pending.
+			const fastTool = makeMcpCustomTool("fast", "ping");
+			onToolsChangedHandler!([fastTool]);
+			await firstRefreshDone.promise;
+
+			// Must NOT force-activate or persist the incremental tool while discovery is still in flight.
+			expect(session.isMCPDiscoveryEnabled()).toBe(false);
+			expect(session.getToolByName("mcp__fast_ping")).toBeDefined();
+			expect(session.getActiveToolNames().filter(name => name.startsWith("mcp__"))).toEqual([]);
+			expect(sessionManager.getEntries().filter(entry => entry.type === "mcp_tool_selection")).toEqual([]);
+
+			// Now finish `discoverAndConnect` with enough tools to cross TOOL_DISCOVERY_AUTO_THRESHOLD (40).
+			const allTools = [
+				fastTool,
+				...Array.from({ length: MANY_TOOL_COUNT }, (_, i) => makeMcpCustomTool("many", manyToolName(i))),
+			];
+			discoverDeferred.resolve({
+				tools: allTools,
+				errors: new Map(),
+				connectedServers: ["fast", "many"],
+				exaApiKeys: [],
+			});
+			await secondRefreshDone.promise;
+
+			expect(session.isMCPDiscoveryEnabled()).toBe(true);
+			const activeNames = session.getActiveToolNames();
+			expect(activeNames).toContain("search_tool_bm25");
+			expect(activeNames.filter(name => name.startsWith("mcp__"))).toEqual([]);
+			expect(session.getDiscoverableTools({ source: "mcp" })).toHaveLength(MANY_TOOL_COUNT + 1);
+			expect(sessionManager.getEntries().filter(entry => entry.type === "mcp_tool_selection")).toEqual([]);
+		} finally {
+			await session.dispose();
+		}
+	});
+
+	it("drops an early-connected server's tools when a slower server later pushes total tools past the auto threshold", async () => {
+		// Real two-server integration test: `fast` connects before STARTUP_TIMEOUT_MS
+		// while `many` (45 tools) finishes later via background `onToolsChanged`.
+		// Once `many` pushes the total past 40, discovery must upgrade, `fast`'s tool
+		// must NOT stick around as active, and no `mcp_tool_selection` may be persisted.
+		fs.writeFileSync(
+			path.join(tempDir, ".mcp.json"),
+			JSON.stringify({
+				mcpServers: {
+					fast: { type: "stdio", command: process.execPath, args: [SMALL_FIXTURE_PATH] },
+					many: { type: "stdio", command: process.execPath, args: [FIXTURE_PATH, "--delay", "450"] },
+				},
+			}),
+		);
+		const sessionManager = SessionManager.inMemory();
+		const { session } = await createAgentSession({
+			...baseOptions(),
+			sessionManager,
+			settings: Settings.isolated({ "tools.discoveryMode": "auto" }),
+		});
+		try {
+			// Genuine integration wait: real stdio subprocesses connect fire-and-forget
+			// with no awaitable completion promise exposed on the SDK result.
+			const deadline = Date.now() + 30_000;
+			while (
+				(!session.isMCPDiscoveryEnabled() ||
+					session.getDiscoverableTools({ source: "mcp" }).length < MANY_TOOL_COUNT + 1) &&
+				Date.now() < deadline
+			) {
+				await Bun.sleep(50);
+			}
+
+			expect(session.isMCPDiscoveryEnabled()).toBe(true);
+			const activeNames = session.getActiveToolNames();
+			expect(activeNames).toContain("search_tool_bm25");
+			expect(activeNames.filter(name => name.startsWith("mcp__"))).toEqual([]);
+			expect(session.getDiscoverableTools({ source: "mcp" })).toHaveLength(MANY_TOOL_COUNT + 1);
+			expect(sessionManager.getEntries().filter(entry => entry.type === "mcp_tool_selection")).toEqual([]);
 		} finally {
 			await session.dispose();
 		}

@@ -1021,7 +1021,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						const cacheReadTokens = responseData.usageMetadata.cachedContentTokenCount || 0;
 						const thinkingTokens = responseData.usageMetadata.thoughtsTokenCount || 0;
 						output.usage = {
-							input: promptTokens - cacheReadTokens,
+							input: Math.max(0, promptTokens - cacheReadTokens),
 							output: (responseData.usageMetadata.candidatesTokenCount || 0) + thinkingTokens,
 							cacheRead: cacheReadTokens,
 							cacheWrite: 0,

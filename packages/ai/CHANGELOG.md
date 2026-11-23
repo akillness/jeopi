@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Clamped `usage.input` to `>= 0` in `google-gemini-cli` and `google-shared` when providers report `cachedContentTokenCount > promptTokenCount`.
+- Narrowed `EVAL_CMD_TOKEN_RE` in `ToolCallLoopGuard` from `jev(?:\s+status)?` to `jev\s+status` so distinct read-only `eval` calls mentioning `jev` in paths or strings do not collapse into false-positive loop detections.
+
 ## [16.7.8] - 2026-11-23
 
 ### Added

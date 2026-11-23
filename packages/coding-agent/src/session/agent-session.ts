@@ -239,6 +239,7 @@ import type { Goal, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
 import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
 import { IrcBus, type IrcMessage } from "../irc/bus";
+import { parseMCPToolName } from "../mcp/tool-bridge";
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
@@ -2279,6 +2280,7 @@ export class AgentSession {
 				if (!first) return;
 				if (this.#yieldTerminationPending) return;
 				if (!this.#consumeUserPromptContinuation("yield-queue")) return;
+				this.#syncWorkflowGuardConfig();
 				await this.agent.prompt(messages.length === 1 ? first : messages);
 			},
 			scheduleIdleFlush: run => {
@@ -4453,6 +4455,7 @@ export class AgentSession {
 							this.#skipAgentContinue("continuation-cap", options);
 							return;
 						}
+						this.#syncWorkflowGuardConfig();
 						await this.agent.continue();
 					} catch (error) {
 						logger.warn("agent.continue failed after scheduling", {
@@ -5040,6 +5043,7 @@ export class AgentSession {
 					return;
 				}
 				try {
+					this.#syncWorkflowGuardConfig();
 					await this.agent.continue();
 				} catch {
 					this.#resolveTtsrResume();
@@ -5128,11 +5132,15 @@ export class AgentSession {
 		const maxCostUsd = this.settings.get("model.workflowGuard.maxCostUsdPerRun");
 		const configuredOutputTokens = this.settings.get("model.workflowGuard.maxOutputTokensPerRun");
 		const softBudgetWarningRatio = this.settings.get("model.workflowGuard.softBudgetWarningRatio");
+		const turnBudget = this.sessionManager.getTurnBudget();
+		const effectiveHardTurnOutputTokens =
+			hardTurnOutputTokens ??
+			(turnBudget.hard && turnBudget.total !== null && turnBudget.total > 0 ? turnBudget.total : undefined);
 		const maxOutputTokens =
-			hardTurnOutputTokens !== undefined && hardTurnOutputTokens > 0
+			effectiveHardTurnOutputTokens !== undefined && effectiveHardTurnOutputTokens > 0
 				? configuredOutputTokens > 0
-					? Math.min(configuredOutputTokens, hardTurnOutputTokens)
-					: hardTurnOutputTokens
+					? Math.min(configuredOutputTokens, effectiveHardTurnOutputTokens)
+					: effectiveHardTurnOutputTokens
 				: configuredOutputTokens;
 		this.agent.setWorkflowGuard({
 			...existing,
@@ -5338,6 +5346,7 @@ export class AgentSession {
 			});
 			this.sessionManager.appendCustomMessageEntry(GEMINI_TOOL_REMINDER_TYPE, content, false, details, "agent");
 			try {
+				this.#syncWorkflowGuardConfig();
 				await this.agent.continue();
 			} catch (err) {
 				logger.warn("gemini tool-call reminder continue failed", { error: String(err) });
@@ -6423,7 +6432,14 @@ export class AgentSession {
 	 * discovery is never downgraded mid-session.
 	 */
 	enableMCPDiscovery(): void {
+		if (this.#mcpDiscoveryEnabled) return;
 		this.#mcpDiscoveryEnabled = true;
+		const sessionContext = this.buildDisplaySessionContext();
+		this.#selectedMCPToolNames = new Set(
+			sessionContext.hasPersistedMCPToolSelection
+				? this.#filterSelectableMCPToolNames(sessionContext.selectedMCPToolNames)
+				: this.#getConfiguredDefaultSelectedMCPToolNames(),
+		);
 	}
 
 	getSelectedMCPToolNames(): string[] {
@@ -6920,9 +6936,26 @@ export class AgentSession {
 		let instructionsSegment = "";
 		const serverInstructions = this.#getMcpServerInstructions?.();
 		if (serverInstructions && serverInstructions.size > 0) {
+			let activeMCPServers: Set<string> | undefined;
+			if (this.#mcpDiscoveryEnabled) {
+				activeMCPServers = new Set<string>(this.#defaultSelectedMCPServerNames);
+				for (const tool of tools) {
+					if (!isMCPToolName(tool.name)) continue;
+					const toolRecord = tool as AgentTool & { mcpServerName?: string };
+					const serverName =
+						(typeof toolRecord.mcpServerName === "string" && toolRecord.mcpServerName.length > 0
+							? toolRecord.mcpServerName
+							: this.#discoverableMCPTools.get(tool.name)?.serverName) ??
+						parseMCPToolName(tool.name)?.serverName;
+					if (serverName) {
+						activeMCPServers.add(serverName);
+					}
+				}
+			}
 			// Sort by server name so transport flap order does not perturb the signature.
 			const entries: string[] = [];
 			for (const [server, instructions] of serverInstructions) {
+				if (activeMCPServers && !activeMCPServers.has(server)) continue;
 				entries.push(`${server}=${instructions}`);
 			}
 			entries.sort();
@@ -6941,7 +6974,10 @@ export class AgentSession {
 	 *   regardless of prior selection state. Used when an ACP client provisions MCP servers
 	 *   for a session where MCP discovery is disabled.
 	 */
-	async refreshMCPTools(mcpTools: CustomTool[], options?: { activateAll?: boolean }): Promise<void> {
+	async refreshMCPTools(
+		mcpTools: CustomTool[],
+		options?: { activateAll?: boolean; persistMCPSelection?: boolean },
+	): Promise<void> {
 		const previousSelectedMCPToolNames = this.getSelectedMCPToolNames();
 		const existingNames = Array.from(this.#toolRegistry.keys());
 		for (const name of existingNames) {
@@ -6973,7 +7009,15 @@ export class AgentSession {
 
 		this.#setDiscoverableMCPTools(this.#collectDiscoverableMCPToolsFromRegistry());
 		this.#pruneSelectedMCPToolNames();
-		if (!this.buildDisplaySessionContext().hasPersistedMCPToolSelection) {
+		const sessionContext = this.buildDisplaySessionContext();
+		if (sessionContext.hasPersistedMCPToolSelection) {
+			if (options?.persistMCPSelection === false) {
+				this.#selectedMCPToolNames = new Set([
+					...this.#selectedMCPToolNames,
+					...this.#filterSelectableMCPToolNames(sessionContext.selectedMCPToolNames),
+				]);
+			}
+		} else {
 			this.#selectedMCPToolNames = new Set([
 				...this.#selectedMCPToolNames,
 				...this.#getConfiguredDefaultSelectedMCPToolNames(),
@@ -6992,12 +7036,18 @@ export class AgentSession {
 			// only become active if they're already active).
 			const newMcpNames = mcpTools.map(t => t.name);
 			const nextActive = [...new Set([...this.#getActiveNonMCPToolNames(), ...newMcpNames])];
-			await this.#applyActiveToolsByName(nextActive, { previousSelectedMCPToolNames });
+			await this.#applyActiveToolsByName(nextActive, {
+				previousSelectedMCPToolNames,
+				persistMCPSelection: false,
+			});
 			return;
 		}
 
 		const nextActive = [...this.#getActiveNonMCPToolNames(), ...this.getSelectedMCPToolNames()];
-		await this.#applyActiveToolsByName(nextActive, { previousSelectedMCPToolNames });
+		await this.#applyActiveToolsByName(nextActive, {
+			previousSelectedMCPToolNames,
+			persistMCPSelection: options?.persistMCPSelection,
+		});
 	}
 
 	/**

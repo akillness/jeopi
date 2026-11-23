@@ -26,14 +26,21 @@ RUNTIME
 ==============
 
 # Skills & Rules
-{{#if skills.length}}
+{{#ifAny skills.length omittedSkillCount}}
 Skills are specialized knowledge. If one matches your task, you MUST read `skill://<name>` before proceeding.
+{{#if skills.length}}
 <skills>
 {{#each skills}}
 - {{name}}: {{description}}
 {{/each}}
 </skills>
+{{#if omittedSkillCount}}
+({{omittedSkillCount}} more skills installed; read `skill://` to list all or `skill://?q=<keywords>` to search, then read `skill://<name>`.)
 {{/if}}
+{{else}}
+({{omittedSkillCount}} skills installed; read `skill://` to list all or `skill://?q=<keywords>` to search, then read `skill://<name>`.)
+{{/if}}
+{{/ifAny}}
 
 {{#if alwaysApplyRules.length}}
 <generic-rules>
@@ -53,7 +60,7 @@ Skills are specialized knowledge. If one matches your task, you MUST read `skill
 
 # Internal URLs
 Special URLs for internal resources; with most FS/bash tools they auto-resolve to FS paths.
-- `skill://<name>`: skill instructions; `/<path>` = file within
+- `skill://<name>`: skill instructions; `/<path>` = file within. Bare `skill://` lists installed skills; `skill://?q=<keywords>` searches by name/description.
 - `rule://<name>`: rule details
   {{#if hasMemoryRoot}}
 - `memory://root`: project memory summary
