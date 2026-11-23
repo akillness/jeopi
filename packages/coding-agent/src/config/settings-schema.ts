@@ -471,6 +471,25 @@ export const SETTINGS_SCHEMA = {
 			condition: "advisorEnabled",
 		},
 	},
+	"advisor.maxConsecutiveBlockers": {
+		type: "number",
+		default: 2,
+		ui: {
+			tab: "model",
+			group: "Advisor",
+			label: "Advisor Max Consecutive Blockers",
+			description:
+				"Pause and ask the user for intervention after this many consecutive advisor blockers without user input (0 disables).",
+			options: [
+				{ value: "0", label: "Disabled", description: "Never pause automatically on consecutive blockers." },
+				{ value: "1", label: "1 blocker", description: "Pause after the first unaddressed blocker." },
+				{ value: "2", label: "2 blockers", description: "Pause after 2 consecutive blockers without user input." },
+				{ value: "3", label: "3 blockers", description: "Pause after 3 consecutive blockers without user input." },
+				{ value: "5", label: "5 blockers", description: "Pause after 5 consecutive blockers without user input." },
+			],
+			condition: "advisorEnabled",
+		},
+	},
 	shellPath: { type: "string", default: undefined },
 	"git.enabled": {
 		type: "boolean",
@@ -1082,6 +1101,79 @@ export const SETTINGS_SCHEMA = {
 			group: "Thinking",
 			label: "Tool-Call Loop Exempt Tools",
 			description: "Tool names that may repeat consecutively without triggering the cross-turn loop guard",
+		},
+	},
+
+	"model.toolCallLoopGuard.maxRedirectsBeforeStop": {
+		type: "number",
+		default: 2,
+		ui: {
+			tab: "model",
+			group: "Thinking",
+			label: "Tool-Call Loop Redirect Grace",
+			description:
+				"Number of loop-guard redirects allowed before stopping a stalled run (0 disables redirect-count escalation).",
+			options: [
+				{ value: "0", label: "Disabled", description: "Disable redirect-count escalation." },
+				{ value: "1", label: "1 redirect", description: "Stop on the second repeated loop detection." },
+				{ value: "2", label: "2 redirects", description: "Allow 2 redirects before stopping (default)." },
+				{ value: "3", label: "3 redirects", description: "Allow 3 redirects before stopping." },
+				{ value: "5", label: "5 redirects", description: "Allow 5 redirects before stopping." },
+			],
+		},
+	},
+
+	"model.workflowGuard.maxCostUsdPerRun": {
+		type: "number",
+		default: 2.0,
+		ui: {
+			tab: "model",
+			group: "Thinking",
+			label: "Workflow Guard Max Cost (USD)",
+			description: "Maximum cumulative USD cost allowed per autonomous run before stopping (0 disables).",
+			options: [
+				{ value: "0", label: "Disabled", description: "No per-run USD cost cap." },
+				{ value: "1", label: "$1.00", description: "Stop run after $1.00 cumulative cost." },
+				{ value: "2", label: "$2.00", description: "Stop run after $2.00 cumulative cost (default)." },
+				{ value: "5", label: "$5.00", description: "Stop run after $5.00 cumulative cost." },
+				{ value: "10", label: "$10.00", description: "Stop run after $10.00 cumulative cost." },
+			],
+		},
+	},
+
+	"model.workflowGuard.maxOutputTokensPerRun": {
+		type: "number",
+		default: 64000,
+		ui: {
+			tab: "model",
+			group: "Thinking",
+			label: "Workflow Guard Max Output Tokens",
+			description: "Maximum cumulative output tokens allowed per autonomous run before stopping (0 disables).",
+			options: [
+				{ value: "0", label: "Disabled", description: "No per-run output token cap." },
+				{ value: "32000", label: "32k tokens", description: "Stop run after 32,000 output tokens." },
+				{ value: "64000", label: "64k tokens", description: "Stop run after 64,000 output tokens (default)." },
+				{ value: "128000", label: "128k tokens", description: "Stop run after 128,000 output tokens." },
+				{ value: "256000", label: "256k tokens", description: "Stop run after 256,000 output tokens." },
+			],
+		},
+	},
+
+	"model.workflowGuard.softBudgetWarningRatio": {
+		type: "number",
+		default: 0.8,
+		ui: {
+			tab: "model",
+			group: "Thinking",
+			label: "Workflow Guard Warning Ratio",
+			description:
+				"Fraction of cost or output-token budget at which to emit a one-shot soft warning before stopping (0 disables).",
+			options: [
+				{ value: "0", label: "Disabled", description: "Do not emit soft budget warnings." },
+				{ value: "0.7", label: "70%", description: "Warn at 70% of cost or output-token budget." },
+				{ value: "0.8", label: "80%", description: "Warn at 80% of cost or output-token budget (default)." },
+				{ value: "0.9", label: "90%", description: "Warn at 90% of cost or output-token budget." },
+			],
 		},
 	},
 

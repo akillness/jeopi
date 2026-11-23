@@ -1,5 +1,8 @@
 import { scheduler } from "node:timers/promises";
 
+// Google's structured metadata uses Go duration strings, including abbreviated durations like `30m`.
+const GOOGLE_RPC_RESET_DELAY_PATTERN =
+	/"quotaResetDelay"\s*:\s*"((?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)(ms|s))?)"/i;
 // "reset after 1h2m3s" / "Resets in 28h48m25.991s" / "10m15s" / "39s"
 const DURATION_TEXT_PATTERN = /([0-9.]+\s*(?:ms|h|m|s)(?:\s*[0-9.]+\s*(?:ms|h|m|s))*)/i;
 const QUOTA_RESET_PATTERN = new RegExp(`(?:reset after|resets?\\s+in)\\s+${DURATION_TEXT_PATTERN.source}`, "i");
@@ -55,6 +58,17 @@ export function extractRetryHint(source: Response | Headers | null | undefined, 
 	}
 
 	if (!body) return undefined;
+
+	// Prefer structured quotaResetDelay metadata to earlier display-oriented reset text.
+	const quotaResetDelay = GOOGLE_RPC_RESET_DELAY_PATTERN.exec(body);
+	if (quotaResetDelay?.[1]) {
+		const quotaResetDelayMs = Math.floor(
+			Number(quotaResetDelay[2] ?? 0) * 3_600_000 +
+				Number(quotaResetDelay[3] ?? 0) * 60_000 +
+				Number(quotaResetDelay[4] ?? 0) * (quotaResetDelay[5]?.toLowerCase() === "ms" ? 1 : 1_000),
+		);
+		if (Number.isFinite(quotaResetDelayMs) && quotaResetDelayMs >= 0) return quotaResetDelayMs;
+	}
 
 	const quotaMatch = QUOTA_RESET_PATTERN.exec(body);
 	if (quotaMatch?.[1]) {

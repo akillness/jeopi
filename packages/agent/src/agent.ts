@@ -23,6 +23,7 @@ import {
 	type ToolResultMessage,
 } from "jeopi-ai";
 import type { Dialect } from "jeopi-ai/dialect";
+import * as AIError from "jeopi-ai/error";
 import type { HarmonyAuditEvent } from "jeopi-ai/utils/harmony-leak";
 import { preferredDialect } from "jeopi-catalog/identity";
 import { getBundledModel } from "jeopi-catalog/models";
@@ -53,7 +54,7 @@ import type {
 } from "./types";
 import { isSoftToolRequirement } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";
-import type { WorkflowGuardStop, WorkflowLoopGuardConfig } from "./workflow-guard";
+import type { WorkflowGuardSoftWarning, WorkflowGuardStop, WorkflowLoopGuardConfig } from "./workflow-guard";
 
 /**
  * Default convertToLlm: Keep only LLM-compatible replay messages.
@@ -202,6 +203,10 @@ export interface AgentOptions {
 	 * Called when the workflow loop guard stops a stalled or runaway run.
 	 */
 	onWorkflowGuardStop?: (stop: WorkflowGuardStop) => void | Promise<void>;
+	/**
+	 * Called once per run when the workflow loop guard crosses the soft cost or output-token budget threshold.
+	 */
+	onWorkflowGuardSoftWarning?: (warning: WorkflowGuardSoftWarning) => void | Promise<void>;
 	/**
 	 * Custom token budgets for thinking levels (token-based providers only).
 	 */
@@ -409,6 +414,7 @@ export class Agent {
 	#appendOnlyContext?: AppendOnlyContextManager;
 	#workflowGuard?: WorkflowLoopGuardConfig | false;
 	#onWorkflowGuardStop?: (stop: WorkflowGuardStop) => void | Promise<void>;
+	#onWorkflowGuardSoftWarning?: (warning: WorkflowGuardSoftWarning) => void | Promise<void>;
 
 	/** Buffered Cursor tool results with text length at time of call (for correct ordering) */
 	#cursorToolResultBuffer: CursorToolResultEntry[] = [];
@@ -488,6 +494,7 @@ export class Agent {
 		this.#transformProviderContext = opts.transformProviderContext;
 		this.#workflowGuard = opts.workflowGuard;
 		this.#onWorkflowGuardStop = opts.onWorkflowGuardStop;
+		this.#onWorkflowGuardSoftWarning = opts.onWorkflowGuardSoftWarning;
 	}
 
 	/**
@@ -586,6 +593,13 @@ export class Agent {
 	}
 
 	/**
+	 * Return the current workflow loop guard configuration.
+	 */
+	getWorkflowGuard(): WorkflowLoopGuardConfig | false | undefined {
+		return this.#workflowGuard;
+	}
+
+	/**
 	 * Configure the structural workflow loop guard (or pass `false` to opt out).
 	 */
 	setWorkflowGuard(config: WorkflowLoopGuardConfig | false | undefined): void {
@@ -597,6 +611,15 @@ export class Agent {
 	 */
 	setOnWorkflowGuardStop(handler: ((stop: WorkflowGuardStop) => void | Promise<void>) | undefined): void {
 		this.#onWorkflowGuardStop = handler;
+	}
+
+	/**
+	 * Register a callback invoked once per run when the workflow loop guard crosses a soft budget warning threshold.
+	 */
+	setOnWorkflowGuardSoftWarning(
+		handler: ((warning: WorkflowGuardSoftWarning) => void | Promise<void>) | undefined,
+	): void {
+		this.#onWorkflowGuardSoftWarning = handler;
 	}
 
 	/**
@@ -1252,6 +1275,7 @@ export class Agent {
 			telemetry: this.#telemetry,
 			workflowGuard: this.#workflowGuard,
 			onWorkflowGuardStop: this.#onWorkflowGuardStop,
+			onWorkflowGuardSoftWarning: this.#onWorkflowGuardSoftWarning,
 		};
 
 		let partial: AgentMessage | null = null;
@@ -1327,24 +1351,32 @@ export class Agent {
 				}
 			}
 		} catch (err) {
-			const stoppedForAbort = this.#abortController?.signal.aborted === true;
+			const loopSignal = this.#abortController?.signal;
+			const stoppedForAbort = loopSignal?.aborted === true;
 			const errorMessage = stoppedForAbort
-				? abortReasonText(this.#abortController?.signal)
+				? abortReasonText(loopSignal)
 				: err instanceof Error
 					? err.message
 					: String(err);
+			const errorModel = this.#state.model ?? model;
+			const errorStatus = stoppedForAbort ? undefined : AIError.status(err);
+			const errorId = stoppedForAbort
+				? errorMessage === "Request was aborted"
+					? AIError.create(AIError.Flag.Abort)
+					: AIError.classify(loopSignal?.reason) || undefined
+				: AIError.classify(err, errorModel.api) || undefined;
 			const shouldEmitVisibleOutputBlockedError = !stoppedForAbort && isAnthropicOutputBlockedError(errorMessage);
 			const assistantPartial = partial?.role === "assistant" ? partial : undefined;
 			const hadAssistantStart = assistantPartial !== undefined;
 			const errorMsg: AssistantMessage =
 				shouldEmitVisibleOutputBlockedError && assistantPartial
-					? { ...assistantPartial, stopReason: "error", errorMessage }
+					? { ...assistantPartial, stopReason: "error", errorMessage, errorStatus, errorId }
 					: {
 							role: "assistant",
 							content: [{ type: "text", text: "" }],
-							api: model.api,
-							provider: model.provider,
-							model: model.id,
+							api: errorModel.api,
+							provider: errorModel.provider,
+							model: errorModel.id,
 							usage: {
 								input: 0,
 								output: 0,
@@ -1355,6 +1387,8 @@ export class Agent {
 							},
 							stopReason: stoppedForAbort ? "aborted" : "error",
 							errorMessage,
+							errorStatus,
+							errorId,
 							timestamp: Date.now(),
 						};
 

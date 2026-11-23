@@ -11,6 +11,8 @@ export interface ToolCallLoopGuardOptions {
 	readonly exemptTools: readonly string[];
 	/** Window size for alternating-pattern (A,B,A,B,…) cycle detection; defaults to 6. */
 	readonly cycleWindowSize?: number;
+	/** Redirects allowed before escalating to stalled_tool_call (`0` disables redirect-count escalation; default `2`). */
+	readonly maxRedirectsBeforeStop?: number;
 }
 
 /** A completed assistant turn plus the tool results it produced. */
@@ -39,7 +41,11 @@ export interface CyclicalToolCallDetection {
 export type ToolCallLoopDetection =
 	| RepeatedToolCallDetection
 	| CyclicalToolCallDetection
-	| { readonly kind: "stalled_tool_call"; readonly toolName: string };
+	| {
+			readonly kind: "stalled_tool_call";
+			readonly toolName: string;
+			readonly reason?: "unchanged_output" | "error_streak" | "redirect_escalation" | "cycle_escalation";
+	  };
 
 function canonicalizeToolCallValue(value: unknown): unknown {
 	if (Array.isArray(value)) {
@@ -173,11 +179,37 @@ export class ToolCallLoopGuard {
 	#cycleWindowSize: number;
 	#recentCalls: Array<{ hash: string; toolNames: string[] }> = [];
 	#lastCycleSignature: string | undefined;
+	#maxRedirectsBeforeStop: number;
+	#redirectsIssued = 0;
+	#cycleRepeatTurns = 0;
 
 	constructor(options: ToolCallLoopGuardOptions) {
 		this.#threshold = Math.max(1, Math.trunc(options.threshold));
 		this.#exemptTools = new Set(options.exemptTools);
 		this.#cycleWindowSize = Math.max(3, Math.trunc(options.cycleWindowSize ?? 6));
+		this.#maxRedirectsBeforeStop = Math.max(0, Math.trunc(options.maxRedirectsBeforeStop ?? 2));
+	}
+	reset(): void {
+		this.#reset();
+	}
+
+	#reset(): void {
+		this.#unchanged = undefined;
+		this.#callStreaks.clear();
+		this.#recentCalls = [];
+		this.#lastCycleSignature = undefined;
+		this.#redirectsIssued = 0;
+		this.#cycleRepeatTurns = 0;
+	}
+
+	#collectRecentToolNames(): string[] {
+		const toolNames: string[] = [];
+		for (const call of this.#recentCalls) {
+			for (const name of call.toolNames) {
+				if (!toolNames.includes(name)) toolNames.push(name);
+			}
+		}
+		return toolNames;
 	}
 
 	#isExemptToolCall(toolCall: ToolCall): boolean {
@@ -191,13 +223,6 @@ export class ToolCallLoopGuard {
 			return false;
 		}
 		return true;
-	}
-
-	#reset(): void {
-		this.#unchanged = undefined;
-		this.#callStreaks.clear();
-		this.#recentCalls = [];
-		this.#lastCycleSignature = undefined;
 	}
 
 	#computeLookupKey(toolCall: ToolCall, canonicalArgs: string, toolResults: readonly ToolResultMessage[]): string {
@@ -278,39 +303,72 @@ export class ToolCallLoopGuard {
 		this.#callStreaks = nextStreaks;
 
 		// The redirect uses a broad semantic match. Pausing needs stronger evidence:
-		// one exact call and the same full text result, after a redirect was sent.
-		const entry = turnEntries[0];
-		const result = turn.toolResults[0];
-		if (
-			allToolCalls.length === 1 &&
-			entry &&
-			(nextStreaks.get(entry.lookupKey) ?? 0) > this.#threshold &&
-			turn.toolResults.length === 1 &&
-			result?.toolCallId === entry.toolCall.id &&
-			result.content.length &&
-			result.content.every(part => part.type === "text")
-		) {
-			const normalizedContent = result.isError
-				? result.content.map(part =>
-						part.type === "text" ? { type: part.type, text: normalizeVolatileErrorText(part.text) } : part,
-					)
-				: result.content;
-			const fingerprint = Bun.hash(
-				JSON.stringify([entry.toolCall.name, entry.canonicalArgs, result.isError, normalizedContent]),
-			);
+		// all calls in the batch produce the same text results, after a redirect was sent.
+		const hasStreakPastThreshold = turnEntries.some(
+			entry => (nextStreaks.get(entry.lookupKey) ?? 0) > this.#threshold,
+		);
+
+		const callResultPairs: Array<{ call: ToolCall; result: ToolResultMessage }> = [];
+		let allCallsHaveMatchingTextResult = turnEntries.length > 0 && hasStreakPastThreshold;
+
+		if (allCallsHaveMatchingTextResult) {
+			for (const call of allToolCalls) {
+				const result = turn.toolResults.find(candidate => candidate.toolCallId === call.id);
+				if (!result || result.content.length === 0 || !result.content.every(part => part.type === "text")) {
+					allCallsHaveMatchingTextResult = false;
+					break;
+				}
+				callResultPairs.push({ call, result });
+			}
+		}
+
+		if (allCallsHaveMatchingTextResult) {
+			const serializedTuples: string[] = [];
+			for (const { call, result } of callResultPairs) {
+				const canonicalArgs = JSON.stringify(canonicalizeToolCallValue(call.arguments));
+				const normalizedContent = result.isError
+					? result.content.map(part =>
+							part.type === "text" ? { type: part.type, text: normalizeVolatileErrorText(part.text) } : part,
+						)
+					: result.content;
+				serializedTuples.push(JSON.stringify([call.name, canonicalArgs, result.isError, normalizedContent]));
+			}
+			serializedTuples.sort();
+			const fingerprint = Bun.hash(JSON.stringify(serializedTuples));
 			const count = this.#unchanged?.fingerprint === fingerprint ? this.#unchanged.count + 1 : 1;
 			this.#unchanged = { fingerprint, count };
-			const streak = nextStreaks.get(entry.lookupKey) ?? 0;
+
+			let maxStreak = 0;
+			for (const entry of turnEntries) {
+				const streak = nextStreaks.get(entry.lookupKey) ?? 0;
+				if (streak > maxStreak) maxStreak = streak;
+			}
+			const anyError = callResultPairs.some(pair => pair.result.isError);
 			const pauseAfter = Math.max(2, this.#threshold);
-			if (count >= pauseAfter || (result.isError && streak >= this.#threshold + pauseAfter)) {
+
+			if (count >= pauseAfter || (anyError && maxStreak >= this.#threshold + pauseAfter)) {
 				this.#reset();
-				return { kind: "stalled_tool_call", toolName: entry.toolCall.name };
+				const distinctNames: string[] = [];
+				for (const entry of turnEntries) {
+					if (!distinctNames.includes(entry.toolCall.name)) {
+						distinctNames.push(entry.toolCall.name);
+					}
+				}
+				const batchToolLabel = allToolCalls.length === 1 ? turnEntries[0]!.toolCall.name : distinctNames.join(", ");
+				const reason = anyError && count < pauseAfter ? "error_streak" : "unchanged_output";
+				return { kind: "stalled_tool_call", toolName: batchToolLabel, reason };
 			}
 		} else {
 			this.#unchanged = undefined;
 		}
 
 		if (hitEntry) {
+			this.#redirectsIssued++;
+			if (this.#maxRedirectsBeforeStop > 0 && this.#redirectsIssued > this.#maxRedirectsBeforeStop) {
+				const toolName = hitEntry.toolCall.name;
+				this.#reset();
+				return { kind: "stalled_tool_call", toolName, reason: "redirect_escalation" };
+			}
 			return {
 				kind: "repeated_tool_call",
 				toolName: hitEntry.toolCall.name,
@@ -320,10 +378,11 @@ export class ToolCallLoopGuard {
 			};
 		}
 
-		// Alternating A,B,A,B,… pattern: exact-repeat detection above never fires
-		// (the hash changes every turn), but the model is still spinning between
-		// two distinct calls/turn-signatures without making progress.
-		const turnHash = turnEntries.map(entry => entry.lookupKey).join("\u001f");
+		// Alternating 2-step (A,B,A,B,…) or 3-step (A,B,C,A,B,C,…) pattern.
+		const turnHash = turnEntries
+			.map(entry => entry.lookupKey)
+			.sort()
+			.join("\u001f");
 		const turnToolNames: string[] = [];
 		for (const entry of turnEntries) {
 			if (!turnToolNames.includes(entry.toolCall.name)) {
@@ -336,20 +395,58 @@ export class ToolCallLoopGuard {
 		if (this.#recentCalls.length < this.#cycleWindowSize) return null;
 
 		const distinctHashes = new Set(this.#recentCalls.map(call => call.hash));
-		if (distinctHashes.size !== 2) {
+		let cyclePeriod: 2 | 3 | undefined;
+		if (distinctHashes.size === 2) {
+			cyclePeriod = 2;
+		} else if (
+			distinctHashes.size === 3 &&
+			this.#recentCalls.length >= 6 &&
+			this.#recentCalls.every((call, i) => call.hash === this.#recentCalls[i % 3]!.hash)
+		) {
+			cyclePeriod = 3;
+		}
+
+		if (!cyclePeriod) {
 			this.#lastCycleSignature = undefined;
+			this.#cycleRepeatTurns = 0;
 			return null;
 		}
-		const signature = [...distinctHashes].sort().join("|");
-		if (signature === this.#lastCycleSignature) return null;
-		this.#lastCycleSignature = signature;
 
-		const toolNames: string[] = [];
-		for (const call of this.#recentCalls) {
-			for (const name of call.toolNames) {
-				if (!toolNames.includes(name)) toolNames.push(name);
+		const signature = [...distinctHashes].sort().join("|");
+		if (signature === this.#lastCycleSignature) {
+			this.#cycleRepeatTurns++;
+			if (this.#cycleRepeatTurns === 1) {
+				return null;
 			}
+			if (this.#cycleRepeatTurns % cyclePeriod === 0) {
+				const repeatedCycles = Math.floor(this.#cycleRepeatTurns / cyclePeriod);
+				if (this.#maxRedirectsBeforeStop > 0 && repeatedCycles > this.#maxRedirectsBeforeStop) {
+					const toolNames = this.#collectRecentToolNames();
+					this.#reset();
+					return {
+						kind: "stalled_tool_call",
+						toolName: toolNames.join(", "),
+						reason: "cycle_escalation",
+					};
+				}
+			}
+			return null;
 		}
+
+		this.#lastCycleSignature = signature;
+		this.#cycleRepeatTurns = 0;
+		this.#redirectsIssued++;
+
+		const toolNames = this.#collectRecentToolNames();
+		if (this.#maxRedirectsBeforeStop > 0 && this.#redirectsIssued > this.#maxRedirectsBeforeStop) {
+			this.#reset();
+			return {
+				kind: "stalled_tool_call",
+				toolName: toolNames.join(", "),
+				reason: "redirect_escalation",
+			};
+		}
+
 		return { kind: "cyclical_tool_calls", toolNames, windowSize: this.#cycleWindowSize };
 	}
 }

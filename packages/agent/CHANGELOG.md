@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added per-run cost (`maxCostUsd`) and output-token (`maxOutputTokens` + `getExternalOutputTokens`) budget circuit breakers with one-shot soft warnings (`onWorkflowGuardSoftWarning`), synthetic wrap-up injection, and clean aborted `toolResult` pairing on hard stops in `WorkflowGuard` and `agentLoop`.
+- Added `Agent.getWorkflowGuard()` and `onTurnEndEmitted` hook support.
+
+### Fixed
+
+- Gated `StepBudget` sliding-window extensions on genuine novelty (consumed per extension) and distinguished read-only vs. mutating `eval` targets with normalized read-only outcome hashing and mutation-epoch invalidation.
+- Fixed mixed tool-batch failure tracking so real errors paired with skipped sibling calls still increment consecutive failures while all-skipped batches neither increment nor reset the streak.
+- Preserved `errorStatus` and `errorId` via `AIError` when provider streams reject before emitting an assistant start message.
+
 ## [16.7.7] - 2026-11-22
 
 ### Added

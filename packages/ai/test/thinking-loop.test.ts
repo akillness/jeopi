@@ -354,6 +354,36 @@ describe("ThinkingLoopDetector", () => {
 		expect(detector.push(block)).toBeNull();
 		expect(detector.flush()).toContain("consecutive");
 	});
+
+	test("exempts structured JSON records and pipe-led markdown tables whose rows differ only in numbers", () => {
+		const jsonRecords = Array.from(
+			{ length: 20 },
+			(_, i) =>
+				`{"id": ${1000 + i}, "status": "completed", "score": ${80 + i}, "url": "https://example.com/item/${1000 + i}"}`,
+		).join("\n\n");
+		expect(feed(jsonRecords, 37)).toBeNull();
+
+		const markdownTable = Array.from(
+			{ length: 20 },
+			(_, i) => `| ${35350 + i} | case ${i} | https://example.com/#/CaseEdit?fs_id=${35350 + i} |`,
+		).join("\n");
+		expect(feed(markdownTable, 29)).toBeNull();
+	});
+
+	test("still trips on exact cycles of byte-identical markdown table rows", () => {
+		const shortIdenticalRows = Array.from(
+			{ length: 20 },
+			() => "| 35350 | case 1 | https://example.com/35350 |",
+		).join("\n");
+		expect(feed(shortIdenticalRows, 7)).toContain("back-to-back");
+
+		const longRowBlock = Array.from(
+			{ length: 4 },
+			() => "| 35350 | case 1 | https://example.com/#/CaseEdit?fs_id=35350 |",
+		).join("\n");
+		const repeatedBlocks = `${longRowBlock}\n\n${longRowBlock}\n\n${longRowBlock}`;
+		expect(feed(repeatedBlocks, 29)).toContain("consecutive");
+	});
 });
 
 describe("gemini thinking-loop guard (stream wrapper)", () => {

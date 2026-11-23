@@ -13,6 +13,7 @@ import {
 	isGenuineUserMessage,
 	StepBudget,
 	toolTarget,
+	type WorkflowGuardSoftWarning,
 	type WorkflowGuardStop,
 	WorkflowLoopGuard,
 } from "jeopi-agent-core/workflow-guard";
@@ -607,5 +608,262 @@ describe("Agent and agentLoop bounded execution", () => {
 		await stream.result();
 
 		expect(stops).toHaveLength(0);
+	});
+	it("emits one-shot soft warning and halts on per-run cost/output token budgets with toolCall pairing", async () => {
+		const pingTool: AgentTool<typeof emptySchema, Record<string, never>> = {
+			name: "ping",
+			label: "Ping",
+			description: "Ping tool",
+			parameters: emptySchema,
+			async execute() {
+				return { content: [{ type: "text", text: "pong" }], details: {} };
+			},
+		};
+		const mock = createMockModel({
+			responses: [
+				{
+					content: [{ type: "toolCall" as const, id: "t1", name: "ping", arguments: {} }],
+					usage: {
+						input: 100,
+						output: 850,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 950,
+						cost: { input: 0.01, output: 0.84, cacheRead: 0, cacheWrite: 0, total: 0.85 },
+					},
+				},
+				{
+					content: [{ type: "toolCall" as const, id: "t2", name: "ping", arguments: {} }],
+					usage: {
+						input: 100,
+						output: 300,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 400,
+						cost: { input: 0.01, output: 0.29, cacheRead: 0, cacheWrite: 0, total: 0.3 },
+					},
+				},
+			],
+		});
+		const warnings: WorkflowGuardSoftWarning[] = [];
+		const stops: WorkflowGuardStop[] = [];
+		const config: AgentLoopConfig = {
+			model: mock.model,
+			convertToLlm: identityConverter,
+			workflowGuard: { maxCostUsd: 1.0, softBudgetWarningRatio: 0.8 },
+			onWorkflowGuardSoftWarning: warning => {
+				warnings.push(warning);
+			},
+			onWorkflowGuardStop: stop => {
+				stops.push(stop);
+			},
+		};
+		const context: AgentContext = { systemPrompt: ["sys"], messages: [], tools: [pingTool] };
+		const stream = agentLoop([createUserMessage("budget test")], context, config, undefined, mock.stream);
+		for await (const _ of stream) {
+			// drain
+		}
+		const newMessages = await stream.result();
+
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]?.kind).toBe("cost");
+		expect(stops).toHaveLength(1);
+		expect(stops[0]?.stopClass).toBe("cost_budget_exceeded");
+		expect(stops[0]?.costUsd).toBeCloseTo(1.15, 4);
+		// Second turn's tool call t2 must be paired with an aborted toolResult instead of executing.
+		const pairedT2 = newMessages.find(m => m.role === "toolResult" && m.toolCallId === "t2");
+		expect(pairedT2).toBeDefined();
+		expect(pairedT2 && pairedT2.role === "toolResult" ? pairedT2.isError : false).toBe(true);
+		// Soft warning synthetic message must have been injected before the second turn.
+		expect(
+			newMessages.some(
+				m =>
+					m.role === "user" &&
+					typeof m.content === "string" &&
+					m.content.includes("Approaching per-run cost budget"),
+			),
+		).toBe(true);
+	});
+});
+
+describe("WorkflowLoopGuard hardening contracts", () => {
+	it("requires fresh novel targets after each StepBudget extension", () => {
+		const budget = new StepBudget({
+			baseSteps: 2,
+			extensionSteps: 2,
+			maxExtensions: 3,
+			hardCap: 20,
+			windowSize: 6,
+			minProgressRatio: 0.5,
+			minDistinct: 2,
+		});
+		budget.record("read:a", true, "read:a");
+		budget.record("read:b", true, "read:b");
+		const first = budget.tryExtend();
+		expect(first.extend).toBe(true);
+		expect(first.newLimit).toBe(4);
+
+		// Re-reading already-seen targets with distinct signatures still yields 0 novel targets.
+		budget.record("read:a:2", true, "read:a");
+		budget.record("read:b:2", true, "read:b");
+		const second = budget.tryExtend();
+		expect(second.extend).toBe(false);
+		expect(second.reason).toContain("no novel tool targets");
+
+		// A fresh novel target re-enables extension.
+		budget.record("read:c", true, "read:c");
+		const third = budget.tryExtend();
+		expect(third.extend).toBe(true);
+		expect(third.newLimit).toBe(6);
+	});
+
+	it("classifies eval read vs mutating targets, detects identical read-only outcomes, and invalidates on mutation", () => {
+		expect(
+			toolTarget("eval", {
+				language: "python",
+				code: 'import subprocess\nprint(subprocess.check_output(["git", "status"]))',
+			}),
+		).toBe("eval:read:python:cmds:git status");
+		expect(
+			toolTarget("eval", {
+				language: "python",
+				code: 'open("src/app.ts", "w").write("x")',
+				title: "rewrite app",
+			}),
+		).toBe("eval:exec:python:rewrite app");
+
+		const guard = new WorkflowLoopGuard({
+			maxSteps: 0,
+			stepBudget: {
+				baseSteps: 2,
+				extensionSteps: 2,
+				maxExtensions: 4,
+				hardCap: 20,
+				windowSize: 6,
+				minProgressRatio: 0.5,
+				minDistinct: 2,
+			},
+		});
+
+		// First two read-only evals produce identical output (differing only by timestamp/duration).
+		guard.beforeModelCall();
+		guard.recordToolBatch(
+			[{ name: "eval", arguments: { language: "python", code: 'print(open("src/a.ts").read())' } }],
+			[{ toolName: "eval", isError: false, content: [{ type: "text", text: "2026-11-22T10:00:01Z ok 12ms" }] }],
+		);
+		guard.beforeModelCall();
+		guard.recordToolBatch(
+			[{ name: "eval", arguments: { language: "python", code: 'print(open("src/b.ts").read())' } }],
+			[{ toolName: "eval", isError: false, content: [{ type: "text", text: "2026-11-22T10:00:05Z ok 18ms" }] }],
+		);
+		// Identical normalized output prevented novelty on the second call, so repeatCalls incremented.
+		expect(guard.repeatCalls).toBe(1);
+
+		// First extension succeeds because call 1 was novel; now consume it.
+		expect(guard.beforeModelCall()).toBeUndefined();
+		// Another read-only eval with identical output has no novel target -> next extension stalls.
+		guard.recordToolBatch(
+			[{ name: "eval", arguments: { language: "python", code: 'print(open("src/c.ts").read())' } }],
+			[{ toolName: "eval", isError: false, content: [{ type: "text", text: "2026-11-22T10:00:09Z ok 22ms" }] }],
+		);
+		guard.beforeModelCall();
+		const stalled = guard.beforeModelCall();
+		expect(stalled?.stopClass).toBe("step_budget_stalled");
+
+		// Now verify mutation epoch invalidation on a fresh guard: after an edit, re-running same read eval is novel.
+		const guard2 = new WorkflowLoopGuard({
+			stepBudget: {
+				baseSteps: 2,
+				extensionSteps: 2,
+				maxExtensions: 4,
+				hardCap: 20,
+				windowSize: 6,
+				minProgressRatio: 0.5,
+				minDistinct: 2,
+			},
+		});
+		guard2.recordToolBatch(
+			[{ name: "eval", arguments: { language: "python", code: 'print(open("src/a.ts").read())' } }],
+			[{ toolName: "eval", isError: false, content: [{ type: "text", text: "v1" }] }],
+		);
+		guard2.recordToolBatch(
+			[{ name: "edit", arguments: { path: "src/a.ts" } }],
+			[{ toolName: "edit", isError: false, content: [{ type: "text", text: "edited" }] }],
+		);
+		guard2.beforeModelCall();
+		guard2.beforeModelCall();
+		// Consume initial novelty via extension 1.
+		expect(guard2.beforeModelCall()).toBeUndefined();
+		// Re-running the same read-only eval AFTER mutation has a fresh @e1 targetKey and new epoch.
+		guard2.recordToolBatch(
+			[{ name: "eval", arguments: { language: "python", code: 'print(open("src/a.ts").read())' } }],
+			[{ toolName: "eval", isError: false, content: [{ type: "text", text: "v1" }] }],
+		);
+		guard2.beforeModelCall();
+		// Extension 2 succeeds because the post-mutation read eval is treated as novel.
+		expect(guard2.beforeModelCall()).toBeUndefined();
+	});
+
+	it("counts real errors in mixed error+skipped batches and leaves failure count unchanged on all-skipped batches", () => {
+		const guard = new WorkflowLoopGuard({ maxConsecutiveFailures: 2 });
+
+		// Real error paired with skipped sibling must increment consecutiveFailures (not reset!).
+		expect(
+			guard.recordToolBatch(
+				[
+					{ name: "bash", arguments: { command: "false" } },
+					{ name: "bash", arguments: { command: "echo hi" } },
+				],
+				[
+					{ toolName: "bash", isError: true, content: [{ type: "text", text: "exit 1" }] },
+					{
+						toolName: "bash",
+						isError: true,
+						content: [{ type: "text", text: "Skipped due to queued user message." }],
+					},
+				],
+			),
+		).toBeUndefined();
+		expect(guard.consecutiveFailures).toBe(1);
+
+		// All-skipped batch must NOT increment or reset consecutiveFailures.
+		expect(
+			guard.recordToolBatch(
+				[{ name: "bash", arguments: { command: "echo skipped" } }],
+				[{ toolName: "bash", isError: true, content: [{ type: "text", text: "Not executed: steering queued." }] }],
+			),
+		).toBeUndefined();
+		expect(guard.consecutiveFailures).toBe(1);
+
+		// Second real error trips the circuit breaker.
+		const stop = guard.recordToolBatch(
+			[{ name: "bash", arguments: { command: "false" } }],
+			[{ toolName: "bash", isError: true, content: [{ type: "text", text: "exit 1" }] }],
+		);
+		expect(stop?.stopClass).toBe("consecutive_failure");
+	});
+
+	it("respects external output token counts for soft warning and hard token_budget_exceeded stop", () => {
+		let externalTokens = 820;
+		const guard = new WorkflowLoopGuard({
+			maxOutputTokens: 1000,
+			softBudgetWarningRatio: 0.8,
+			getExternalOutputTokens: () => externalTokens,
+		});
+
+		const first = guard.recordAssistantUsage({ input: 50, output: 100, cost: { total: 0.01 } });
+		expect(first.stop).toBeUndefined();
+		expect(first.softWarning?.kind).toBe("output_tokens");
+
+		// Second call below cap does not re-emit soft warning.
+		externalTokens = 900;
+		const second = guard.recordAssistantUsage({ input: 50, output: 50, cost: { total: 0.01 } });
+		expect(second.softWarning).toBeUndefined();
+		expect(second.stop).toBeUndefined();
+
+		// Crossing cap via external tokens triggers hard stop.
+		externalTokens = 1050;
+		const third = guard.recordAssistantUsage({ input: 50, output: 50, cost: { total: 0.01 } });
+		expect(third.stop?.stopClass).toBe("token_budget_exceeded");
 	});
 });

@@ -352,12 +352,13 @@ describe("ToolCallLoopGuard cyclical detection", () => {
 		expect(detection).toBeNull();
 	});
 
-	test("does not flag three-or-more distinct tools rotating through the window", () => {
+	test("does not flag four-or-more distinct tools rotating through the window", () => {
 		const guard = new ToolCallLoopGuard({ threshold: 100, exemptTools: [], cycleWindowSize: 6 });
 		const calls: Array<[string, Record<string, unknown>]> = [
 			["read", { path: "a.ts" }],
 			["grep", { pattern: "TODO" }],
 			["glob", { pattern: "*.ts" }],
+			["bash", { command: "ls" }],
 		];
 		let detection = null;
 		for (let index = 0; index < 6; index++) {
@@ -366,6 +367,7 @@ describe("ToolCallLoopGuard cyclical detection", () => {
 		}
 		expect(detection).toBeNull();
 	});
+
 	test("detects repeated eval calls with list vs string syntax for status commands", () => {
 		const guard = new ToolCallLoopGuard({ threshold: 3, exemptTools: [] });
 		const turn1 = turn("c1", "eval", {
@@ -479,6 +481,140 @@ describe("ToolCallLoopGuard cyclical detection", () => {
 		expect(guard.recordTurn(errorTurn(3))).toMatchObject({ kind: "repeated_tool_call", toolName: "bash", count: 3 });
 		expect(guard.recordTurn(errorTurn(4))).toBeNull();
 		expect(guard.recordTurn(errorTurn(5))).toBeNull();
-		expect(guard.recordTurn(errorTurn(6))).toEqual({ kind: "stalled_tool_call", toolName: "bash" });
+		expect(guard.recordTurn(errorTurn(6))).toEqual({
+			kind: "stalled_tool_call",
+			toolName: "bash",
+			reason: "unchanged_output",
+		});
+	});
+
+	test("stalls out parallel multi-tool batches regardless of call ordering", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 2, exemptTools: [] });
+		const parallelTurn = (n: number, reversed = false) => {
+			const calls = [
+				{ type: "toolCall" as const, id: `a-${n}`, name: "read", arguments: { path: "a.ts" } },
+				{ type: "toolCall" as const, id: `b-${n}`, name: "grep", arguments: { pattern: "foo" } },
+			];
+			const orderedCalls = reversed ? [calls[1]!, calls[0]!] : calls;
+			return {
+				message: {
+					role: "assistant" as const,
+					content: orderedCalls,
+					api: "anthropic-messages" as const,
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					usage: {
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					stopReason: "toolUse" as const,
+					timestamp: n,
+				},
+				toolResults: [
+					{
+						role: "toolResult" as const,
+						toolCallId: `a-${n}`,
+						toolName: "read",
+						content: [{ type: "text" as const, text: "same a" }],
+						isError: false,
+						timestamp: n,
+					},
+					{
+						role: "toolResult" as const,
+						toolCallId: `b-${n}`,
+						toolName: "grep",
+						content: [{ type: "text" as const, text: "same b" }],
+						isError: false,
+						timestamp: n,
+					},
+				],
+			};
+		};
+
+		expect(guard.recordTurn(parallelTurn(1, false))).toBeNull();
+		expect(guard.recordTurn(parallelTurn(2, true))).toMatchObject({ kind: "repeated_tool_call", count: 2 });
+		expect(guard.recordTurn(parallelTurn(3, false))).toBeNull();
+		expect(guard.recordTurn(parallelTurn(4, true))).toEqual({
+			kind: "stalled_tool_call",
+			toolName: "grep, read",
+			reason: "unchanged_output",
+		});
+	});
+
+	test("escalates to stalled_tool_call after maxRedirectsBeforeStop redirects and allows 0 to disable", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 2, exemptTools: [], maxRedirectsBeforeStop: 2 });
+		// Redirect #1
+		expect(guard.recordTurn(turn("a1", "bash", { command: "cmd1" }, "out-1"))).toBeNull();
+		expect(guard.recordTurn(turn("a2", "bash", { command: "cmd1" }, "out-2"))).toMatchObject({
+			kind: "repeated_tool_call",
+		});
+		// Redirect #2
+		expect(guard.recordTurn(turn("b1", "bash", { command: "cmd2" }, "out-3"))).toBeNull();
+		expect(guard.recordTurn(turn("b2", "bash", { command: "cmd2" }, "out-4"))).toMatchObject({
+			kind: "repeated_tool_call",
+		});
+		// 3rd redirect exceeds maxRedirectsBeforeStop=2 -> hard stop
+		expect(guard.recordTurn(turn("c1", "bash", { command: "cmd3" }, "out-5"))).toBeNull();
+		expect(guard.recordTurn(turn("c2", "bash", { command: "cmd3" }, "out-6"))).toEqual({
+			kind: "stalled_tool_call",
+			toolName: "bash",
+			reason: "redirect_escalation",
+		});
+
+		// maxRedirectsBeforeStop: 0 disables redirect escalation
+		const unlimited = new ToolCallLoopGuard({ threshold: 2, exemptTools: [], maxRedirectsBeforeStop: 0 });
+		for (let i = 1; i <= 4; i++) {
+			expect(unlimited.recordTurn(turn(`u${i}a`, "bash", { command: `cmd-${i}` }, `o-${i}a`))).toBeNull();
+			expect(unlimited.recordTurn(turn(`u${i}b`, "bash", { command: `cmd-${i}` }, `o-${i}b`))).toMatchObject({
+				kind: "repeated_tool_call",
+			});
+		}
+	});
+
+	test("detects 3-step cycles, escalates persistent cycles, and clears state on reset()", () => {
+		const guard = new ToolCallLoopGuard({
+			threshold: 10,
+			exemptTools: [],
+			cycleWindowSize: 6,
+			maxRedirectsBeforeStop: 1,
+		});
+		const stepA = (n: number) => turn(`a${n}`, "read", { path: "a.ts" }, "same file content");
+		const stepB = (n: number) => turn(`b${n}`, "grep", { pattern: "x" }, `b-${n}`);
+		const stepC = (n: number) => turn(`c${n}`, "bash", { command: "echo c" }, `c-${n}`);
+
+		expect(guard.recordTurn(stepA(1))).toBeNull();
+		expect(guard.recordTurn(stepB(2))).toBeNull();
+		expect(guard.recordTurn(stepC(3))).toBeNull();
+		expect(guard.recordTurn(stepA(4))).toBeNull();
+		expect(guard.recordTurn(stepB(5))).toBeNull();
+		// 6th turn completes 2 full periods of (A,B,C) -> cyclical_tool_calls warning
+		expect(guard.recordTurn(stepC(6))).toEqual({
+			kind: "cyclical_tool_calls",
+			toolNames: ["read", "grep", "bash"],
+			windowSize: 6,
+		});
+		// Immediate next turn stays deduped (null)
+		expect(guard.recordTurn(stepA(7))).toBeNull();
+		expect(guard.recordTurn(stepB(8))).toBeNull();
+		expect(guard.recordTurn(stepC(9))).toBeNull(); // 1 repeated cycle (within grace=1)
+		expect(guard.recordTurn(stepA(10))).toBeNull();
+		expect(guard.recordTurn(stepB(11))).toBeNull();
+		// 2nd repeated cycle exceeds grace=1 -> hard pause with cycle_escalation
+		expect(guard.recordTurn(stepC(12))).toEqual({
+			kind: "stalled_tool_call",
+			toolName: "read, grep, bash",
+			reason: "cycle_escalation",
+		});
+
+		// reset() clears all streaks/redirects/cycles
+		guard.recordTurn(stepA(13));
+		guard.recordTurn(stepB(14));
+		guard.reset();
+		expect(guard.recordTurn(stepA(15))).toBeNull();
+		expect(guard.recordTurn(stepB(16))).toBeNull();
 	});
 });

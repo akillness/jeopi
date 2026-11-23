@@ -219,4 +219,170 @@ describe("AgentSession tool-call loop guard", () => {
 		expect(redirects[0]!.display).toBe(false);
 		expect(redirects[0]!.details).toMatchObject({ toolNames: ["bash", "read"], windowSize: 6 });
 	});
+
+	it("escalates to a hard pause after maxRedirectsBeforeStop redirects even when outputs vary, and resets on the next user prompt", async () => {
+		const model = createMockModel({ provider: "openai", id: "gpt-test" }).model;
+		const modelRegistry = new ModelRegistry(authStorage);
+		let execCount = 0;
+		const bashTool: AgentTool = {
+			name: "bash",
+			label: "Bash",
+			description: "Mock bash tool",
+			parameters: type({ "command?": "string" }),
+			execute: async () => ({ content: [{ type: "text" as const, text: `run output #${++execCount}` }] }),
+		};
+		let callCount = 0;
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [bashTool], messages: [] },
+			convertToLlm,
+			streamFn: () => {
+				const turnIndex = callCount++;
+				// First prompt hits 3 distinct repeated streaks (3x each) with varying outputs -> escalates on turn 9.
+				// Second prompt makes 1 tool call (turn 9) then finishes (turn 10).
+				const toolUse = turnIndex < 10;
+				const cmd = `echo streak-${Math.floor(turnIndex / 3)}`;
+				const message: AssistantMessage = toolUse
+					? {
+							role: "assistant",
+							content: [{ type: "toolCall", id: `tc-${turnIndex}`, name: "bash", arguments: { command: cmd } }],
+							api: model.api,
+							provider: model.provider,
+							model: model.id,
+							usage: zeroUsage,
+							stopReason: "toolUse",
+							timestamp: Date.now(),
+						}
+					: {
+							role: "assistant",
+							content: [{ type: "text", text: "Done on second prompt." }],
+							api: model.api,
+							provider: model.provider,
+							model: model.id,
+							usage: zeroUsage,
+							stopReason: "stop",
+							timestamp: Date.now(),
+						};
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "start", partial: message });
+					stream.push({ type: "done", reason: toolUse ? "toolUse" : "stop", message });
+				});
+				return stream;
+			},
+		});
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"todo.enabled": false,
+			"model.toolCallLoopGuard.enabled": true,
+			"model.toolCallLoopGuard.threshold": 3,
+			"model.toolCallLoopGuard.maxRedirectsBeforeStop": 2,
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(tempDir.path()),
+			settings,
+			modelRegistry,
+			toolRegistry: new Map([[bashTool.name, bashTool]]),
+		});
+
+		const notices: string[] = [];
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+		});
+
+		await session.prompt("check status");
+		await session.waitForIdle();
+
+		// Threshold 3, maxRedirectsBeforeStop 2 -> redirects at 3 and 6, pauses at 9 (even with varying output).
+		expect(callCount).toBe(9);
+		expect(notices.some(text => text.includes("persisted across multiple loop warnings"))).toBe(true);
+
+		// A fresh user prompt resets the loop guard instead of immediately re-pausing.
+		const noticesBeforeSecondPrompt = notices.length;
+		await session.prompt("try one fresh check");
+		await session.waitForIdle();
+		expect(notices.slice(noticesBeforeSecondPrompt).some(text => text.includes("Paused:"))).toBe(false);
+	});
+
+	it("emits workflowGuard soft budget warning and pauses with telemetry when maxOutputTokensPerRun is exceeded", async () => {
+		const model = createMockModel({ provider: "openai", id: "gpt-test" }).model;
+		const modelRegistry = new ModelRegistry(authStorage);
+		let toolSeq = 0;
+		const bashTool: AgentTool = {
+			name: "bash",
+			label: "Bash",
+			description: "Mock bash tool",
+			parameters: type({ "command?": "string" }),
+			execute: async () => ({ content: [{ type: "text" as const, text: `ok-${++toolSeq}` }] }),
+		};
+		let callCount = 0;
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [bashTool], messages: [] },
+			convertToLlm,
+			streamFn: () => {
+				const turnIndex = callCount++;
+				const message: AssistantMessage = {
+					role: "assistant",
+					content: [
+						{
+							type: "toolCall",
+							id: `tc-${turnIndex}`,
+							name: "bash",
+							arguments: { command: `echo step-${turnIndex}` },
+						},
+					],
+					api: model.api,
+					provider: model.provider,
+					model: model.id,
+					usage: {
+						input: 50,
+						output: 450,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 500,
+						cost: { input: 0.001, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.011 },
+					},
+					stopReason: "toolUse",
+					timestamp: Date.now(),
+				};
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "start", partial: message });
+					stream.push({ type: "done", reason: "toolUse", message });
+				});
+				return stream;
+			},
+		});
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"todo.enabled": false,
+			"model.workflowGuard.maxOutputTokensPerRun": 1000,
+			"model.workflowGuard.softBudgetWarningRatio": 0.8,
+			"model.workflowGuard.maxCostUsdPerRun": 0,
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(tempDir.path()),
+			settings,
+			modelRegistry,
+			toolRegistry: new Map([[bashTool.name, bashTool]]),
+		});
+
+		const notices: string[] = [];
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+		});
+
+		await session.prompt("run long task");
+		await session.waitForIdle();
+
+		// Turn 1: 450 tokens; Turn 2: 900 tokens (>= 80% -> soft warning); Turn 3: 1350 tokens (>= 1000 -> hard stop).
+		expect(callCount).toBe(3);
+		expect(notices.some(text => text.includes("Approaching per-run"))).toBe(true);
+		expect(notices.some(text => text.includes("token_budget_exceeded") && text.includes("output tokens"))).toBe(true);
+	});
 });

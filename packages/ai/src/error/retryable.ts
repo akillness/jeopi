@@ -1,6 +1,7 @@
 import { isRetryableError, isUnexpectedSocketCloseMessage } from "jeopi-utils";
 import {
 	isRetryableStreamEnvelopeError,
+	isTransientStreamDropError,
 	isTransientStreamParseError,
 	isUsageLimit,
 	status,
@@ -62,6 +63,7 @@ export function isProviderRetryableError(error: unknown, hooks: ProviderRetryabl
 		TRANSIENT_TRANSPORT_PATTERN.test(msg) ||
 		PROVIDER_TRANSIENT_EXTRA_PATTERN.test(msg) ||
 		isTransientStreamParseError(error) ||
+		isTransientStreamDropError(error) ||
 		isRetryableStreamEnvelopeError(error)
 	) {
 		return true;

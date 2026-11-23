@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `model.workflowGuard.maxCostUsdPerRun`, `model.workflowGuard.maxOutputTokensPerRun`, `model.workflowGuard.softBudgetWarningRatio`, `model.toolCallLoopGuard.maxRedirectsBeforeStop`, and `advisor.maxConsecutiveBlockers` settings and wired them into `AgentSession` with soft budget warnings, telemetry-enriched pause notices, `+Nk!` hard budget ceiling alignment, and loop-guard reset on fresh user prompts.
+- Added `guardContextHookMessages` in `ExtensionRunner` and `HookRunner` to reject stale or destructive `context` hook outputs that drop active-turn trailing `toolResult`s, loop-redirect messages, or trailing user turns.
+
+### Fixed
+
+- Permanently disabled an `AdvisorRuntime` instance after non-retryable model/auth errors (404/401/403) instead of repeating failed advisor calls on every turn until reset.
+- Ported session stall/loop/hang hardening: skip mid-run/post-turn threshold compaction loops when fixed non-message context exceeds the recovery band, bound consecutive generic `Request was aborted` retries to two attempts, wait out short structured `quotaResetDelay` windows within `retry.maxDelayMs` (while still bailing on billing caps), await idle and preserve trailing messages during TTSR recovery, close pending tool approval prompts immediately on turn abort, and keep recovered auto-retry errors out of the transcript.
+
 ## [16.7.7] - 2026-11-22
 
 ### Fixed

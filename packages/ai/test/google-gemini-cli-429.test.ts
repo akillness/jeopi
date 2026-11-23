@@ -742,7 +742,7 @@ describe("extractRetryHint – body text parsing", () => {
 	});
 
 	it("parses Cloud Code Assist quotaResetDelay metadata", () => {
-		expect(extractRetryHint(undefined, '"quotaResetDelay":"28h48m25.991228095s"')).toBeCloseTo(103_705_991.228095);
+		expect(extractRetryHint(undefined, '"quotaResetDelay":"28h48m25.991228095s"')).toBe(103_705_991);
 	});
 
 	it("parses Codex-style 'try again in Xms'", () => {

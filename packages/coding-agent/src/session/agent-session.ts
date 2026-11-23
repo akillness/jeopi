@@ -108,6 +108,7 @@ import {
 	clearAnthropicFastModeFallback,
 	deriveClaudeDeviceId,
 	Effort,
+	isBillingCapUsageLimit,
 	parseRateLimitReason,
 	realizesPriorityServiceTier,
 	resolveModelServiceTier,
@@ -375,6 +376,10 @@ import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-
 import { YieldQueue } from "./yield-queue";
 
 const SESSION_STOP_CONTINUATION_CAP = 8;
+/** Maximum consecutive generic "Operation aborted" retries before surfacing the error. */
+const GENERIC_ABORT_MAX_RETRIES = 2;
+const FIXED_CONTEXT_DEAD_END_WARNING =
+	"Auto-compaction skipped: non-message context (system prompt + tool schemas) exceeds the usable context window. Reduce enabled tools/MCP servers or switch to a model with a larger context window.";
 
 /**
  * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
@@ -1664,6 +1669,7 @@ export class AgentSession {
 	 *  Advisor advice is still recorded into the transcript, just not auto-run. */
 	#advisorAutoResumeSuppressed = false;
 	#advisorPrimaryTurnsCompleted = 0;
+	#consecutiveAdvisorBlockers = 0;
 	#advisorInterruptImmuneTurnStart: number | undefined;
 	#planModeState: PlanModeState | undefined;
 	/** Hard execution gate driven by `critic` subagent verdicts (see task/critic-gate.ts).
@@ -1719,6 +1725,7 @@ export class AgentSession {
 	#retryAbortController: AbortController | undefined = undefined;
 	#retryGeneration = 0;
 	#retryAttempt = 0;
+	#genericAbortStreak = 0;
 	/** Rung-4 classifier-refusal resend streak (post fallback-ladder). */
 	#refusalBackoff: { startedAt: number; attempt: number } | undefined = undefined;
 	/** A changed request may retry once; an unchanged reasoning-extraction refusal is terminal. */
@@ -2207,9 +2214,17 @@ export class AgentSession {
 				});
 				if (detection?.kind === "stalled_tool_call") {
 					this.#yieldTerminationPending = true;
+					const stallReasonText =
+						detection.reason === "redirect_escalation"
+							? `repeated ${detection.toolName} calls persisted across multiple loop warnings`
+							: detection.reason === "cycle_escalation"
+								? `cyclical ${detection.toolName} tool calls persisted after cycle warnings`
+								: detection.reason === "error_streak"
+									? `repeated failing ${detection.toolName} calls persisted after a loop warning`
+									: `repeated ${detection.toolName} calls returned unchanged output after a loop warning`;
 					this.emitNotice(
 						"warning",
-						`Paused: repeated ${detection.toolName} calls returned unchanged output after a loop warning. Send a new instruction to continue.`,
+						`Paused: ${stallReasonText}. Send a new instruction to continue.`,
 						"tool-call-loop",
 					);
 					return "stop";
@@ -2230,11 +2245,30 @@ export class AgentSession {
 			}
 			return await this.#maintainContextMidRun(messages, signal, context);
 		});
+		this.#syncWorkflowGuardConfig();
+		this.agent.setOnWorkflowGuardSoftWarning(warning => {
+			logger.info("Workflow loop guard soft budget warning", {
+				kind: warning.kind,
+				ratio: warning.ratio,
+				spent: warning.spent,
+				limit: warning.limit,
+			});
+			this.emitNotice("warning", warning.message, "loop-guard");
+		});
 		this.agent.setOnWorkflowGuardStop(stop => {
 			this.#yieldTerminationPending = true;
+			const stats: string[] = [];
+			if (stop.costUsd !== undefined && stop.costUsd > 0) stats.push(`$${stop.costUsd.toFixed(4)}`);
+			if (stop.tokensSpent && stop.tokensSpent.output > 0) {
+				stats.push(`${stop.tokensSpent.output.toLocaleString()} output tokens`);
+			}
+			if (stop.repeatCalls !== undefined && stop.repeatCalls > 0) {
+				stats.push(`${stop.repeatCalls} repeat calls`);
+			}
+			const telemetrySuffix = stats.length > 0 ? ` [${stats.join(", ")}]` : "";
 			this.emitNotice(
 				"warning",
-				`Paused by workflow loop guard (${stop.stopClass}): ${stop.reason}. Send a new instruction to continue.`,
+				`Paused by workflow loop guard (${stop.stopClass}): ${stop.reason}${telemetrySuffix}. Send a new instruction to continue.`,
 				"loop-guard",
 			);
 		});
@@ -2433,6 +2467,7 @@ export class AgentSession {
 			this.#attachAdvisorRecorderFeed(a);
 		}
 		this.#advisorPrimaryTurnsCompleted = 0;
+		this.#consecutiveAdvisorBlockers = 0;
 		this.#advisorInterruptImmuneTurnStart = undefined;
 		this.#advisorAutoResumeSuppressed = false;
 		this.yieldQueue.clear("advisor");
@@ -2729,9 +2764,43 @@ export class AgentSession {
 			logger.debug("advisor advice suppressed by emission guard", { severity, advisor: advisor.name });
 			return;
 		}
+		if (severity === "blocker") {
+			this.#consecutiveAdvisorBlockers++;
+		} else {
+			this.#consecutiveAdvisorBlockers = 0;
+		}
 		// The implicit single ("default") advisor stamps no source name, so its
 		// agent-facing `<advisory>` bytes stay identical to the pre-multi-advisor path.
 		const source = advisor.slug ? advisor.name : undefined;
+		const maxConsecutiveBlockers = this.settings.get("advisor.maxConsecutiveBlockers");
+		if (
+			severity === "blocker" &&
+			maxConsecutiveBlockers > 0 &&
+			this.#consecutiveAdvisorBlockers >= maxConsecutiveBlockers &&
+			this.agent.state.isStreaming &&
+			!this.#abortInProgress
+		) {
+			const count = this.#consecutiveAdvisorBlockers;
+			this.#consecutiveAdvisorBlockers = 0;
+			const notes: AdvisorNote[] = [{ note, severity, advisor: source }];
+			const content = formatAdvisorBatchContent(notes);
+			const details = { notes } satisfies AdvisorMessageDetails;
+			this.#preserveAdvisorCard({
+				role: "custom",
+				customType: "advisor",
+				content,
+				display: true,
+				attribution: "agent",
+				details,
+				timestamp: Date.now(),
+			});
+			const stopReason = `Stopped after ${count} consecutive advisor blockers.`;
+			logger.warn("advisor blocker escalation aborted run", { count, advisor: advisor.name });
+			this.emitNotice("warning", stopReason, "advisor");
+			this.agent.abort(stopReason);
+			return;
+		}
+
 		const interrupting = isInterruptingSeverity(severity);
 		const channel = resolveAdvisorDeliveryChannel({
 			severity,
@@ -4271,11 +4340,14 @@ export class AgentSession {
 		this.#todoReminderCount = 0;
 		this.#midRunNudgeCount = 0;
 		this.#emptyStopRetryCount = 0;
+		this.#genericAbortStreak = 0;
+		this.#consecutiveAdvisorBlockers = 0;
 		this.#unexpectedStopRetryCount = 0;
 		this.#userPromptContinuationCount = 0;
 		this.#lengthCompactionRetryCount = 0;
 		this.#rewindReminderCount = 0;
 		this.#geminiHeaderInterruptCount = 0;
+		this.#toolCallLoopGuard?.reset();
 	}
 
 	#hasQueuedUserMessages(): boolean {
@@ -4894,6 +4966,9 @@ export class AgentSession {
 		const generation = this.#promptGeneration;
 		this.#schedulePostPromptTask(
 			async () => {
+				// Wait for the interrupted run to finish settling its terminal assistant
+				// message and any aborted tool results before mutating history or continuing.
+				await this.agent.waitForIdle();
 				if (this.#ttsrRetryToken !== retryToken) {
 					this.#resolveTtsrResume();
 					return;
@@ -4911,8 +4986,32 @@ export class AgentSession {
 				this.#perToolTtsrInjections.clear();
 				const ttsrSettings = this.#ttsrManager?.getSettings();
 				if (ttsrSettings?.contextMode === "discard") {
-					// Remove the partial/aborted assistant turn from agent state
-					this.agent.replaceMessages(this.agent.state.messages.slice(0, targetAssistantIndex));
+					// Remove only the aborted assistant turn and its paired tool results so
+					// any trailing steering/follow-up/custom messages survive the retry.
+					const messages = this.agent.state.messages;
+					const abortedAssistant = messages[targetAssistantIndex];
+					const abortedToolCallIds = new Set<string>();
+					if (abortedAssistant?.role === "assistant" && Array.isArray(abortedAssistant.content)) {
+						for (const block of abortedAssistant.content) {
+							if (block.type === "toolCall" && typeof block.id === "string") {
+								abortedToolCallIds.add(block.id);
+							}
+						}
+					}
+					const nextMessages: AgentMessage[] = [];
+					for (let i = 0; i < messages.length; i++) {
+						if (i === targetAssistantIndex) continue;
+						const candidate = messages[i];
+						if (
+							i > targetAssistantIndex &&
+							candidate.role === "toolResult" &&
+							abortedToolCallIds.has(candidate.toolCallId)
+						) {
+							continue;
+						}
+						nextMessages.push(candidate);
+					}
+					this.agent.replaceMessages(nextMessages);
 				}
 				// Inject TTSR rules as system reminder before retry
 				const injection = this.#getTtsrInjectionContent();
@@ -5023,6 +5122,26 @@ export class AgentSession {
 		this.#streamingEditPrecheckedToolCallIds.clear();
 		this.#streamingEditFileCache.clear();
 	}
+	#syncWorkflowGuardConfig(hardTurnOutputTokens?: number): void {
+		const existing = this.agent.getWorkflowGuard();
+		if (existing === false) return;
+		const maxCostUsd = this.settings.get("model.workflowGuard.maxCostUsdPerRun");
+		const configuredOutputTokens = this.settings.get("model.workflowGuard.maxOutputTokensPerRun");
+		const softBudgetWarningRatio = this.settings.get("model.workflowGuard.softBudgetWarningRatio");
+		const maxOutputTokens =
+			hardTurnOutputTokens !== undefined && hardTurnOutputTokens > 0
+				? configuredOutputTokens > 0
+					? Math.min(configuredOutputTokens, hardTurnOutputTokens)
+					: hardTurnOutputTokens
+				: configuredOutputTokens;
+		this.agent.setWorkflowGuard({
+			...existing,
+			maxCostUsd,
+			maxOutputTokens,
+			softBudgetWarningRatio,
+			getExternalOutputTokens: () => this.sessionManager.getTurnBudget().spent,
+		});
+	}
 
 	#activeToolCallLoopGuard(): ToolCallLoopGuard | undefined {
 		if (this.settings.get("model.toolCallLoopGuard.enabled") !== true) {
@@ -5032,12 +5151,13 @@ export class AgentSession {
 		}
 
 		const threshold = this.settings.get("model.toolCallLoopGuard.threshold");
+		const maxRedirectsBeforeStop = this.settings.get("model.toolCallLoopGuard.maxRedirectsBeforeStop");
 		const exemptTools = this.settings
 			.get("model.toolCallLoopGuard.exemptTools")
 			.filter((tool): tool is string => typeof tool === "string" && tool.length > 0);
-		const settingsKey = `${threshold}:${JSON.stringify(exemptTools)}`;
+		const settingsKey = `${threshold}:${maxRedirectsBeforeStop}:${JSON.stringify(exemptTools)}`;
 		if (!this.#toolCallLoopGuard || this.#toolCallLoopGuardSettingsKey !== settingsKey) {
-			this.#toolCallLoopGuard = new ToolCallLoopGuard({ threshold, exemptTools });
+			this.#toolCallLoopGuard = new ToolCallLoopGuard({ threshold, maxRedirectsBeforeStop, exemptTools });
 			this.#toolCallLoopGuardSettingsKey = settingsKey;
 		}
 		return this.#toolCallLoopGuard;
@@ -7583,6 +7703,7 @@ export class AgentSession {
 		const timestamp = Date.now();
 		const turnBudget = parseTurnBudget(text);
 		this.sessionManager.beginTurnBudget(turnBudget?.total ?? null, turnBudget?.hard ?? false);
+		this.#syncWorkflowGuardConfig(turnBudget?.hard && turnBudget.total ? turnBudget.total : undefined);
 		const keywordNotices: CustomMessage[] = [];
 		if (this.#magicKeywordEnabled("ultrathink") && containsUltrathink(text)) {
 			keywordNotices.push({
@@ -10605,6 +10726,7 @@ export class AgentSession {
 		});
 		await this.#runAutoCompaction("threshold", false, false, false, {
 			autoContinue: false,
+			prePrompt: true,
 			triggerContextTokens: contextTokens,
 		});
 	}
@@ -10965,13 +11087,18 @@ export class AgentSession {
 		}
 
 		this.#emptyStopRetryCount++;
+		const blockTypes = assistantMessage.content.map(block => block.type);
+		const outputTokens = assistantMessage.usage?.output;
 		if (this.#emptyStopRetryCount > EMPTY_STOP_MAX_RETRIES) {
 			const attempts = this.#emptyStopRetryCount - 1;
 			const finalError = "Assistant returned empty stop after retry cap";
 			logger.warn(finalError, {
 				attempts,
+				stopReason: assistantMessage.stopReason,
 				model: assistantMessage.model,
 				provider: assistantMessage.provider,
+				blockTypes,
+				outputTokens,
 			});
 			await this.#emitSessionEvent({
 				type: "auto_retry_end",
@@ -10980,6 +11107,7 @@ export class AgentSession {
 				finalError,
 			});
 			this.#retryAttempt = 0;
+			this.#genericAbortStreak = 0;
 			this.#refusalBackoff = undefined;
 			this.#resolveRetry();
 			// Tool-use orphans corrupt Anthropic message history (tool_result without
@@ -10989,6 +11117,15 @@ export class AgentSession {
 			}
 			return false;
 		}
+		logger.warn("Empty assistant stop detected; scheduling retry", {
+			attempt: this.#emptyStopRetryCount,
+			maxRetries: EMPTY_STOP_MAX_RETRIES,
+			stopReason: assistantMessage.stopReason,
+			model: assistantMessage.model,
+			provider: assistantMessage.provider,
+			blockTypes,
+			outputTokens,
+		});
 		this.#discardAssistantTurn(assistantMessage);
 		this.agent.appendMessage({
 			role: "developer",
@@ -12382,6 +12519,21 @@ export class AgentSession {
 	 * When the model/window is unknown we cannot evaluate the band, so we
 	 * optimistically allow the continuation (preserving prior behavior).
 	 */
+	#fixedContextExceedsRecoveryBand(): boolean {
+		const contextWindow = this.model?.contextWindow ?? 0;
+		if (contextWindow <= 0) return false;
+		const compactionSettings = this.settings.getGroup("compaction");
+		const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
+		const recoveryBand = Math.floor(thresholdTokens * COMPACTION_RECOVERY_BAND);
+		return computeNonMessageTokens(this) > recoveryBand;
+	}
+
+	#thresholdFixedContextDeadEnd(): CompactionCheckResult | undefined {
+		if (!this.#fixedContextExceedsRecoveryBand()) return undefined;
+		this.emitNotice("warning", FIXED_CONTEXT_DEAD_END_WARNING, "compaction");
+		return COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION;
+	}
+
 	#compactionCreatedHeadroom(): boolean {
 		const contextWindow = this.model?.contextWindow ?? 0;
 		if (contextWindow <= 0) return true;
@@ -12504,6 +12656,7 @@ export class AgentSession {
 		allowDefer = true,
 		options: {
 			autoContinue?: boolean;
+			prePrompt?: boolean;
 			triggerContextTokens?: number;
 			suppressContinuation?: boolean;
 			suppressHandoff?: boolean;
@@ -12512,6 +12665,14 @@ export class AgentSession {
 		const compactionSettings = this.settings.getGroup("compaction");
 		if (compactionSettings.strategy === "off") return COMPACTION_CHECK_NONE;
 		if (reason !== "idle" && !compactionSettings.enabled) return COMPACTION_CHECK_NONE;
+		if (
+			reason === "threshold" &&
+			options.prePrompt !== true &&
+			(compactionSettings.strategy !== "handoff" || options.suppressHandoff === true)
+		) {
+			const fixedDeadEnd = this.#thresholdFixedContextDeadEnd();
+			if (fixedDeadEnd) return fixedDeadEnd;
+		}
 		const generation = this.#promptGeneration;
 		const suppressContinuation = options.suppressContinuation === true;
 		const shouldAutoContinue =
@@ -13111,7 +13272,9 @@ export class AgentSession {
 			if (noProgressDeadEnd) {
 				this.emitNotice(
 					"warning",
-					compactionDeadEndWarning("clear large tool output, run `/shake images` to drop attached images,"),
+					this.#fixedContextExceedsRecoveryBand()
+						? FIXED_CONTEXT_DEAD_END_WARNING
+						: compactionDeadEndWarning("clear large tool output, run `/shake images` to drop attached images,"),
 					"compaction",
 				);
 			}
@@ -13972,7 +14135,9 @@ export class AgentSession {
 		const classifierRefusal = this.#isClassifierRefusal(message);
 
 		if (cancelled()) return false;
+		if (this.#retryAttempt === 0) this.#genericAbortStreak = 0;
 		this.#retryAttempt++;
+		this.#genericAbortStreak = this.#isGenericAbortSentinel(message) ? this.#genericAbortStreak + 1 : 0;
 
 		// Create retry promise on first attempt so waitForRetry() can await it
 		// Ensure only one promise exists (avoid orphaned promises from concurrent calls)
@@ -13986,7 +14151,9 @@ export class AgentSession {
 		// fallback ladder self-terminates when the chain is exhausted, and the
 		// post-ladder resend streak below is bounded by its own wall-clock
 		// budget plus abortRetry() (Esc).
-		if (this.#retryAttempt > retrySettings.maxRetries && !classifierRefusal) {
+		const retryBudgetExhausted =
+			this.#retryAttempt > retrySettings.maxRetries || this.#genericAbortStreak > GENERIC_ABORT_MAX_RETRIES;
+		if (retryBudgetExhausted && !classifierRefusal) {
 			// Max retries exceeded, emit final failure and reset
 			await this.#emitSessionEvent({
 				type: "auto_retry_end",
@@ -13995,6 +14162,7 @@ export class AgentSession {
 				finalError: message.errorMessage,
 			});
 			this.#retryAttempt = 0;
+			this.#genericAbortStreak = 0;
 			this.#refusalBackoff = undefined;
 			this.#resolveRetry(); // Resolve so waitForRetry() completes
 			return false;
@@ -14058,10 +14226,9 @@ export class AgentSession {
 
 		const id = this.#classifyRetryMessage(message);
 		const parsedRetryAfterMs = this.#parseRetryAfterMsFromError(errorMessage);
+		const billingCapQuota = isBillingCapUsageLimit(message.errorStatus, errorMessage);
 		const explicitQuotaExhaustion =
-			/\bquota[\s_-]+exhausted\b|quota will reset|exhausted your capacity|insufficient_quota|billing_hard_limit_reached/i.test(
-				errorMessage,
-			);
+			billingCapQuota || /\bquota[\s_-]+exhausted\b|quota will reset|exhausted your capacity/i.test(errorMessage);
 		const hardQuota =
 			AIError.is(id, AIError.Flag.UsageLimit) &&
 			(explicitQuotaExhaustion ||
@@ -14152,6 +14319,7 @@ export class AgentSession {
 			}
 			if (switchedModel) {
 				delayMs = 0;
+				this.#genericAbortStreak = 0;
 			} else if (usageLimitWaitMs === undefined && parsedRetryAfterMs && parsedRetryAfterMs > delayMs) {
 				delayMs = parsedRetryAfterMs;
 			}
@@ -14208,7 +14376,8 @@ export class AgentSession {
 		// assistant error message is preserved in agent state so the caller
 		// can act on it.
 		const maxDelayMs = retrySettings.maxDelayMs;
-		if (maxDelayMs > 0 && delayMs > maxDelayMs && !switchedCredential && !switchedModel && !classifierRefusal) {
+		const exceedsDelayCap = maxDelayMs > 0 && delayMs > maxDelayMs;
+		if (exceedsDelayCap && !switchedCredential && !switchedModel && !classifierRefusal) {
 			const attempt = this.#retryAttempt;
 			const usageLimit = AIError.is(id, AIError.Flag.UsageLimit);
 			this.#retryAttempt = 0;
@@ -14223,9 +14392,13 @@ export class AgentSession {
 			return false;
 		}
 
-		// Explicit account exhaustion cannot recover by resending. Generic quota errors
-		// with concrete retry hints can describe transient token windows instead.
-		if (hardQuota && !switchedCredential && !switchedModel && !waitingForSibling) {
+		// Explicit account exhaustion without a bounded structured reset window cannot
+		// recover by resending. Short structured quota resets within retry.maxDelayMs
+		// (when not a billing cap) are allowed to wait out the reset window.
+		const hasStructuredQuotaReset = /"quotaResetDelay"\s*:/i.test(errorMessage);
+		const canWaitForQuotaReset =
+			!billingCapQuota && hasStructuredQuotaReset && parsedRetryAfterMs !== undefined && !exceedsDelayCap;
+		if (hardQuota && !canWaitForQuotaReset && !switchedCredential && !switchedModel && !waitingForSibling) {
 			const attempt = this.#retryAttempt;
 			this.#retryAttempt = 0;
 			this.#refusalBackoff = undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "jeopi-ai";
+import { type AssistantMessage, isBillingCapUsageLimit, isUsageLimitOutcome } from "jeopi-ai";
 import * as AIError from "jeopi-ai/error";
 
 function message(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
@@ -105,5 +105,54 @@ describe("error-id classification", () => {
 		expect(AIError.is(id, AIError.Flag.ThinkingLoop)).toBe(true);
 		expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(true);
 		expect(assistant.errorId).toBe(id);
+	});
+
+	it("classifies inflected stream stall watchdogs as timeout + transient, except under terminal 4xx", () => {
+		const id = AIError.classifyMessage(
+			message({ errorMessage: "Anthropic stream stalled while waiting for the next event" }),
+		);
+		expect(AIError.is(id, AIError.Flag.Timeout)).toBe(true);
+		expect(AIError.is(id, AIError.Flag.Transient)).toBe(true);
+		expect(AIError.retriable(id)).toBe(true);
+
+		const clientDenied = AIError.classifyMessage(
+			message({ errorStatus: 400, errorMessage: "Anthropic stream stalled while waiting for the next event" }),
+		);
+		expect(AIError.is(clientDenied, AIError.Flag.Timeout)).toBe(false);
+		expect(AIError.retriable(clientDenied)).toBe(false);
+	});
+
+	it("classifies mid-stream drops as retryable transient errors unless paired with terminal 4xx", () => {
+		for (const errorMessage of [
+			"stream disconnected before completion",
+			"websocket closed before response.completed",
+			"stream ended before message_stop",
+		]) {
+			const err = new Error(errorMessage);
+			expect(AIError.isTransientStreamDropError(err)).toBe(true);
+			expect(AIError.isProviderRetryableError(err)).toBe(true);
+			const id = AIError.classifyMessage(message({ errorMessage }));
+			expect(AIError.is(id, AIError.Flag.Transient)).toBe(true);
+			expect(AIError.retriable(id)).toBe(true);
+		}
+
+		const badRequest = new AIError.ProviderHttpError("stream disconnected before completion", 400);
+		expect(AIError.isProviderRetryableError(badRequest)).toBe(false);
+		expect(AIError.retriable(AIError.classify(badRequest))).toBe(false);
+	});
+
+	it("classifies HTTP 402 billing caps as UsageLimit while leaving non-billing 402 and 400 untouched", () => {
+		const billingJson = '{"error":{"type":"billing_error","message":"Account balance depleted"}}';
+		expect(isUsageLimitOutcome(402, billingJson)).toBe(true);
+		expect(isBillingCapUsageLimit(402, billingJson)).toBe(true);
+		expect(AIError.isUsageLimit(new AIError.ProviderHttpError(billingJson, 402))).toBe(true);
+
+		const billingVerification = "Billing verification failed for this account";
+		expect(isUsageLimitOutcome(402, billingVerification)).toBe(true);
+		expect(isUsageLimitOutcome(400, billingVerification)).toBe(false);
+
+		const subscriptionOnly = "A subscription is required for this endpoint; your credits are unchanged";
+		expect(isUsageLimitOutcome(402, subscriptionOnly)).toBe(false);
+		expect(isBillingCapUsageLimit(402, subscriptionOnly)).toBe(false);
 	});
 });

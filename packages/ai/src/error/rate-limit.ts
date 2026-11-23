@@ -100,37 +100,92 @@ export function calculateRateLimitBackoffMs(reason: RateLimitReason): number {
 
 /** Detect usage/quota limit errors in error messages (persistent, requires credential switch). */
 const USAGE_LIMIT_PATTERN =
-	/usage.?limit|usage_limit_reached|usage_not_included|limit_reached|quota.?exceeded|quota.?reached|quota.?exhaust(ed|ion)?|resource.?exhausted|exhausted your capacity|quota will reset|insufficient.?(?:balance|quota)/i;
+	/usage.?limit|usage_limit_reached|usage_not_included|limit_reached|quota.?(?:exceeded|reached|exhaust(?:ed|ion)?|insufficient)|resource.?exhausted|exhausted your capacity|quota will reset|insufficient.?(?:balance|quota)|insufficient_g1_credits_balance/i;
+
+const OUT_OF_CREDIT_PATTERN = /\bout of credit|\badd (?:more )?credit|\btop ?up\b|\bcredit balance\b/i;
+const CREDITS_EXHAUSTED_PATTERN = /\bcredits?\s+(?:are\s+)?(?:exhausted|depleted|unavailable)\b/i;
+const SPEND_LIMIT_PATTERN = /\bspending[- _]?limit\b/i;
+
+const STATUS_402_QUOTA_PATTERN =
+	/\b(?:payment(?:\s+is)?[-_.\s]*required|deactivated_workspace|insufficient.?(?:balance|credits?|account.?funds)|requires?\s+more\s+credits|billing[-_.\s]*(?:verification|error|issue)|can only afford)\b/i;
+
+// Machine fields survive provider parsing even when the human detail is generic.
+const BILLING_ERROR_CODE_PATTERN = /^billing_(?:error|not_configured)$/i;
+const BILLING_ERROR_FIELD_PATTERN = /\b(?:type|code|param)=billing_(?:error|not_configured)(?=[\s)]|$)/i;
+
+function parseJsonBody(message: string): Record<string, unknown> | undefined {
+	const start = message.indexOf("{");
+	if (start === -1) return undefined;
+	try {
+		const parsed: unknown = JSON.parse(message.slice(start));
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: undefined;
+	} catch {
+		return undefined;
+	}
+}
 
 /**
  * HTTP status codes that, absent richer body classification, represent an
  * account-local usage cap rather than a bad credential or a transient blip.
- * Always combine with {@link isUsageLimitOutcome} when a message is available
- * — a 429 carrying transient rate-limit wording is NOT a usage cap.
+ * HTTP 402 Payment Required represents an account-billing cap when opaque,
+ * payment/deactivation/balance/funds/billing-error-worded, or QUOTA_EXHAUSTED.
+ * Always combine with {@link isUsageLimitOutcome} when a message is available.
  */
 export function isUsageLimitStatus(status: number | undefined): boolean {
-	return status === 429;
+	return status === 429 || status === 402;
+}
+
+export function is402BillingCapBody(message: string | undefined): boolean {
+	if (message === undefined || isOpaqueStatusBody(message)) return true;
+	if (BILLING_ERROR_CODE_PATTERN.test(message) || BILLING_ERROR_FIELD_PATTERN.test(message)) return true;
+	const body = parseJsonBody(message);
+	const errorObj =
+		body?.error && typeof body.error === "object" && !Array.isArray(body.error)
+			? (body.error as Record<string, unknown>)
+			: body;
+	if (
+		[errorObj?.type, errorObj?.code, errorObj?.param].some(
+			value => typeof value === "string" && BILLING_ERROR_CODE_PATTERN.test(value),
+		)
+	) {
+		return true;
+	}
+	if (STATUS_402_QUOTA_PATTERN.test(message)) return true;
+	return parseRateLimitReason(message) === "QUOTA_EXHAUSTED";
+}
+
+/**
+ * True when a usage-limit failure reflects a billing/credit cap (cannot recover
+ * by waiting out a short quota reset window).
+ */
+export function isBillingCapUsageLimit(status: number | undefined, message: string | undefined): boolean {
+	if (message === undefined) return false;
+	if (status === 402) return is402BillingCapBody(message);
+	return (
+		/\binsufficient_g1_credits_balance\b/i.test(message) ||
+		OUT_OF_CREDIT_PATTERN.test(message) ||
+		INSUFFICIENT_BALANCE_PATTERN.test(message) ||
+		CREDITS_EXHAUSTED_PATTERN.test(message) ||
+		SPEND_LIMIT_PATTERN.test(message) ||
+		/\binsufficient_quota\b/i.test(message)
+	);
 }
 
 /**
  * Returns true for failures that should burn one credential and rotate to a
  * sibling account. Decision tree:
  *
- *  1. Body matches {@link isUsageLimitError} (Codex `usage_limit_reached`,
- *     Anthropic account rate-limit, Google `resource_exhausted`, OpenAI
- *     `insufficient_quota`, …) → rotate.
- *  2. Status is not 429 → backoff (caller's domain).
- *  3. Body is absent or {@link isOpaqueStatusBody opaque} (just the status,
- *     empty JSON, HTTP framing only) → rotate conservatively: the server
- *     gave us nothing else to go on.
- *  4. Body has content → defer to {@link parseRateLimitReason}. Only
- *     `QUOTA_EXHAUSTED` rotates; `RATE_LIMIT_EXCEEDED` (`Too many requests`,
- *     per-minute caps), `MODEL_CAPACITY_EXHAUSTED` (`Service overloaded`),
- *     `SERVER_ERROR`, and `UNKNOWN` (`Please retry in 5s`) stay in the
- *     provider's own backoff layer so transient 429s don't burn sibling
- *     credentials.
+ *  1. Status 402 → delegate to {@link is402BillingCapBody}.
+ *  2. Body matches {@link matchesUsageLimitText} → rotate.
+ *  3. Status is not 429/402 → backoff (caller's domain).
+ *  4. Body is absent or {@link isOpaqueStatusBody opaque} → rotate conservatively.
+ *  5. Body has content → defer to {@link parseRateLimitReason}. Only
+ *     `QUOTA_EXHAUSTED` rotates.
  */
 export function isUsageLimitOutcome(status: number | undefined, message: string | undefined): boolean {
+	if (status === 402) return is402BillingCapBody(message);
 	if (message && matchesUsageLimitText(message)) return true;
 	if (!isUsageLimitStatus(status)) return false;
 	if (!message || isOpaqueStatusBody(message)) return true;
@@ -138,14 +193,14 @@ export function isUsageLimitOutcome(status: number | undefined, message: string 
 }
 
 /**
- * A 429 body is opaque when it carries no signal beyond the status itself —
+ * A 429/402 body is opaque when it carries no signal beyond the status itself —
  * empty, whitespace-only, the status digits with HTTP/JSON framing, or
  * generic punctuation. Anything else (retry hints, capacity wording, error
  * descriptions) is informative enough to defer to the classifier.
  */
 export function isOpaqueStatusBody(message: string): boolean {
 	const cleaned = message
-		.replace(/\b429\b/g, "")
+		.replace(/\b(?:402|429)\b/g, "")
 		.replace(/\b(?:http|https|status|error|code|response|message)\b/gi, "");
 	return !/[a-z\d]{3,}/i.test(cleaned);
 }

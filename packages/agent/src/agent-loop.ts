@@ -435,6 +435,7 @@ async function emitTurnEnd(
 	context?: Omit<AgentTurnEndContext, "message" | "toolResults">,
 ): Promise<undefined | "stop"> {
 	stream.push({ type: "turn_end", message, toolResults });
+	config.onTurnEndEmitted?.();
 	const isAbortedOrError =
 		message.role === "assistant" && (message.stopReason === "aborted" || message.stopReason === "error");
 	if (signal?.aborted || isAbortedOrError) return;
@@ -804,6 +805,9 @@ async function runLoopBody(
 			limit: stop.limit,
 			consecutiveFailures: stop.consecutiveFailures,
 			outerCycles: stop.outerCycles,
+			costUsd: stop.costUsd,
+			tokensSpent: stop.tokensSpent,
+			repeatCalls: stop.repeatCalls,
 			reason: stop.reason,
 		});
 		await config.onWorkflowGuardStop?.(stop);
@@ -1042,6 +1046,42 @@ async function runLoopBody(
 				const toolCalls = message.content.filter((c): c is ToolCallContent => c.type === "toolCall");
 				const runnableStop = message.stopReason === "toolUse" || message.stopReason === "stop";
 				hasMoreToolCalls = runnableStop && toolCalls.length > 0;
+
+				if (workflowGuard) {
+					const usageCheck = workflowGuard.recordAssistantUsage(message.usage);
+					if (usageCheck.softWarning) {
+						pendingMessages = [
+							...pendingMessages,
+							{
+								role: "user",
+								content: usageCheck.softWarning.message,
+								synthetic: true,
+								attribution: "agent",
+								timestamp: Date.now(),
+							} as AgentMessage,
+						];
+						await config.onWorkflowGuardSoftWarning?.(usageCheck.softWarning);
+					}
+					if (usageCheck.stop) {
+						const abortedResults: ToolResultMessage[] = [];
+						for (const toolCall of toolCalls) {
+							const result = createAbortedToolResult(toolCall, stream, "aborted", usageCheck.stop.reason);
+							currentContext.messages.push(result);
+							newMessages.push(result);
+							abortedResults.push(result);
+							recordSkippedTool(telemetry, {
+								toolCallId: toolCall.id,
+								toolName: toolCall.name,
+								status: "aborted",
+							});
+						}
+						await emitTurnEnd(stream, currentContext, message, abortedResults, config, signal, {
+							willContinue: false,
+						});
+						await stopForWorkflowGuard(usageCheck.stop);
+						return;
+					}
+				}
 
 				const deadlinePassed = isDeadlineExceeded(config.deadline);
 				if (hasMoreToolCalls && deadlinePassed) {

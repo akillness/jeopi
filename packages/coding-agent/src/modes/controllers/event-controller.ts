@@ -1,5 +1,4 @@
 import type { AssistantMessage, ImageContent } from "jeopi-ai";
-import * as AIError from "jeopi-ai/error";
 import { getStreamingPartialJson } from "jeopi-ai/utils/block-symbols";
 import { type Component, Loader, TERMINAL } from "jeopi-tui";
 import { logger, prompt } from "jeopi-utils";
@@ -24,7 +23,7 @@ import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
 import idleRecapPrompt from "../../prompts/system/recap-user.md" with { type: "text" };
 import type { AgentSessionEvent } from "../../session/agent-session";
 import { isSilentAbort, readQueueChipText, resolveAbortLabel } from "../../session/messages";
-import { previewLine, TRUNCATE_LENGTHS } from "../../tools/render-utils";
+import { previewLine, replaceTabs, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import type { ResolveToolDetails } from "../../tools/resolve";
 import { nextActionableTask } from "../../tools/todo";
 import { vocalizer } from "../../tts/vocalizer";
@@ -85,6 +84,7 @@ export class EventController {
 	// restored when the banner clears at the next `agent_start` (see
 	// #handleMessageEnd / #handleAgentStart).
 	#pinnedErrorComponent: AssistantMessageComponent | undefined = undefined;
+	#retryHiddenErrorComponents: AssistantMessageComponent[] = [];
 	#idleCompactionTimer?: NodeJS.Timeout;
 	#idleRecapTimer?: NodeJS.Timeout;
 	// In-flight ephemeral recap turn; aborted by #cancelIdleRecap when any
@@ -288,6 +288,7 @@ export class EventController {
 		this.#readToolCallAssistantComponents.clear();
 		this.#lastAssistantComponent = undefined;
 		this.#pinnedErrorComponent = undefined;
+		this.#retryHiddenErrorComponents.length = 0;
 		this.#cancelIdleCompaction();
 		this.#cancelIdleRecap();
 		for (const timer of this.#ircExpiryTimers.values()) {
@@ -1217,19 +1218,23 @@ export class EventController {
 	async #handleAutoRetryStart(event: Extract<AgentSessionEvent, { type: "auto_retry_start" }>): Promise<void> {
 		this.#stopWorkingLoader();
 		this.ctx.statusContainer.clear();
-		if (AIError.is(event.errorId, AIError.Flag.ThinkingLoop)) {
-			// The retry path drops the failed assistant from runtime context. Do not
-			// restore its inline Error row; just unpin the fixed-region banner so the
-			// retry UI is the visible state.
-			this.#pinnedErrorComponent = undefined;
-			this.ctx.clearPinnedError();
+		// The failed attempt is not the turn's outcome while a retry is pending:
+		// unpin its banner and keep its inline error hidden, so a recovered retry
+		// leaves no transient error in the transcript. `auto_retry_end` restores
+		// hidden inline errors only when the retry sequence ultimately fails.
+		if (this.#pinnedErrorComponent) {
+			this.#retryHiddenErrorComponents.push(this.#pinnedErrorComponent);
 		}
+		this.#pinnedErrorComponent = undefined;
+		this.ctx.clearPinnedError();
 		const delaySeconds = Math.round(event.delayMs / 1000);
+		const reason = previewLine(replaceTabs(event.errorMessage), TRUNCATE_LENGTHS.CONTENT);
+		const waitLabel = `Retrying (${event.attempt}/${event.maxAttempts}) in ${delaySeconds}s`;
 		this.ctx.retryLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("warning", spinner),
 			text => theme.fg("muted", text),
-			`Retrying (${event.attempt}/${event.maxAttempts}) in ${delaySeconds}s…${this.#maintenanceEscHint()}`,
+			`${reason ? `${waitLabel} · ${reason}` : `${waitLabel}…`}${this.#maintenanceEscHint()}`,
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(this.ctx.retryLoader);
@@ -1242,7 +1247,13 @@ export class EventController {
 			this.ctx.retryLoader = undefined;
 			this.ctx.statusContainer.clear();
 		}
+		const hidden = this.#retryHiddenErrorComponents.splice(0);
 		if (!event.success) {
+			for (const component of hidden) {
+				if (component !== this.#pinnedErrorComponent) {
+					component.setErrorPinned(false);
+				}
+			}
 			const finalError = event.finalError || "Unknown error";
 			this.ctx.showError(
 				finalError.startsWith("Quota exhausted.")

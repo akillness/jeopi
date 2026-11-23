@@ -84,6 +84,23 @@ const LEX_STALL_NOVELTY_FLOOR = 0.2;
  *  the real reasoning-summarizer loop sustains far longer runs (10+). */
 const LEX_STALL_MIN_RUN = 8;
 
+const JSON_STRING_TAIL = /^[^"\n]*"(?=\s*[,}\]:])/;
+const JSON_STRING_LEAD = /^\s*"(?:\\.|[^"\\\n])*"?(?=\s*[,}\]:]|$)/;
+const JSON_STRING = /(?<=[{[,:]\s*)"(?:\\.|[^"\\\n])*"?/g;
+const JSON_SCALAR = /""|-?\d[\d.eE+-]*|true|false|null/;
+const JSON_SCALAR_ARRAY = new RegExp(
+	`\\[\\s*(?:(?:${JSON_SCALAR.source})(?:\\s*,\\s*(?:${JSON_SCALAR.source}))*)?\\s*\\]`,
+);
+const JSON_FIELD = new RegExp(
+	`(?:^|[{,])\\s*""\\s*:\\s*(?:${JSON_SCALAR.source}|${JSON_SCALAR_ARRAY.source})|^\\s*""(?=\\s*[,}\\]])`,
+	"gm",
+);
+const JSON_MIN_FIELDS = 2;
+const JSON_MIN_FIELD_SHARE = 0.5;
+const TABLE_ROW_MIN_PIPES = 2;
+const TABLE_MIN_LINES = 2;
+const TABLE_ROW_MIN_SHARE = 0.6;
+
 /** A concrete reference the model is actually reasoning about: a code span, a
  *  file extension / dotted member, a multi-segment path, or a snake/camel/Pascal
  *  identifier. A segment that introduces a NEW one resets the lexical-stall run —
@@ -235,6 +252,9 @@ export class ThinkingLoopDetector {
 		if (this.#consecutiveExact >= CONSECUTIVE_EXACT_MIN) {
 			return `repeated identical segment ${this.#consecutiveExact}× consecutively`;
 		}
+		// Structured answer content (JSON records / pipe-led markdown tables) is not
+		// reasoning; its rows differ only in numeric data normalization drops.
+		if (isStructuredSegment(segment)) return null;
 		// (a) Near-duplicate trigram cluster: the same paragraph reused with
 		// cosmetic wording drift (high word-trigram overlap).
 		const fingerprint = trigramShingles(normalized);
@@ -546,6 +566,28 @@ function detectVerbatimRepetition(text: string): [unit: string, count: number] |
 		if (count >= 4 && len * count >= VERBATIM_MIN_REPEATED_CHARS) return [unit, count];
 	}
 	return null;
+}
+
+/** Structured answer content: a segment whose text is mostly JSON key/value fields
+ *  (a record, or a fragment of one cut mid-line), or whose non-blank lines are mostly
+ *  markdown table rows. A table row leads with a pipe: prose that merely contains two
+ *  pipes (a union type such as `A | B`, a shell pipeline such as `cat f | grep x`) is
+ *  reasoning and must still trip. Bullet and numbered lists are not structured here. */
+function isStructuredSegment(segment: string): boolean {
+	const masked = segment.replace(JSON_STRING_TAIL, '""').replace(JSON_STRING_LEAD, '""').replace(JSON_STRING, '""');
+	let fields = 0;
+	let fieldChars = 0;
+	for (const match of masked.matchAll(JSON_FIELD)) {
+		fields++;
+		fieldChars += match[0].length;
+	}
+	if (fields >= JSON_MIN_FIELDS && fieldChars >= masked.trim().length * JSON_MIN_FIELD_SHARE) return true;
+	const lines = segment.split("\n").filter(line => line.trim() !== "");
+	if (lines.length < TABLE_MIN_LINES) return false;
+	const tableRows = lines.filter(
+		line => /^\s*\|/.test(line) && (line.match(/\|/g)?.length ?? 0) >= TABLE_ROW_MIN_PIPES,
+	).length;
+	return tableRows >= lines.length * TABLE_ROW_MIN_SHARE;
 }
 
 /** Lowercase and tokenize prose plus code/path payloads, dropping pure numbers. */

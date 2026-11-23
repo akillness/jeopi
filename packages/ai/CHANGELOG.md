@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- Extended `ToolCallLoopGuard` with `maxRedirectsBeforeStop` escalation, `reason` classification on `stalled_tool_call` (`unchanged_output`, `error_streak`, `redirect_escalation`, `cycle_escalation`), parallel batch stall detection, 3-step cycle detection/escalation, and `reset()`.
+- Exported `isTransientStreamDropError`, `is402BillingCapBody`, and `isBillingCapUsageLimit` from the error classifier.
+
+### Fixed
+
+- Classified mid-stream transport drops and inflected `stream stalled` watchdogs as retryable transient errors while keeping terminal 4xx responses non-retryable, and classified HTTP 402 billing-cap bodies as usage limits.
+- Raised default `streamFirstEventTimeoutMs` and `streamIdleTimeoutMs` stream watchdogs to 15 minutes (`900_000` ms) to avoid aborting long reasoning streams prematurely.
+- Exempted structured JSON records and pipe-led markdown tables whose rows vary only in numbers from `ThinkingLoopDetector` trigram false positives while still catching byte-identical row cycles.
+
 ## [16.7.6] - 2026-11-21
 
 ### Fixed

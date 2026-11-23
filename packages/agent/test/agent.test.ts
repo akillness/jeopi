@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Agent, type AgentEvent, type AgentTool, ThinkingLevel } from "jeopi-agent-core";
 import { type SimpleStreamOptions, z } from "jeopi-ai";
+import * as AIError from "jeopi-ai/error";
 import { createMockModel } from "jeopi-ai/providers/mock";
 import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
 import { createAssistantMessage } from "./helpers";
@@ -717,5 +718,50 @@ describe("Agent — F3 in-place state mutation", () => {
 		expect(pendingToolCalls.has("call-1")).toBe(true);
 		expect(agent.state.messages).not.toBe(messages);
 		expect(agent.state.pendingToolCalls).not.toBe(pendingToolCalls);
+	});
+
+	it("preserves errorStatus and errorId when a provider stream rejects before assistant start", async () => {
+		const mock = createMockModel({ responses: [] });
+		const httpError = new AIError.ProviderHttpError("Bad gateway response", 502);
+		const agent = new Agent({
+			initialState: { model: mock.model, systemPrompt: ["Test"], tools: [], messages: [] },
+			streamFn: () => {
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => stream.fail(httpError));
+				return stream;
+			},
+		});
+		const events: AgentEvent[] = [];
+		const unsubscribe = agent.subscribe(event => events.push(event));
+
+		await agent.prompt("trigger");
+		unsubscribe();
+
+		const agentEnd = events.find(
+			(event): event is Extract<AgentEvent, { type: "agent_end" }> => event.type === "agent_end",
+		);
+		const terminalAssistant = agentEnd?.messages.find(message => message.role === "assistant");
+		expect(terminalAssistant?.role).toBe("assistant");
+		if (terminalAssistant?.role !== "assistant") throw new Error("Expected terminal assistant message");
+		expect(terminalAssistant.stopReason).toBe("error");
+		expect(terminalAssistant.errorMessage).toBe("Bad gateway response");
+		expect(terminalAssistant.errorStatus).toBe(502);
+		expect(terminalAssistant.errorId).toBe(AIError.create(AIError.Flag.Transient));
+		expect(AIError.retriable(AIError.classifyMessage({ ...terminalAssistant }))).toBe(true);
+		expect(agent.state.messages.at(-1)).toEqual(terminalAssistant);
+
+		const unclassifiedAgent = new Agent({
+			initialState: { model: mock.model, systemPrompt: ["Test"], tools: [], messages: [] },
+			streamFn: () => {
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => stream.fail(new Error("Unclassified provider failure")));
+				return stream;
+			},
+		});
+		await unclassifiedAgent.prompt("trigger");
+		const unclassifiedFinal = unclassifiedAgent.state.messages.at(-1);
+		if (unclassifiedFinal?.role !== "assistant") throw new Error("Expected unclassified assistant message");
+		expect(unclassifiedFinal.errorStatus).toBeUndefined();
+		expect(unclassifiedFinal.errorId).toBeUndefined();
 	});
 });

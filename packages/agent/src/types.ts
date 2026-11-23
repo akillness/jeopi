@@ -23,7 +23,7 @@ import type { HarmonyAuditEvent } from "jeopi-ai/utils/harmony-leak";
 import type { AppendOnlyContextManager } from "./append-only-context";
 import type { AgentRunCoverage, AgentRunSummary } from "./run-collector";
 import type { AgentTelemetryConfig } from "./telemetry";
-import type { WorkflowGuardStop, WorkflowLoopGuardConfig } from "./workflow-guard";
+import type { WorkflowGuardSoftWarning, WorkflowGuardStop, WorkflowLoopGuardConfig } from "./workflow-guard";
 
 /** Stream function - can return sync or Promise for async config lookup */
 export type StreamFn = (
@@ -337,6 +337,11 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	onWorkflowGuardStop?: (stop: WorkflowGuardStop) => void | Promise<void>;
 
 	/**
+	 * Called once per run when the workflow loop guard crosses the soft cost or output-token budget threshold.
+	 */
+	onWorkflowGuardSoftWarning?: (warning: WorkflowGuardSoftWarning) => void | Promise<void>;
+
+	/**
 	 * Dynamic tool-choice directive, resolved once per turn. Returns a hard
 	 * {@link ToolChoice} (applied verbatim, overriding the static `toolChoice`),
 	 * a {@link SoftToolRequirement} (the loop reminds-then-escalates instead of
@@ -414,6 +419,8 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 		signal?: AbortSignal,
 		context?: AgentTurnEndContext,
 	) => Promise<undefined | "stop"> | Promise<void> | void | "stop";
+	/** Called synchronously when the loop pushes `turn_end` onto the event stream. */
+	onTurnEndEmitted?: () => void;
 
 	/**
 	 * Called once an assistant message is finalized from the model stream, before

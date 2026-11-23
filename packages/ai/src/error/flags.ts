@@ -6,7 +6,7 @@ import {
 	ProviderHttpError,
 	STREAM_ENVELOPE_ERROR_PREFIX,
 } from "./classes";
-import { isOpaqueStatusBody, matchesUsageLimitText, parseRateLimitReason } from "./rate-limit";
+import { is402BillingCapBody, isOpaqueStatusBody, matchesUsageLimitText, parseRateLimitReason } from "./rate-limit";
 
 export const Flag = {
 	Class: 0x1000,
@@ -84,7 +84,7 @@ const OVERFLOW_PATTERNS = [
 ];
 
 const OVERFLOW_NO_BODY_PATTERN = /\b4(00|13)\s*(status code)?\s*\(no body\)/i;
-const TIMEOUT_PATTERN = /\b(?:operation\s+)?timed?\s*out\b|\btimeout\b|\bstream stall\b/i;
+const TIMEOUT_PATTERN = /\b(?:operation\s+)?timed?\s*out\b|\btimeout\b|\bstream stall(?:ed|s|ing)?\b/i;
 const TRANSIENT_ENVELOPE_PATTERN = /anthropic stream envelope error:/i;
 const TRANSIENT_ENVELOPE_BEFORE_START_PATTERN = /before message_start/i;
 export const STREAM_READ_ERROR_PATTERN = /stream[_ -]?read[_ -]?error/i;
@@ -297,6 +297,10 @@ function matchesOverflowText(text: string): boolean {
 	return OVERFLOW_PATTERNS.some(p => p.test(text)) || OVERFLOW_NO_BODY_PATTERN.test(text);
 }
 
+function isTerminalClientErrorStatus(code: number | undefined): boolean {
+	return code !== undefined && code >= 400 && code < 500 && code !== 408 && code !== 429;
+}
+
 function classifyText(errorMessage: string | undefined, errorStatus: number | undefined, api?: Api): number {
 	let kinds = 0;
 	if (errorMessage) {
@@ -311,15 +315,25 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 		const isOpaque = isOpaqueStatusBody(cleanMessage);
 
 		const isLimitStatus = statusClean === 429;
+		const is402BillingCap = statusClean === 402 && is402BillingCapBody(cleanMessage);
 		if (
-			matchesUsageLimitText(cleanMessage) ||
+			is402BillingCap ||
+			(statusClean !== 402 && matchesUsageLimitText(cleanMessage)) ||
 			(isLimitStatus && (isOpaque || parseRateLimitReason(cleanMessage) === "QUOTA_EXHAUSTED"))
 		) {
 			kinds |= Flag.UsageLimit;
 		}
 
-		if (isTimeoutText(errorMessage)) kinds |= Flag.Transient | Flag.Timeout;
-		else if (isTransientErrorText(errorMessage)) kinds |= Flag.Transient;
+		// Transport/timeout/truncation/stream-drop wording that rides on a terminal
+		// 4xx describes a deterministic client error that replays identically, so
+		// keep it terminal — matching isProviderRetryableError.
+		if (!isTerminalClientErrorStatus(statusClean)) {
+			if (isTimeoutText(errorMessage)) kinds |= Flag.Transient | Flag.Timeout;
+			else if (isTransientErrorText(errorMessage)) kinds |= Flag.Transient;
+			if (isTransientStreamParseError(errorMessage) || isTransientStreamDropError(errorMessage)) {
+				kinds |= Flag.Transient;
+			}
+		}
 		if ((api === "openai-responses" || api === "openai-codex-responses") && isStaleResponsesText(errorMessage)) {
 			kinds |= Flag.StaleResponsesItem;
 		}
@@ -328,6 +342,10 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 		if (statusClean === 400 && COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(cleanMessage)) kinds |= Flag.Transient;
 		if (matchesGrammarTooLarge(cleanMessage, statusClean)) kinds |= Flag.Grammar;
 		if (matchesFastModeUnsupported(cleanMessage, statusClean)) kinds |= Flag.FastModeUnsupported;
+	}
+	const statusEvidence = errorStatus ?? (errorMessage ? status({ message: errorMessage }) : undefined);
+	if (statusEvidence === 402 && (errorMessage === undefined || isOpaqueStatusBody(errorMessage))) {
+		kinds |= Flag.UsageLimit;
 	}
 	if (kinds !== 0) return create(kinds);
 	const fallbackStatus = errorStatus ?? (errorMessage ? status({ message: errorMessage }) : undefined);
@@ -339,6 +357,7 @@ export function classify(error: unknown, api?: Api): number {
 	let kinds = 0;
 	const seen = new Set<object>();
 	let link: unknown = error;
+	let outerTerminalStatus: number | undefined;
 	while (link !== undefined && link !== null) {
 		if (typeof link === "object") {
 			if (seen.has(link)) break;
@@ -369,7 +388,13 @@ export function classify(error: unknown, api?: Api): number {
 		} else if (link instanceof ProviderHttpError) {
 			let linkKinds = 0;
 			const { status: codeStatus, code } = link;
-			if (code === "usage_limit_reached" || code === "insufficient_quota") {
+			if (
+				code === "usage_limit_reached" ||
+				code === "insufficient_quota" ||
+				(codeStatus === 402 &&
+					(is402BillingCapBody(link.message) ||
+						(code !== undefined && !isOpaqueStatusBody(code) && is402BillingCapBody(code))))
+			) {
 				linkKinds |= Flag.UsageLimit;
 			}
 			if (code === "overloaded_error" || code === "rate_limit_error") {
@@ -400,7 +425,11 @@ export function classify(error: unknown, api?: Api): number {
 			linkMessage = (link as { message: string }).message;
 		}
 
-		const textId = classifyText(linkMessage, status(link), api);
+		const linkStatus = status(link);
+		if (outerTerminalStatus === undefined && isTerminalClientErrorStatus(linkStatus)) {
+			outerTerminalStatus = linkStatus;
+		}
+		const textId = classifyText(linkMessage, linkStatus ?? outerTerminalStatus, api);
 		kinds |= textId & KIND_MASK;
 
 		link = typeof link === "object" && "cause" in link ? (link as { cause: unknown }).cause : undefined;
@@ -494,11 +523,27 @@ export function stringify(id: number | undefined): string {
 
 const STREAM_PARSE_TRUNCATION_PATTERN =
 	/unterminated string|unexpected end of json input|unexpected end of data|unexpected eof|end of file|eof while parsing|truncated/i;
+const STREAM_PARSE_DIAGNOSTIC_PATTERN =
+	/unterminated string|unexpected end of json input|unexpected end of data|unexpected eof|eof while parsing/i;
 const STREAM_EVENT_ORDER_PATTERN = /stream event order|before message_start/i;
 
 /** Transient stream corruption where the response was truncated mid-JSON. */
 export function isTransientStreamParseError(error: unknown): boolean {
+	if (typeof error === "string") return STREAM_PARSE_DIAGNOSTIC_PATTERN.test(error);
 	return error instanceof Error && STREAM_PARSE_TRUNCATION_PATTERN.test(error.message);
+}
+
+/**
+ * Transport-level stream drops: the connection or upstream stream ended before a
+ * terminal event, with no JSON-parse signal and no retryable status attached.
+ */
+const STREAM_DROP_PATTERN =
+	/stream disconnected before completion|(?:stream|websocket) closed before response\.completed|stream (?:was )?interrupted|stream ended before (?:terminal (?:chunk|completion event)|message_(?:start|delta|stop))|socket disconnected before secure tls connection/i;
+
+/** Transport stream-drop diagnostic (see {@link STREAM_DROP_PATTERN}). */
+export function isTransientStreamDropError(error: unknown): boolean {
+	if (typeof error === "string") return STREAM_DROP_PATTERN.test(error);
+	return error instanceof Error && STREAM_DROP_PATTERN.test(error.message);
 }
 
 /** Any malformed stream-envelope error (prefix-tagged or out-of-order events). */

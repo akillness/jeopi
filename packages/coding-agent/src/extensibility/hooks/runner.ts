@@ -5,6 +5,7 @@ import type { AgentMessage } from "jeopi-agent-core";
 import type { Model } from "jeopi-ai";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { SessionManager } from "../../session/session-manager";
+import { guardContextHookMessages } from "../context-guard";
 import { createNoOpUIContext } from "../utils";
 import type {
 	AppendEntryHandler,
@@ -368,8 +369,12 @@ export class HookRunner {
 					const event: ContextEvent = { type: "context", messages: currentMessages };
 					const handlerResult = await handler(event, ctx);
 
-					if (handlerResult && (handlerResult as ContextEventResult).messages) {
-						currentMessages = (handlerResult as ContextEventResult).messages!;
+					if (handlerResult && (handlerResult as ContextEventResult).messages !== undefined) {
+						currentMessages = guardContextHookMessages(
+							currentMessages,
+							(handlerResult as ContextEventResult).messages,
+							hook.path,
+						).messages;
 					}
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);

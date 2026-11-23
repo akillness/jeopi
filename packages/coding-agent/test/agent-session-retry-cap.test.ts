@@ -1075,4 +1075,126 @@ describe("AgentSession retry delay cap", () => {
 		expect(last.stopReason).toBe("stop");
 		expect(last.content).toContainEqual({ type: "text", text: "recovered after default 502 retry budget" });
 	});
+
+	it("bounds consecutive generic Request was aborted retries to two attempts", async () => {
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!model) {
+			throw new Error("Expected bundled Anthropic test model to exist");
+		}
+
+		const mock = createMockModel({
+			responses: [
+				{ stopReason: "aborted", errorMessage: "Request was aborted" },
+				{ stopReason: "aborted", errorMessage: "Request was aborted" },
+				{ stopReason: "aborted", errorMessage: "Request was aborted" },
+				{ stopReason: "aborted", errorMessage: "Request was aborted" },
+			],
+		});
+		const agent = new Agent({
+			getApiKey: m => `${m.provider}-test-key`,
+			initialState: {
+				model,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
+			streamFn: mock.stream,
+		});
+
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"retry.baseDelayMs": 5,
+			"retry.maxDelayMs": 5_000,
+			"retry.maxRetries": 6,
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry,
+		});
+
+		vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
+		const retryStartEvents: AutoRetryStartEvent[] = [];
+		const retryEndEvents: AutoRetryEndEvent[] = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_start") retryStartEvents.push(event);
+			if (event.type === "auto_retry_end") retryEndEvents.push(event);
+		});
+
+		await session.prompt("Trigger repeated generic aborts");
+		await session.waitForIdle();
+
+		// 1 initial attempt + 2 bounded generic abort retries = 3 total provider calls.
+		expect(mock.calls).toHaveLength(3);
+		expect(retryStartEvents).toHaveLength(2);
+		expect(retryEndEvents).toHaveLength(1);
+		expect(retryEndEvents[0]).toMatchObject({ success: false });
+	});
+
+	it("waits out short structured quotaResetDelay within retry.maxDelayMs and recovers", async () => {
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!model) {
+			throw new Error("Expected bundled Anthropic test model to exist");
+		}
+
+		const mock = createMockModel({
+			responses: [
+				{
+					stopReason: "error",
+					errorMessage:
+						'429 {"error":{"message":"You have exhausted your capacity.","details":[{"metadata":{"quotaResetDelay":"2s"}}]}}',
+				},
+				{ content: ["recovered after short quota reset wait"] },
+			],
+		});
+		const agent = new Agent({
+			getApiKey: m => `${m.provider}-test-key`,
+			initialState: {
+				model,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
+			streamFn: mock.stream,
+		});
+
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"retry.baseDelayMs": 5,
+			"retry.maxDelayMs": 10_000,
+			"retry.maxRetries": 3,
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry,
+		});
+
+		const waitSpy = vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
+		const retryStartEvents: AutoRetryStartEvent[] = [];
+		const retryEndEvents: AutoRetryEndEvent[] = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_start") retryStartEvents.push(event);
+			if (event.type === "auto_retry_end") retryEndEvents.push(event);
+		});
+
+		await session.prompt("Trigger short quota reset");
+		await session.waitForIdle();
+
+		expect(waitSpy).toHaveBeenCalled();
+		expect(retryStartEvents).toHaveLength(1);
+		expect(retryStartEvents[0]?.delayMs).toBeGreaterThanOrEqual(2_000);
+		expect(retryEndEvents).toHaveLength(1);
+		expect(retryEndEvents[0]).toMatchObject({ success: true });
+		expect(lastAssistant(session).content).toContainEqual({
+			type: "text",
+			text: "recovered after short quota reset wait",
+		});
+	});
 });

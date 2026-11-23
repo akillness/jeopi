@@ -189,6 +189,7 @@ export class AdvisorRuntime {
 	#backlog = 0;
 	#consecutiveFailures = 0;
 	#failureNotified = false;
+	#permanentlyDisabled = false;
 	#latestMessages?: AgentMessage[];
 	#waiters: CatchupWaiter[] = [];
 	/** Bumped by every external {@link reset}/{@link dispose}. A drain iteration
@@ -197,7 +198,6 @@ export class AdvisorRuntime {
 	 *  being retried/requeued into the post-reset conversation. */
 	#epoch = 0;
 	disposed = false;
-
 	/**
 	 * Render primary thinking into deltas. Doubles as the refusal-degrade latch:
 	 * starts `true` (or whatever the constructor option says) and flips to
@@ -226,8 +226,12 @@ export class AdvisorRuntime {
 		return this.#backlog;
 	}
 
+	get isPermanentlyDisabled(): boolean {
+		return this.#permanentlyDisabled;
+	}
+
 	onTurnEnd(messages?: AgentMessage[]): void {
-		if (this.disposed) return;
+		if (this.disposed || this.#permanentlyDisabled) return;
 		const all = messages ?? this.host.snapshotMessages();
 		this.#latestMessages = all;
 		const render = this.#renderDelta(all);
@@ -240,7 +244,9 @@ export class AdvisorRuntime {
 	}
 
 	waitForCatchup(maxMs: number, threshold: number, signal?: AbortSignal): Promise<void> {
-		if (this.disposed || signal?.aborted || this.#backlog < threshold) return Promise.resolve();
+		if (this.disposed || this.#permanentlyDisabled || signal?.aborted || this.#backlog < threshold) {
+			return Promise.resolve();
+		}
 		const { promise, resolve } = Promise.withResolvers<void>();
 		let waiter!: CatchupWaiter;
 		const finish = (): void => {
@@ -301,6 +307,7 @@ export class AdvisorRuntime {
 	 */
 	reset(): void {
 		this.#epoch++;
+		this.#permanentlyDisabled = false;
 		this.#resetAdvisorContext(true, true);
 	}
 
@@ -315,6 +322,7 @@ export class AdvisorRuntime {
 		this.#backlog = 0;
 		this.#consecutiveFailures = 0;
 		this.#failureNotified = false;
+		this.#permanentlyDisabled = false;
 		this.#seenContext.clear();
 		this.#wakeAllWaiters();
 	}
@@ -519,8 +527,26 @@ export class AdvisorRuntime {
 						continue;
 					}
 					this.#consecutiveFailures++;
-					if (isPermanentAdvisorError(err) || this.#consecutiveFailures >= 3) {
-						logger.warn("advisor failure is non-retryable or repeated; dropping backlog");
+					if (isPermanentAdvisorError(err)) {
+						this.#permanentlyDisabled = true;
+						this.#pending = [];
+						this.#backlog = 0;
+						this.#consecutiveFailures = 0;
+						this.#seenContext.clear();
+						this.#wakeAllWaiters();
+						logger.warn("advisor disabled for session after permanent error", { err: String(err) });
+						if (!this.#failureNotified) {
+							this.#failureNotified = true;
+							try {
+								this.host.notifyFailure?.(err);
+							} catch (notifyErr) {
+								logger.warn("advisor failure notification failed", { err: String(notifyErr) });
+							}
+						}
+						break;
+					}
+					if (this.#consecutiveFailures >= 3) {
+						logger.warn("advisor failure repeated; dropping backlog", { err: String(err) });
 						if (!this.#failureNotified) {
 							this.#failureNotified = true;
 							try {
@@ -554,8 +580,27 @@ export class AdvisorRuntime {
 
 type TextualContent = string | readonly (TextContent | ImageContent)[];
 
-function isPermanentAdvisorError(error: unknown): boolean {
-	return /Cloud Code Assist API error\s*\(404\)/i.test(String(error));
+export function isPermanentAdvisorError(error: unknown): boolean {
+	const text = error instanceof Error ? error.message : String(error);
+	if (/Cloud Code Assist API error\s*\(404\)/i.test(text)) return true;
+	if (/\b(?:not_found_error|model_not_found|invalid_model|unknown model|no endpoints found)\b/i.test(text)) {
+		return true;
+	}
+	if (
+		/\b(?:404|401|403)\b[^\n]{0,160}(?:not found|does not exist|unauthorized|invalid[_ ]api[_ ]key|authentication_error|permission_error|forbidden)/i.test(
+			text,
+		)
+	) {
+		return true;
+	}
+	if (
+		/(?:not found|does not exist|unauthorized|invalid[_ ]api[_ ]key|authentication_error|permission_error)[^\n]{0,160}\b(?:404|401|403)\b/i.test(
+			text,
+		)
+	) {
+		return true;
+	}
+	return false;
 }
 
 function getAdvisorEmptyResponseError(messages: readonly AgentMessage[]): Error | undefined {

@@ -11,6 +11,7 @@ import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { MemoryRuntimeContext } from "../../memory-backend";
 import { type Theme, theme } from "../../modes/theme/theme";
 import type { SessionManager } from "../../session/session-manager";
+import { guardContextHookMessages } from "../context-guard";
 import type { BranchHandler, NavigateTreeHandler, NewSessionHandler } from "../session-handler-types";
 import { createExtensionModelQuery } from "./model-api";
 import type {
@@ -929,8 +930,12 @@ export class ExtensionRunner {
 					extensionHandlerTimeoutMs,
 				);
 
-				if (handlerResult && (handlerResult as ContextEventResult).messages) {
-					currentMessages = (handlerResult as ContextEventResult).messages!;
+				if (handlerResult && (handlerResult as ContextEventResult).messages !== undefined) {
+					currentMessages = guardContextHookMessages(
+						currentMessages,
+						(handlerResult as ContextEventResult).messages,
+						ext.path,
+					).messages;
 				}
 			}
 		}

@@ -3,6 +3,7 @@
  */
 import type { AgentTool, AgentToolContext, AgentToolUpdateCallback } from "jeopi-agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "jeopi-ai";
+import { untilAborted } from "jeopi-utils";
 import type { Settings } from "../../config/settings";
 import type { Theme } from "../../modes/theme/theme";
 import { type ApprovalMode, formatApprovalPrompt, requiresApproval } from "../../tools/approval";
@@ -164,10 +165,15 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			const uiContext = this.runner.getUIContext();
 			let choice: string | undefined;
 			try {
-				choice = await uiContext.select(formatApprovalPrompt(this.tool, params, approvalCheck.reason), [
-					"Approve",
-					"Deny",
-				]);
+				// The call's signal closes the prompt: aborting the turn (Esc, a session switch) must not
+				// wait on an approval the user can no longer see or answer.
+				choice = await untilAborted(signal, () =>
+					uiContext.select(
+						formatApprovalPrompt(this.tool, params, approvalCheck.reason),
+						["Approve", "Deny"],
+						signal ? { signal } : undefined,
+					),
+				);
 			} catch (err) {
 				await resolveApproval(false, err instanceof Error ? err.message : "approval aborted");
 				throw err;

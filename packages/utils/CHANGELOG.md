@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Preferred structured Google RPC `quotaResetDelay` metadata over earlier display-oriented reset text in `extractRetryHint` and floored fractional millisecond durations to whole milliseconds.
+
 ## [16.6.28] - 2026-11-18
 
 ### Fixed

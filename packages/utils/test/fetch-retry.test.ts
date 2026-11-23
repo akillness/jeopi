@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { fetchWithRetry } from "jeopi-utils/fetch-retry";
+import { extractRetryHint, fetchWithRetry } from "jeopi-utils/fetch-retry";
 
 describe("fetchWithRetry", () => {
 	for (const status of [429, 503]) {
@@ -133,5 +133,22 @@ describe("fetchWithRetry", () => {
 		expect(response.status).toBe(429);
 		expect(await response.text()).toBe("slow down");
 		expect(attempt).toBe(1);
+	});
+});
+
+describe("extractRetryHint", () => {
+	it("prefers structured quotaResetDelay metadata over earlier display reset text", () => {
+		const body = JSON.stringify({
+			error: {
+				message: "You have exhausted your capacity. Your quota will reset after 3h0m0s.",
+				details: [{ metadata: { quotaResetDelay: "30m" } }],
+			},
+		});
+		expect(extractRetryHint(null, body)).toBe(30 * 60_000);
+	});
+
+	it("floors fractional millisecond values in structured quotaResetDelay", () => {
+		const body = '{"error":{"details":[{"metadata":{"quotaResetDelay":"835.150299ms"}}]}}';
+		expect(extractRetryHint(null, body)).toBe(835);
 	});
 });
