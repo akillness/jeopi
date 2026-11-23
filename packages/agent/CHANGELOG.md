@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.11] - 2026-11-23
+
 ### Changed
 
 - Capped fully defaulted auto-compaction thresholds on large-context (>200K) windows at `DEFAULT_MAX_AUTO_COMPACT_THRESHOLD_TOKENS` (`180_000`) in `resolveThresholdTokens` while preserving existing behavior for <=200K windows and explicit `thresholdTokens`, `thresholdPercent`, or `reserveTokens` overrides.

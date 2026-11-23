@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.11] - 2026-11-23
+
 ### Fixed
 
 - Clamped `usage.input` to `>= 0` in `google-gemini-cli` and `google-shared` when providers report `cachedContentTokenCount > promptTokenCount`.

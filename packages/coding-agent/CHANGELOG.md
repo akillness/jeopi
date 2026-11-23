@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.11] - 2026-11-23
+
 ### Added
 
 - Added `skills.maxPromptSkills` (default `40`) and `skills.maxPromptChars` (default `16000`) settings and `selectPromptSkills()` to deterministically bound inline `<skills>` prompt metadata (prioritizing project-scoped skills with truncated single-line descriptions and an omission discovery notice) instead of injecting unbounded skill catalogs into every session and subagent.
