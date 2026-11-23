@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.9] - 2026-11-23
+
 ### Fixed
 
 - Dropped the first permanent advisor error batch (e.g., transient Cloud Code Assist 404) without retrying so the next turn can verify recovery, while still permanently disabling the advisor runtime on repeated consecutive permanent errors.
