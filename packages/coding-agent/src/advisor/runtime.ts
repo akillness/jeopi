@@ -188,6 +188,7 @@ export class AdvisorRuntime {
 	#busy = false;
 	#backlog = 0;
 	#consecutiveFailures = 0;
+	#consecutivePermanentFailures = 0;
 	#failureNotified = false;
 	#permanentlyDisabled = false;
 	#latestMessages?: AgentMessage[];
@@ -307,6 +308,7 @@ export class AdvisorRuntime {
 	 */
 	reset(): void {
 		this.#epoch++;
+		this.#consecutivePermanentFailures = 0;
 		this.#permanentlyDisabled = false;
 		this.#resetAdvisorContext(true, true);
 	}
@@ -321,6 +323,7 @@ export class AdvisorRuntime {
 		this.#pending = [];
 		this.#backlog = 0;
 		this.#consecutiveFailures = 0;
+		this.#consecutivePermanentFailures = 0;
 		this.#failureNotified = false;
 		this.#permanentlyDisabled = false;
 		this.#seenContext.clear();
@@ -486,6 +489,7 @@ export class AdvisorRuntime {
 					if (emptyResponseError) throw emptyResponseError;
 					success = true;
 					this.#consecutiveFailures = 0;
+					this.#consecutivePermanentFailures = 0;
 					this.#failureNotified = false;
 				} catch (err) {
 					if (err instanceof AdvisorOutputQuarantinedError) {
@@ -528,13 +532,9 @@ export class AdvisorRuntime {
 					}
 					this.#consecutiveFailures++;
 					if (isPermanentAdvisorError(err)) {
-						this.#permanentlyDisabled = true;
-						this.#pending = [];
-						this.#backlog = 0;
+						this.#consecutivePermanentFailures++;
 						this.#consecutiveFailures = 0;
 						this.#seenContext.clear();
-						this.#wakeAllWaiters();
-						logger.warn("advisor disabled for session after permanent error", { err: String(err) });
 						if (!this.#failureNotified) {
 							this.#failureNotified = true;
 							try {
@@ -543,9 +543,22 @@ export class AdvisorRuntime {
 								logger.warn("advisor failure notification failed", { err: String(notifyErr) });
 							}
 						}
-						break;
+						if (this.#consecutivePermanentFailures >= 2) {
+							this.#permanentlyDisabled = true;
+							this.#pending = [];
+							this.#backlog = 0;
+							this.#wakeAllWaiters();
+							logger.warn("advisor disabled for session after repeated permanent error", { err: String(err) });
+							break;
+						}
+						// First permanent error (e.g., transient Cloud Code Assist 404 routing blip):
+						// drop this batch without retrying so the next turn can verify recovery.
+						logger.warn("advisor permanent error; dropping batch without retry", { err: String(err) });
+						success = true;
+					} else {
+						this.#consecutivePermanentFailures = 0;
 					}
-					if (this.#consecutiveFailures >= 3) {
+					if (!success && this.#consecutiveFailures >= 3) {
 						logger.warn("advisor failure repeated; dropping backlog", { err: String(err) });
 						if (!this.#failureNotified) {
 							this.#failureNotified = true;
@@ -561,7 +574,7 @@ export class AdvisorRuntime {
 						// it "unchanged" against content the advisor never received.
 						this.#seenContext.clear();
 						success = true;
-					} else {
+					} else if (!success) {
 						this.#pending.unshift({ text: batch, turns: finalTurns });
 						await Bun.sleep(this.retryDelayMs);
 					}

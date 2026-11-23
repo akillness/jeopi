@@ -57,22 +57,31 @@ describe("AdvisorRuntime permanent error circuit breaker", () => {
 			},
 		});
 
-		// Turn 1 hits 404 -> permanently disables runtime after single attempt.
+		// Turn 1 hits 404 -> drops batch without retrying, notifies once, allows next turn to probe recovery.
 		runtime.onTurnEnd(messages);
 		await runtime.waitForCatchup(1_000, 1);
 
 		expect(promptCalls).toBe(1);
+		expect(runtime.isPermanentlyDisabled).toBe(false);
+		expect(notifiedErrors).toHaveLength(1);
+
+		// Turn 2 hits a second consecutive 404 -> permanently disables runtime for the session.
+		messages.push(makeUserMessage("turn 2", 200));
+		runtime.onTurnEnd(messages);
+		await runtime.waitForCatchup(1_000, 1);
+
+		expect(promptCalls).toBe(2);
 		expect(runtime.isPermanentlyDisabled).toBe(true);
 		expect(notifiedErrors).toHaveLength(1);
 
 		// Subsequent turns do not retry the broken model and waitForCatchup returns immediately.
-		messages.push(makeUserMessage("turn 2", 200));
-		runtime.onTurnEnd(messages);
 		messages.push(makeUserMessage("turn 3", 300));
+		runtime.onTurnEnd(messages);
+		messages.push(makeUserMessage("turn 4", 400));
 		runtime.onTurnEnd(messages);
 		await runtime.waitForCatchup(1_000, 1);
 
-		expect(promptCalls).toBe(1);
+		expect(promptCalls).toBe(2);
 		expect(notifiedErrors).toHaveLength(1);
 
 		// reset() clears the latch (e.g. after switching to a valid advisor model).
@@ -80,11 +89,11 @@ describe("AdvisorRuntime permanent error circuit breaker", () => {
 		runtime.reset();
 		expect(runtime.isPermanentlyDisabled).toBe(false);
 
-		messages.push(makeUserMessage("turn 4", 400));
+		messages.push(makeUserMessage("turn 5", 500));
 		runtime.onTurnEnd(messages);
 		await runtime.waitForCatchup(1_000, 1);
 
-		expect(promptCalls).toBe(2);
+		expect(promptCalls).toBe(3);
 		runtime.dispose();
 	});
 });
