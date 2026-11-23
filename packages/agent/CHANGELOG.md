@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.8] - 2026-11-23
+
 ### Added
 
 - Added per-run cost (`maxCostUsd`) and output-token (`maxOutputTokens` + `getExternalOutputTokens`) budget circuit breakers with one-shot soft warnings (`onWorkflowGuardSoftWarning`), synthetic wrap-up injection, and clean aborted `toolResult` pairing on hard stops in `WorkflowGuard` and `agentLoop`.

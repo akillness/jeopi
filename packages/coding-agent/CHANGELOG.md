@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.8] - 2026-11-23
+
 ### Added
 
 - Added `model.workflowGuard.maxCostUsdPerRun`, `model.workflowGuard.maxOutputTokensPerRun`, `model.workflowGuard.softBudgetWarningRatio`, `model.toolCallLoopGuard.maxRedirectsBeforeStop`, and `advisor.maxConsecutiveBlockers` settings and wired them into `AgentSession` with soft budget warnings, telemetry-enriched pause notices, `+Nk!` hard budget ceiling alignment, and loop-guard reset on fresh user prompts.

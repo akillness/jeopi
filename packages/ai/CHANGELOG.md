@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.8] - 2026-11-23
+
 ### Added
 
 - Extended `ToolCallLoopGuard` with `maxRedirectsBeforeStop` escalation, `reason` classification on `stalled_tool_call` (`unchanged_output`, `error_streak`, `redirect_escalation`, `cycle_escalation`), parallel batch stall detection, 3-step cycle detection/escalation, and `reset()`.
