@@ -167,12 +167,11 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			try {
 				// The call's signal closes the prompt: aborting the turn (Esc, a session switch) must not
 				// wait on an approval the user can no longer see or answer.
+				const prompt = formatApprovalPrompt(this.tool, params, approvalCheck.reason);
 				choice = await untilAborted(signal, () =>
-					uiContext.select(
-						formatApprovalPrompt(this.tool, params, approvalCheck.reason),
-						["Approve", "Deny"],
-						signal ? { signal } : undefined,
-					),
+					signal
+						? uiContext.select(prompt, ["Approve", "Deny"], { signal })
+						: uiContext.select(prompt, ["Approve", "Deny"]),
 				);
 			} catch (err) {
 				await resolveApproval(false, err instanceof Error ? err.message : "approval aborted");

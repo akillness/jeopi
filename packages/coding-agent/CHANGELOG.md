@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Passed `{ signal }` to `uiContext.select` during extension tool approval only when an abort signal is present, preserving the 2-argument call signature when no signal is provided.
+
 ## [16.7.9] - 2026-11-23
 
 ### Fixed
