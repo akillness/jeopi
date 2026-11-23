@@ -372,11 +372,11 @@ jeopi --model gpt-5 --smol gemini-2.5-flash
 
 <!-- CHANGELOG:START (auto-generated from packages/coding-agent/CHANGELOG.md — run `bun run gen:readme-changelog`) -->
 Latest 5 released entries:
+- **[16.7.10]** (2026-11-23) — Passed `{ signal }` to `uiContext.select` during extension tool approval only when an abort signal is present, preserving the 2-argument call signature when no signal is provided.
 - **[16.7.9]** (2026-11-23) — Dropped the first permanent advisor error batch (e.g., transient Cloud Code Assist 404) without retrying so the next turn can verify recovery, while still permanently disabling the advisor runtime on…
 - **[16.7.8]** (2026-11-23) — Added `model.workflowGuard.maxCostUsdPerRun`, `model.workflowGuard.maxOutputTokensPerRun`, `model.workflowGuard.softBudgetWarningRatio`, `model.toolCallLoopGuard.maxRedirectsBeforeStop`, and…
 - **[16.7.7]** (2026-11-22) — Bounded automatic `AgentSession` re-entry continuations (unexpected-stop retry, thinking-loop retry, yield-queue idle injection, TTSR resume, and length-compaction retries) per user prompt and…
 - **[16.7.6]** (2026-11-21) — Preserve `GeminiHeaderRunDetector` across multi-block `thinking` parts separated by whitespace-only text within the same assistant message instead of resetting it on every `thinking_start`.
-- **[16.7.5]** (2026-11-21) — Verify the `.jeopi/db` default in the Jeox tool integration test, restoring release validation for the new project index.
 
 See [packages/coding-agent/CHANGELOG.md](packages/coding-agent/CHANGELOG.md) for the full history.
 <!-- CHANGELOG:END -->
