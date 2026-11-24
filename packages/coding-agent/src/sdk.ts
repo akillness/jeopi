@@ -1731,10 +1731,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 								// the real MCP tool count: a large toolset must flip discovery on
 								// BEFORE the refresh, or activateAll would dump every MCP tool into
 								// the active set with no search_tool_bm25 registered.
-								await maybeUpgradeAutoMCPDiscovery(liveSession, mcpResult.tools);
+								const upgraded = upgradeAutoMCPDiscovery(liveSession, mcpResult.tools);
 								const discoveryEnabled = mcpDiscoveryEnabled;
 								const activateAll = !discoveryEnabled && activation.activateAllMCPTools;
-								await liveSession.refreshMCPTools(mcpResult.tools, { activateAll });
+								await liveSession.refreshMCPTools(mcpResult.tools, {
+									activateAll,
+									persistMCPSelection: upgraded ? false : undefined,
+								});
 								if (activation.explicitlyRequestedMCPToolNames.length > 0) {
 									if (discoveryEnabled && !activation.mcpDiscoveryEnabled) {
 										// Discovery flipped on mid-flight: route the explicit request
@@ -2248,10 +2251,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const discoveryDefaultServers = new Set(
 			(settings.get("mcp.discoveryDefaultServers") ?? []).map(serverName => serverName.trim()).filter(Boolean),
 		);
-		const maybeUpgradeAutoMCPDiscovery = async (
+		// Synchronous auto-discovery upgrade invoked immediately before `refreshMCPTools`.
+		// Keeping every mutation before `refreshMCPTools` synchronous (zero awaits) ensures
+		// `enableMCPDiscovery()`, `search_tool_bm25` activation, and `#discoverableMCPTools`
+		// population land in the same JS turn before any `await`, avoiding both torn states
+		// and redundant double system-prompt rebuilds.
+		const upgradeAutoMCPDiscovery = (
 			liveSession: AgentSession,
 			candidateTools: ReadonlyArray<{ name: string }>,
-		): Promise<boolean> => {
+		): boolean => {
 			if (mcpDiscoveryEnabled) return false;
 			const nonMCPToolNames = [...toolRegistry.keys()].filter(name => !isMCPToolName(name));
 			const projectedMode = resolveEffectiveToolDiscoveryMode(
@@ -2261,19 +2269,17 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			if (projectedMode === "off") return false;
 			effectiveDiscoveryMode = projectedMode;
 			mcpDiscoveryEnabled = true;
-			liveSession.enableMCPDiscovery();
-			if (!toolRegistry.has("search_tool_bm25")) {
-				const searchTool: Tool = new SearchToolBm25Tool(toolSession);
-				toolRegistry.set(
-					searchTool.name,
-					new ExtensionToolWrapper(wrapToolWithMetaNotice(searchTool), extensionRunner) as Tool,
-				);
+			let searchTool = toolRegistry.get("search_tool_bm25");
+			if (!searchTool) {
+				const rawSearchTool: Tool = new SearchToolBm25Tool(toolSession);
+				searchTool = new ExtensionToolWrapper(wrapToolWithMetaNotice(rawSearchTool), extensionRunner) as Tool;
+				toolRegistry.set(rawSearchTool.name, searchTool);
 			}
-			const activeNonMCP = liveSession.getActiveToolNames().filter(name => !isMCPToolName(name));
-			const nextActive = [
-				...new Set([...activeNonMCP, ...liveSession.getSelectedMCPToolNames(), "search_tool_bm25"]),
-			];
-			await liveSession.setActiveToolsByName(nextActive);
+			liveSession.enableMCPDiscovery();
+			const retainedTools = liveSession.agent.state.tools.filter(
+				tool => !isMCPToolName(tool.name) && tool.name !== "search_tool_bm25",
+			);
+			liveSession.agent.setTools([...retainedTools, searchTool]);
 			return true;
 		};
 
@@ -3053,7 +3059,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				void enqueueMCPRefresh(async () => {
 					if (session.isDisposed) return;
 					try {
-						const upgraded = await maybeUpgradeAutoMCPDiscovery(session, tools);
+						const upgraded = upgradeAutoMCPDiscovery(session, tools);
 						const deferAutoActivate =
 							deferredMCPDiscoveryInFlight &&
 							settings.get("tools.discoveryMode") === "auto" &&
@@ -3065,7 +3071,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							options.toolNames === undefined;
 						await session.refreshMCPTools(tools, {
 							activateAll,
-							persistMCPSelection: deferredMCPDiscoveryInFlight ? false : undefined,
+							persistMCPSelection: deferredMCPDiscoveryInFlight || upgraded ? false : undefined,
 						});
 						if (explicitlyRequestedMCPToolNames.length > 0) {
 							if (upgraded) {
