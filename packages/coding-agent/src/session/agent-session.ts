@@ -5195,26 +5195,53 @@ export class AgentSession {
 		this.#streamingEditPrecheckedToolCallIds.clear();
 		this.#streamingEditFileCache.clear();
 	}
-	#syncWorkflowGuardConfig(hardTurnOutputTokens?: number): void {
-		const existing = this.agent.getWorkflowGuard();
-		if (existing === false) return;
-		const maxCostUsd = this.settings.get("model.workflowGuard.maxCostUsdPerRun");
+	#resolveWorkflowGuardMaxOutputTokens(hardTurnOutputTokens?: number): number {
 		const configuredOutputTokens = this.settings.get("model.workflowGuard.maxOutputTokensPerRun");
-		const softBudgetWarningRatio = this.settings.get("model.workflowGuard.softBudgetWarningRatio");
 		const turnBudget = this.sessionManager.getTurnBudget();
 		const effectiveHardTurnOutputTokens =
 			hardTurnOutputTokens ??
 			(turnBudget.hard && turnBudget.total !== null && turnBudget.total > 0 ? turnBudget.total : undefined);
-		const maxOutputTokens =
-			effectiveHardTurnOutputTokens !== undefined && effectiveHardTurnOutputTokens > 0
-				? configuredOutputTokens > 0
-					? Math.min(configuredOutputTokens, effectiveHardTurnOutputTokens)
-					: effectiveHardTurnOutputTokens
-				: configuredOutputTokens;
+
+		const modelContextWindow = this.model?.contextWindow;
+		const resolvedContextWindow =
+			typeof modelContextWindow === "number" && Number.isFinite(modelContextWindow) && modelContextWindow > 0
+				? Math.floor(modelContextWindow)
+				: 0;
+
+		let baseCap: number;
+		let hasExplicitPositiveCap = false;
+		if (typeof configuredOutputTokens === "number" && Number.isFinite(configuredOutputTokens)) {
+			if (configuredOutputTokens === 0) {
+				baseCap = 0;
+			} else if (configuredOutputTokens > 0) {
+				baseCap = Math.floor(configuredOutputTokens);
+				hasExplicitPositiveCap = true;
+			} else {
+				// Negative sentinel (e.g. -1 Auto): track the active model's configured context window.
+				baseCap = resolvedContextWindow;
+			}
+		} else {
+			baseCap = resolvedContextWindow;
+		}
+
+		if (effectiveHardTurnOutputTokens !== undefined && effectiveHardTurnOutputTokens > 0) {
+			const explicitHard = Math.floor(effectiveHardTurnOutputTokens);
+			return hasExplicitPositiveCap && baseCap > 0 ? Math.min(baseCap, explicitHard) : explicitHard;
+		}
+		return baseCap;
+	}
+
+	#syncWorkflowGuardConfig(hardTurnOutputTokens?: number): void {
+		const existing = this.agent.getWorkflowGuard();
+		if (existing === false) return;
+		const maxCostUsd = this.settings.get("model.workflowGuard.maxCostUsdPerRun");
+		const softBudgetWarningRatio = this.settings.get("model.workflowGuard.softBudgetWarningRatio");
+		const maxOutputTokens = this.#resolveWorkflowGuardMaxOutputTokens(hardTurnOutputTokens);
 		this.agent.setWorkflowGuard({
 			...existing,
 			maxCostUsd,
 			maxOutputTokens,
+			getMaxOutputTokens: () => this.#resolveWorkflowGuardMaxOutputTokens(hardTurnOutputTokens),
 			softBudgetWarningRatio,
 			getExternalOutputTokens: () => this.sessionManager.getTurnBudget().spent,
 		});
@@ -11969,6 +11996,7 @@ export class AgentSession {
 			this.#closeProviderSessionsForModelSwitch(currentModel, model);
 		}
 		this.agent.setModel(model);
+		this.#syncWorkflowGuardConfig();
 
 		// Re-evaluate append-only context mode — provider or setting may have changed
 		this.#syncAppendOnlyContext(model);
@@ -15463,6 +15491,7 @@ export class AgentSession {
 						this.#setModelWithProviderSessionReset(match);
 					} else {
 						this.agent.setModel(match);
+						this.#syncWorkflowGuardConfig();
 					}
 				}
 			}
@@ -15576,6 +15605,7 @@ export class AgentSession {
 			this.#lastCompletedRewind = previousLastCompletedRewind;
 			if (previousModel) {
 				this.agent.setModel(previousModel);
+				this.#syncWorkflowGuardConfig();
 			}
 			this.#thinkingLevel = previousThinkingLevel;
 			this.#autoThinking = previousAutoThinking;

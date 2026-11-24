@@ -1171,18 +1171,26 @@ export const SETTINGS_SCHEMA = {
 
 	"model.workflowGuard.maxOutputTokensPerRun": {
 		type: "number",
-		default: 64000,
+		default: -1,
 		ui: {
 			tab: "model",
 			group: "Thinking",
 			label: "Workflow Guard Max Output Tokens",
-			description: "Maximum cumulative output tokens allowed per autonomous run before stopping (0 disables).",
+			description:
+				"Maximum cumulative output tokens allowed per autonomous run before stopping (-1 matches the active model's configured context window, 0 disables).",
 			options: [
+				{
+					value: "-1",
+					label: "Auto (model context)",
+					description: "Match the active model's configured context window (default).",
+				},
 				{ value: "0", label: "Disabled", description: "No per-run output token cap." },
 				{ value: "32000", label: "32k tokens", description: "Stop run after 32,000 output tokens." },
-				{ value: "64000", label: "64k tokens", description: "Stop run after 64,000 output tokens (default)." },
+				{ value: "64000", label: "64k tokens", description: "Stop run after 64,000 output tokens." },
 				{ value: "128000", label: "128k tokens", description: "Stop run after 128,000 output tokens." },
 				{ value: "256000", label: "256k tokens", description: "Stop run after 256,000 output tokens." },
+				{ value: "512000", label: "512k tokens", description: "Stop run after 512,000 output tokens." },
+				{ value: "1000000", label: "1M tokens", description: "Stop run after 1,000,000 output tokens." },
 			],
 		},
 	},

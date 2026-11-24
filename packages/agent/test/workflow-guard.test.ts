@@ -1122,4 +1122,43 @@ describe("WorkflowLoopGuard pre-flight budget enforcement", () => {
 		expect(preflightTokens?.stopClass).toBe("token_budget_exceeded");
 		expect(preflightTokens?.step).toBe(1);
 	});
+
+	it("evaluates getMaxOutputTokens dynamically across turns and honors 0 to disable", () => {
+		let dynamicLimit = 1000;
+		const guard = new WorkflowLoopGuard({
+			maxOutputTokens: 500,
+			softBudgetWarningRatio: 0.8,
+			getMaxOutputTokens: () => dynamicLimit,
+		});
+
+		// Turn 1: 700 / 1000 (70%) -> no soft warning, no stop.
+		const first = guard.recordAssistantUsage({ input: 50, output: 700, cost: { total: 0.01 } });
+		expect(first.softWarning).toBeUndefined();
+		expect(first.stop).toBeUndefined();
+
+		// Simulate mid-run model promotion raising limit from 1000 to 5000.
+		dynamicLimit = 5000;
+		const second = guard.recordAssistantUsage({ input: 50, output: 1000, cost: { total: 0.01 } });
+		// Cumulative output is 1700 (> initial 1000), but well under 5000 -> allowed without stop or warning.
+		expect(second.softWarning).toBeUndefined();
+		expect(second.stop).toBeUndefined();
+		expect(guard.beforeModelCall()).toBeUndefined();
+
+		// Crossing 80% of the new 5000 cap emits soft warning referencing 5,000.
+		const third = guard.recordAssistantUsage({ input: 50, output: 2400, cost: { total: 0.01 } });
+		expect(third.stop).toBeUndefined();
+		expect(third.softWarning?.kind).toBe("output_tokens");
+		expect(third.softWarning?.limit).toBe(5000);
+
+		// Returning 0 disables the output-token cap even after exceeding 5000.
+		dynamicLimit = 0;
+		const fourth = guard.recordAssistantUsage({ input: 50, output: 2000, cost: { total: 0.01 } });
+		expect(fourth.stop).toBeUndefined();
+		expect(guard.beforeModelCall()).toBeUndefined();
+
+		// Re-enabling a tighter limit catches cumulative usage immediately.
+		dynamicLimit = 6000;
+		const fifth = guard.recordAssistantUsage({ input: 50, output: 100, cost: { total: 0.01 } });
+		expect(fifth.stop?.stopClass).toBe("token_budget_exceeded");
+	});
 });

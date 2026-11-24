@@ -385,4 +385,297 @@ describe("AgentSession tool-call loop guard", () => {
 		expect(notices.some(text => text.includes("Approaching per-run"))).toBe(true);
 		expect(notices.some(text => text.includes("token_budget_exceeded") && text.includes("output tokens"))).toBe(true);
 	});
+
+	it("defaults workflowGuard maxOutputTokensPerRun to the active model's contextWindow", async () => {
+		const model = { ...createMockModel({ provider: "openai", id: "gpt-wide" }).model, contextWindow: 120_000 };
+		const modelRegistry = new ModelRegistry(authStorage);
+		let toolSeq = 0;
+		const bashTool: AgentTool = {
+			name: "bash",
+			label: "Bash",
+			description: "Mock bash tool",
+			parameters: type({ "command?": "string" }),
+			execute: async () => ({ content: [{ type: "text" as const, text: `ok-${++toolSeq}` }] }),
+		};
+		let callCount = 0;
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [bashTool], messages: [] },
+			convertToLlm,
+			streamFn: () => {
+				const turnIndex = callCount++;
+				// 35,000 output tokens per turn:
+				// Turn 1: 35k (< 80% of 120k), Turn 2: 70k (> old 64k cap, < 80% of 120k),
+				// Turn 3: 105k (>= 80% of 120k -> soft warning), Turn 4: 140k (>= 120k -> stop).
+				const message: AssistantMessage = {
+					role: "assistant",
+					content: [
+						{
+							type: "toolCall",
+							id: `tc-wide-${turnIndex}`,
+							name: "bash",
+							arguments: { command: `echo step-${turnIndex}` },
+						},
+					],
+					api: model.api,
+					provider: model.provider,
+					model: model.id,
+					usage: {
+						input: 100,
+						output: 35_000,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 35_100,
+						cost: { input: 0.001, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.011 },
+					},
+					stopReason: "toolUse",
+					timestamp: Date.now(),
+				};
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "start", partial: message });
+					stream.push({ type: "done", reason: "toolUse", message });
+				});
+				return stream;
+			},
+		});
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"todo.enabled": false,
+			"model.workflowGuard.softBudgetWarningRatio": 0.8,
+			"model.workflowGuard.maxCostUsdPerRun": 0,
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(tempDir.path()),
+			settings,
+			modelRegistry,
+			toolRegistry: new Map([[bashTool.name, bashTool]]),
+		});
+
+		const notices: string[] = [];
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+		});
+
+		await session.prompt("run long task on 120k window model");
+		await session.waitForIdle();
+
+		expect(callCount).toBe(4);
+		expect(notices.some(text => text.includes("105,000 / 120,000 tokens"))).toBe(true);
+		expect(notices.some(text => text.includes("token_budget_exceeded") && text.includes(">= 120,000 tokens"))).toBe(
+			true,
+		);
+	});
+
+	it("updates workflowGuard output token cap when switching to a model with a different contextWindow", async () => {
+		const smallModel = { ...createMockModel({ provider: "openai", id: "gpt-80k" }).model, contextWindow: 80_000 };
+		const largeModel = { ...createMockModel({ provider: "openai", id: "gpt-250k" }).model, contextWindow: 250_000 };
+		const modelRegistry = new ModelRegistry(authStorage);
+		const bashTool: AgentTool = {
+			name: "bash",
+			label: "Bash",
+			description: "Mock bash tool",
+			parameters: type({ "command?": "string" }),
+			execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
+		};
+		let callCount = 0;
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model: smallModel, systemPrompt: ["Test"], tools: [bashTool], messages: [] },
+			convertToLlm,
+			streamFn: activeModel => {
+				const turnIndex = callCount++;
+				const stopReason = turnIndex < 2 ? "toolUse" : "stop";
+				const message: AssistantMessage =
+					turnIndex < 2
+						? {
+								role: "assistant",
+								content: [
+									{
+										type: "toolCall",
+										id: `tc-switch-${turnIndex}`,
+										name: "bash",
+										arguments: { command: `echo step-${turnIndex}` },
+									},
+								],
+								api: activeModel.api,
+								provider: activeModel.provider,
+								model: activeModel.id,
+								usage: {
+									input: 100,
+									output: 50_000,
+									cacheRead: 0,
+									cacheWrite: 0,
+									totalTokens: 50_100,
+									cost: { input: 0.001, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.011 },
+								},
+								stopReason,
+								timestamp: Date.now(),
+							}
+						: {
+								role: "assistant",
+								content: [{ type: "text", text: "Finished on 250k model." }],
+								api: activeModel.api,
+								provider: activeModel.provider,
+								model: activeModel.id,
+								usage: {
+									input: 100,
+									output: 10_000,
+									cacheRead: 0,
+									cacheWrite: 0,
+									totalTokens: 10_100,
+									cost: { input: 0.001, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.011 },
+								},
+								stopReason,
+								timestamp: Date.now(),
+							};
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "start", partial: message });
+					stream.push({ type: "done", reason: stopReason, message });
+				});
+				return stream;
+			},
+		});
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"todo.enabled": false,
+			"model.workflowGuard.softBudgetWarningRatio": 0.8,
+			"model.workflowGuard.maxCostUsdPerRun": 0,
+		});
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(tempDir.path()),
+			settings,
+			modelRegistry,
+			toolRegistry: new Map([[bashTool.name, bashTool]]),
+		});
+
+		const guardBefore = agent.getWorkflowGuard();
+		expect(guardBefore === false ? undefined : guardBefore?.maxOutputTokens).toBe(80_000);
+
+		await session.setModelTemporary(largeModel);
+
+		const guardAfter = agent.getWorkflowGuard();
+		expect(guardAfter === false ? undefined : guardAfter?.maxOutputTokens).toBe(250_000);
+
+		const notices: string[] = [];
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+		});
+
+		await session.prompt("run task on switched 250k model");
+		await session.waitForIdle();
+
+		// Cumulative output reaches 110k (> 80k initial model window, < 250k switched model window) with zero loop-guard stop.
+		expect(callCount).toBe(3);
+		expect(notices.some(text => text.includes("token_budget_exceeded"))).toBe(false);
+	});
+
+	it("disables output token cap when maxOutputTokensPerRun is 0 and honors +Nk! hard turn budget under Auto", async () => {
+		const model = { ...createMockModel({ provider: "openai", id: "gpt-ctx" }).model, contextWindow: 100_000 };
+		const modelRegistry = new ModelRegistry(authStorage);
+		const bashTool: AgentTool = {
+			name: "bash",
+			label: "Bash",
+			description: "Mock bash tool",
+			parameters: type({ "command?": "string" }),
+			execute: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
+		};
+		let callCount = 0;
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [bashTool], messages: [] },
+			convertToLlm,
+			streamFn: () => {
+				const turnIndex = callCount++;
+				const isFinal = turnIndex >= 2;
+				const stopReason = isFinal ? "stop" : "toolUse";
+				const message: AssistantMessage = isFinal
+					? {
+							role: "assistant",
+							content: [{ type: "text", text: "Done." }],
+							api: model.api,
+							provider: model.provider,
+							model: model.id,
+							usage: {
+								input: 50,
+								output: 80_000,
+								cacheRead: 0,
+								cacheWrite: 0,
+								totalTokens: 80_050,
+								cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+							},
+							stopReason,
+							timestamp: Date.now(),
+						}
+					: {
+							role: "assistant",
+							content: [
+								{
+									type: "toolCall",
+									id: `tc-cap-${turnIndex}`,
+									name: "bash",
+									arguments: { command: `echo step-${turnIndex}` },
+								},
+							],
+							api: model.api,
+							provider: model.provider,
+							model: model.id,
+							usage: {
+								input: 50,
+								output: 80_000,
+								cacheRead: 0,
+								cacheWrite: 0,
+								totalTokens: 80_050,
+								cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+							},
+							stopReason,
+							timestamp: Date.now(),
+						};
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "start", partial: message });
+					stream.push({ type: "done", reason: stopReason, message });
+				});
+				return stream;
+			},
+		});
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"todo.enabled": false,
+			"model.workflowGuard.maxOutputTokensPerRun": 0,
+			"model.workflowGuard.maxCostUsdPerRun": 0,
+		});
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(tempDir.path()),
+			settings,
+			modelRegistry,
+			toolRegistry: new Map([[bashTool.name, bashTool]]),
+		});
+
+		const notices: string[] = [];
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+		});
+
+		// With explicit 0, 240k output tokens (> 100k contextWindow) completes without stopping.
+		await session.prompt("run unbounded");
+		await session.waitForIdle();
+		expect(callCount).toBe(3);
+		expect(notices.some(text => text.includes("token_budget_exceeded"))).toBe(false);
+
+		// Reset to Auto (-1) and pass +150k! hard turn budget: exceeds 100k contextWindow, stops at 160k >= 150k.
+		callCount = 0;
+		settings.set("model.workflowGuard.maxOutputTokensPerRun", -1);
+		await session.prompt("run with +150k! ceiling");
+		await session.waitForIdle();
+		expect(callCount).toBe(2);
+		expect(notices.some(text => text.includes("token_budget_exceeded") && text.includes(">= 150,000 tokens"))).toBe(
+			true,
+		);
+	});
 });

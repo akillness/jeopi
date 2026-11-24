@@ -92,6 +92,14 @@ export interface WorkflowLoopGuardConfig {
 	maxCostUsd?: number;
 	/** Optional per-run output token cap (`0` or omitted disables). */
 	maxOutputTokens?: number;
+	/**
+	 * Optional dynamic resolver for the per-run output token cap (e.g. tracking
+	 * the active model's configured `contextWindow` across mid-run model switches).
+	 * Returning a positive finite number enforces that cap; returning `0` or a
+	 * negative finite number disables the cap; non-finite values fall back to
+	 * static `maxOutputTokens`.
+	 */
+	getMaxOutputTokens?: () => number;
 	/** Fraction (0..1) of cost/token cap at which a one-shot wrap-up warning fires (default 0.8; `0` disables). */
 	softBudgetWarningRatio?: number;
 	/** Optional callback supplying external/cumulative output tokens (e.g. including subagents). */
@@ -592,6 +600,7 @@ export class WorkflowLoopGuard {
 	#stallTimeoutMs: number;
 	#maxCostUsd: number;
 	#maxOutputTokens: number;
+	#getMaxOutputTokens?: () => number;
 	#softBudgetWarningRatio: number;
 	#getExternalOutputTokens?: () => number;
 	#tokens: WorkflowGuardTokenMetrics = {
@@ -633,6 +642,7 @@ export class WorkflowLoopGuard {
 			config?.maxOutputTokens !== undefined && Number.isFinite(config.maxOutputTokens) && config.maxOutputTokens > 0
 				? Math.floor(config.maxOutputTokens)
 				: 0;
+		this.#getMaxOutputTokens = config?.getMaxOutputTokens;
 		const softRatio = config?.softBudgetWarningRatio;
 		this.#softBudgetWarningRatio =
 			softRatio === 0
@@ -715,6 +725,16 @@ export class WorkflowLoopGuard {
 		);
 	}
 
+	#effectiveMaxOutputTokens(): number {
+		if (this.#getMaxOutputTokens) {
+			const dynamicLimit = this.#getMaxOutputTokens();
+			if (typeof dynamicLimit === "number" && Number.isFinite(dynamicLimit)) {
+				return dynamicLimit > 0 ? Math.floor(dynamicLimit) : 0;
+			}
+		}
+		return this.#maxOutputTokens;
+	}
+
 	#effectiveOutputTokens(): number {
 		const externalOutput = this.#getExternalOutputTokens?.() ?? 0;
 		return Math.max(this.#tokens.output, Number.isFinite(externalOutput) && externalOutput > 0 ? externalOutput : 0);
@@ -729,10 +749,11 @@ export class WorkflowLoopGuard {
 			);
 		}
 		const effectiveOutput = this.#effectiveOutputTokens();
-		if (this.#maxOutputTokens > 0 && effectiveOutput >= this.#maxOutputTokens) {
+		const maxOutputTokens = this.#effectiveMaxOutputTokens();
+		if (maxOutputTokens > 0 && effectiveOutput >= maxOutputTokens) {
 			return this.#makeStop(
 				"token_budget_exceeded",
-				`Stopped: per-run output token budget exceeded (${effectiveOutput.toLocaleString()} >= ${this.#maxOutputTokens.toLocaleString()} tokens).`,
+				`Stopped: per-run output token budget exceeded (${effectiveOutput.toLocaleString()} >= ${maxOutputTokens.toLocaleString()} tokens).`,
 				stepOverride,
 			);
 		}
@@ -799,8 +820,9 @@ export class WorkflowLoopGuard {
 					};
 				}
 			}
-			if (!this.#tokenSoftWarningEmitted && this.#maxOutputTokens > 0) {
-				const tokenRatio = effectiveOutput / this.#maxOutputTokens;
+			const maxOutputTokens = this.#effectiveMaxOutputTokens();
+			if (!this.#tokenSoftWarningEmitted && maxOutputTokens > 0) {
+				const tokenRatio = effectiveOutput / maxOutputTokens;
 				if (tokenRatio >= this.#softBudgetWarningRatio) {
 					this.#tokenSoftWarningEmitted = true;
 					return {
@@ -808,8 +830,8 @@ export class WorkflowLoopGuard {
 							kind: "output_tokens",
 							ratio: tokenRatio,
 							spent: effectiveOutput,
-							limit: this.#maxOutputTokens,
-							message: `Approaching per-run output token budget (${effectiveOutput.toLocaleString()} / ${this.#maxOutputTokens.toLocaleString()} tokens, ${Math.round(tokenRatio * 100)}%). Wrap up your remaining work and summarize concisely.`,
+							limit: maxOutputTokens,
+							message: `Approaching per-run output token budget (${effectiveOutput.toLocaleString()} / ${maxOutputTokens.toLocaleString()} tokens, ${Math.round(tokenRatio * 100)}%). Wrap up your remaining work and summarize concisely.`,
 						},
 					};
 				}
