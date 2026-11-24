@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.12] - 2026-11-24
+
 ### Added
 
 - Added `dsml-leak.ts` (`DSML_MARKUP_RE`, `hasDsmlMarkup`) to detect leaked DeepSeek DSML tool-call markup in assistant text and `retry-wait.ts` (`computeRetryWait`, `getResetDelayMs`, `RETRY_WAIT_DEFAULTS`) for unified retry delay calculation.

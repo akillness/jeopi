@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.12] - 2026-11-24
+
 ### Added
 
 - Added advisor runtime guards (`advisor/loop-guard.ts`, `advisor/message-fingerprint.ts`, `advisor/tool-result-eviction.ts`) for cyclical/repeated advisor tool-call loop detection, stable message fingerprinting, and stale bulky tool-result eviction.

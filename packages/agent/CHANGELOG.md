@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.12] - 2026-11-24
+
 ### Added
 
 - Added `output-budget.ts` and `prompts/dsml-tool-call-leak.md` in `agentLoop` to enforce turn output-token budgets and recover from leaked DeepSeek DSML tool-call markup with a targeted corrective retry.
