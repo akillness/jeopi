@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `dsml-leak.ts` (`DSML_MARKUP_RE`, `hasDsmlMarkup`) to detect leaked DeepSeek DSML tool-call markup in assistant text and `retry-wait.ts` (`computeRetryWait`, `getResetDelayMs`, `RETRY_WAIT_DEFAULTS`) for unified retry delay calculation.
+- Expanded rate-limit and error classifiers in `error/rate-limit.ts`, `error/flags.ts`, and `error/retryable.ts` to cover structured Google RPC rate-limit reasons (`INSUFFICIENT_G1_CREDITS_BALANCE`, `CONCURRENT_LIMIT`), OpenRouter/Anthropic/Cursor/LiteLLM/CN credit and billing caps, Aliyun MM transient 400 flaps, and `stream ended without a finish reason`.
+
+### Fixed
+
+- Hardened `withEmptyCompletionRetry`, `ThinkingLoopDetector` / `withGeminiThinkingLoopGuard`, and `retry-after.ts` hint extraction while preserving `ProviderRetryableHooks` and existing quota/usage-limit detection.
+
 ## [16.7.11] - 2026-11-23
 
 ### Fixed

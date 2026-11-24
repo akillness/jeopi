@@ -1098,3 +1098,28 @@ describe("WorkflowLoopGuard hardening contracts", () => {
 		expect(astPathOnly).toBe("ast_grep:packages/utils");
 	});
 });
+
+describe("WorkflowLoopGuard pre-flight budget enforcement", () => {
+	it("refuses beforeModelCall pre-flight when cost or external output tokens already reached the cap", () => {
+		const costGuard = new WorkflowLoopGuard({ maxCostUsd: 1.0 });
+		expect(costGuard.beforeModelCall()).toBeUndefined();
+		const usageRes = costGuard.recordAssistantUsage({ output: 100, cost: { total: 1.0 } });
+		expect(usageRes.stop?.stopClass).toBe("cost_budget_exceeded");
+
+		// A follow-up beforeModelCall must refuse pre-flight without incrementing step.
+		const preflightCost = costGuard.beforeModelCall();
+		expect(preflightCost?.stopClass).toBe("cost_budget_exceeded");
+		expect(preflightCost?.step).toBe(1);
+
+		let externalOutput = 0;
+		const tokenGuard = new WorkflowLoopGuard({
+			maxOutputTokens: 500,
+			getExternalOutputTokens: () => externalOutput,
+		});
+		expect(tokenGuard.beforeModelCall()).toBeUndefined();
+		externalOutput = 550;
+		const preflightTokens = tokenGuard.beforeModelCall();
+		expect(preflightTokens?.stopClass).toBe("token_budget_exceeded");
+		expect(preflightTokens?.step).toBe(1);
+	});
+});

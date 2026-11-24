@@ -48,6 +48,12 @@ export interface AdvisorRuntimeHost {
 	 * one that routes `advise()` results back to the primary.
 	 */
 	beginAdvisorUpdate?(): void;
+	/** Called when an advisor review attempt starts (for transcript replay dedupe). */
+	onTurnBegin?(): void;
+	/** Called when an advisor review attempt succeeds (commits transcript replay window). */
+	onTurnCommit?(): void;
+	/** Called when an advisor review attempt fails or is quarantined (preserves replay window). */
+	onTurnAbandon?(): void;
 	/** Surface a non-recovering advisor failure to the host UI without adding model-visible context. */
 	notifyFailure?(error: unknown): void;
 	/** Surface a one-time notice that thinking was stripped from advisor renders after a provider refusal. */
@@ -66,6 +72,8 @@ export interface AdvisorRuntimeOptions {
 }
 
 const ADVISOR_QUARANTINE_PREFIX = "Advisor response quarantined";
+const MAX_QUARANTINE_RETRIES = 2;
+const MAX_DROPPED_BATCH_CYCLES = 3;
 
 /** Signals that an advisor response was discarded before it could become model-visible context. */
 export class AdvisorOutputQuarantinedError extends Error {
@@ -86,7 +94,11 @@ const ADVISOR_OUTPUT_ONLY_HAZARDS: readonly AdvisorOutputHazard[] = [
 		label: "instruction override",
 		pattern: /\bignore\s+(?:all\s+)?(?:prior|previous|earlier)\s+(?:user\s+)?instructions\b/i,
 	},
-	{ label: "destructive shell command", pattern: /\brm\s+-[a-z]*r[a-z]*f[a-z]*(?:\s|$)/i },
+	{
+		label: "destructive shell command",
+		pattern:
+			/\brm\s+(?:-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*|(?:-[a-z]*r[a-z]*|--recursive)\s+(?:-[a-z]*f[a-z]*|--force)|(?:-[a-z]*f[a-z]*|--force)\s+(?:-[a-z]*r[a-z]*|--recursive))(?:\s|$)/i,
+	},
 	{ label: "denial instruction", pattern: /\bdeny\s+(?:this|it|the\s+request)\s+if\s+(?:asked|questioned)\b/i },
 ];
 
@@ -97,7 +109,7 @@ const ADVISOR_OUTPUT_ONLY_HAZARDS: readonly AdvisorOutputHazard[] = [
 export function quarantineAdvisorUnsafeOutput(
 	message: AssistantMessage,
 	availableToolNames: ReadonlySet<string>,
-	sourceText = "",
+	sourceText: string | (() => string) = "",
 ): string | undefined {
 	const reasons: string[] = [];
 	const unavailableToolNames = new Set<string>();
@@ -117,11 +129,24 @@ export function quarantineAdvisorUnsafeOutput(
 
 	const generatedText = generatedParts.join("\n");
 	if (generatedText) {
+		let resolvedSource: string | undefined;
+		const getSource = (): string => {
+			if (resolvedSource === undefined) {
+				resolvedSource = typeof sourceText === "function" ? sourceText() : sourceText;
+			}
+			return resolvedSource;
+		};
 		const labels: string[] = [];
 		for (const hazard of ADVISOR_OUTPUT_ONLY_HAZARDS) {
-			if (hazard.pattern.test(generatedText) && !hazard.pattern.test(sourceText)) labels.push(hazard.label);
+			if (hazard.pattern.test(generatedText) && !hazard.pattern.test(getSource())) {
+				labels.push(hazard.label);
+			}
 		}
-		if (labels.includes("destructive shell command") || labels.length >= 3) {
+		if (
+			labels.includes("destructive shell command") ||
+			(labels.includes("instruction override") && labels.length >= 2) ||
+			labels.length >= 3
+		) {
 			reasons.push(`generated output-only destructive directives: ${labels.join(", ")}`);
 		}
 	}
@@ -153,15 +178,6 @@ export function buildAdvisorQuarantineSourceText(currentInput: string, messages:
 	return parts.join("\n");
 }
 
-/**
- * Match the stable `Refusal` / `Refusal (…)` message prefix pi-ai emits for a
- * provider classifier refusal (`stop_details.type === "refusal"` mapped in
- * `packages/ai/src/providers/anthropic.ts`), e.g. Anthropic Fable's
- * `Refusal (reasoning_extraction): This request was blocked …`. Refusals are
- * payload-shape-bound: per Anthropic's refusal semantics, replaying the
- * identical payload predictably re-refuses, so the drain loop must degrade the
- * payload instead of blind-retrying it.
- */
 const REFUSAL_MESSAGE_PREFIX = /^(?:Error:\s*)?Refusal(?:\s*\(|:|$)/;
 
 export function isRefusalError(error: unknown): boolean {
@@ -178,40 +194,23 @@ interface CatchupWaiter {
 
 export class AdvisorRuntime {
 	#lastCount = 0;
-	/** Last-shown body, keyed by primary-context customType (plan/goal mode rules,
-	 *  approved plan). These prompts are re-injected verbatim every primary turn;
-	 *  this lets {@link #renderDelta} collapse an unchanged copy to a one-line
-	 *  marker so the advisor isn't re-fed the full ~1k-token rules each turn.
-	 *  Cleared on every re-prime/seed and when a failed batch is dropped. */
 	#seenContext = new Map<string, string>();
 	#pending: PendingDelta[] = [];
 	#busy = false;
 	#backlog = 0;
+	#failing = false;
+	#halted = false;
+	#droppedBatches = 0;
 	#consecutiveFailures = 0;
 	#consecutivePermanentFailures = 0;
+	#consecutiveQuarantines = 0;
 	#failureNotified = false;
 	#permanentlyDisabled = false;
 	#latestMessages?: AgentMessage[];
 	#waiters: CatchupWaiter[] = [];
-	/** Bumped by every external {@link reset}/{@link dispose}. A drain iteration
-	 *  captures it before its awaits; a mismatch on resume means a reset aborted
-	 *  the in-flight advisor prompt, so the stale batch is dropped instead of
-	 *  being retried/requeued into the post-reset conversation. */
+	#sleepAbort?: AbortController;
 	#epoch = 0;
 	disposed = false;
-	/**
-	 * Render primary thinking into deltas. Doubles as the refusal-degrade latch:
-	 * starts `true` (or whatever the constructor option says) and flips to
-	 * `false` exactly once, the first time a classifier refusal is caught — see
-	 * the `#drain` catch block. That single flip is sufficient to both change
-	 * future renders AND guard against re-triggering the degrade path, so no
-	 * separate one-shot flag is needed alongside it. When the render target is a
-	 * Fable/Mythos model, {@link formatSessionHistoryMarkdown}'s
-	 * `demoteThinkingForModelId` (wired from `agent.state.model.id` in
-	 * {@link AdvisorRuntime.#renderDelta}) already disguises the rendered thinking
-	 * before the first send, so this latch mainly guards other/unforeseen
-	 * classifier triggers on the first turn.
-	 */
 	#includeThinking: boolean;
 
 	constructor(
@@ -231,8 +230,12 @@ export class AdvisorRuntime {
 		return this.#permanentlyDisabled;
 	}
 
+	get isHalted(): boolean {
+		return this.#halted;
+	}
+
 	onTurnEnd(messages?: AgentMessage[]): void {
-		if (this.disposed || this.#permanentlyDisabled) return;
+		if (this.disposed || this.#permanentlyDisabled || this.#halted) return;
 		const all = messages ?? this.host.snapshotMessages();
 		this.#latestMessages = all;
 		const render = this.#renderDelta(all);
@@ -245,7 +248,18 @@ export class AdvisorRuntime {
 	}
 
 	waitForCatchup(maxMs: number, threshold: number, signal?: AbortSignal): Promise<void> {
-		if (this.disposed || this.#permanentlyDisabled || signal?.aborted || this.#backlog < threshold) {
+		if (
+			this.disposed ||
+			this.#permanentlyDisabled ||
+			this.#halted ||
+			this.#failing ||
+			signal?.aborted ||
+			!Number.isFinite(maxMs) ||
+			maxMs <= 0 ||
+			!Number.isFinite(threshold) ||
+			threshold <= 0 ||
+			this.#backlog < threshold
+		) {
 			return Promise.resolve();
 		}
 		const { promise, resolve } = Promise.withResolvers<void>();
@@ -271,20 +285,33 @@ export class AdvisorRuntime {
 		this.#epoch++;
 		this.#pending = [];
 		this.#backlog = 0;
+		this.#failing = false;
 		this.#consecutiveFailures = 0;
+		this.#consecutiveQuarantines = 0;
 		this.#failureNotified = false;
+		this.#sleepAbort?.abort();
 		this.#wakeAllWaiters();
 		try {
 			this.agent.abort("advisor disposed");
 		} catch {}
 	}
 
-	#resetAdvisorContext(clearBacklog: boolean, wakeWaiters: boolean): void {
-		this.#lastCount = 0;
+	#resetAdvisorContext(
+		clearBacklog: boolean,
+		wakeWaiters: boolean,
+		options?: { rewindCursor?: boolean; resetFailureNotified?: boolean },
+	): void {
+		if (options?.rewindCursor !== false) {
+			this.#lastCount = 0;
+		}
 		this.#pending = [];
+		this.#failing = false;
 		this.#consecutiveFailures = 0;
-		this.#failureNotified = false;
+		if (options?.resetFailureNotified !== false) {
+			this.#failureNotified = false;
+		}
 		this.#seenContext.clear();
+		this.#sleepAbort?.abort();
 		if (clearBacklog) {
 			this.#backlog = 0;
 		}
@@ -309,7 +336,10 @@ export class AdvisorRuntime {
 	reset(): void {
 		this.#epoch++;
 		this.#consecutivePermanentFailures = 0;
+		this.#consecutiveQuarantines = 0;
+		this.#droppedBatches = 0;
 		this.#permanentlyDisabled = false;
+		this.#halted = false;
 		this.#resetAdvisorContext(true, true);
 	}
 
@@ -322,11 +352,16 @@ export class AdvisorRuntime {
 		this.#lastCount = count;
 		this.#pending = [];
 		this.#backlog = 0;
+		this.#failing = false;
+		this.#halted = false;
+		this.#droppedBatches = 0;
 		this.#consecutiveFailures = 0;
 		this.#consecutivePermanentFailures = 0;
+		this.#consecutiveQuarantines = 0;
 		this.#failureNotified = false;
 		this.#permanentlyDisabled = false;
 		this.#seenContext.clear();
+		this.#sleepAbort?.abort();
 		this.#wakeAllWaiters();
 	}
 
@@ -469,18 +504,16 @@ export class AdvisorRuntime {
 				// failed batch on top of the stale turns and the dropped-after-3 path
 				// would leak orphan failures into the next successful run's context.
 				const messageSnapshot = this.agent.state.messages.length;
+				const seenSnapshot = new Map(this.#seenContext);
 				try {
-					// Reset the host's per-update advisor state (one-advise-per-update
-					// gate) before each model cycle, so the new batch starts with a
-					// fresh budget. Dedupe history persists across cycles.
+					// Reset the host's per-update advisor state (emission guard) before
+					// each model cycle so the new batch starts with a fresh budget.
 					this.host.beginAdvisorUpdate?.();
+					this.host.onTurnBegin?.();
 					await this.agent.prompt(batch);
 					// `Agent.#runLoop` catches provider/stream failures internally and
 					// resolves `prompt()` cleanly with the assistant turn ending in
 					// `stopReason: "error"` and the message recorded on `state.error`.
-					// Treat that as a failed turn so OpenRouter ZDR-style endpoint
-					// rejections trip the retry/notify path instead of looking like a
-					// successful empty cycle.
 					const promptError = this.agent.state.error;
 					if (promptError) throw new Error(promptError);
 					const emptyResponseError = getAdvisorEmptyResponseError(
@@ -488,30 +521,43 @@ export class AdvisorRuntime {
 					);
 					if (emptyResponseError) throw emptyResponseError;
 					success = true;
+					this.host.onTurnCommit?.();
+					this.#failing = false;
 					this.#consecutiveFailures = 0;
 					this.#consecutivePermanentFailures = 0;
+					this.#consecutiveQuarantines = 0;
+					this.#droppedBatches = 0;
 					this.#failureNotified = false;
 				} catch (err) {
-					if (err instanceof AdvisorOutputQuarantinedError) {
-						this.#resetAdvisorContext(true, true);
-						continue;
-					}
+					this.host.onTurnAbandon?.();
 					// reset()/dispose() aborts the in-flight prompt; the rejection is the
 					// reset itself, not a transient advisor failure. Drop the stale batch
-					// (reset already cleared #pending and rewound the cursor) instead of
-					// requeuing it into the post-reset conversation.
+					// instead of mutating post-reset state or requeuing into the new epoch.
 					if (this.#epoch !== epoch) continue;
+					if (err instanceof AdvisorOutputQuarantinedError) {
+						this.#consecutiveQuarantines++;
+						if (this.#consecutiveQuarantines > MAX_QUARANTINE_RETRIES) {
+							logger.warn("advisor response repeatedly quarantined; dropping batch", { err: String(err) });
+							this.#consecutiveQuarantines = 0;
+							this.#droppedBatches++;
+							this.#resetAdvisorContext(true, true, { rewindCursor: false, resetFailureNotified: false });
+							this.#notifyFailureOnce(err);
+							if (this.#droppedBatches >= MAX_DROPPED_BATCH_CYCLES) {
+								this.#halted = true;
+								logger.warn("advisor halted for session after repeated quarantined batches", {
+									droppedBatches: this.#droppedBatches,
+								});
+								break;
+							}
+							continue;
+						}
+						this.#resetAdvisorContext(true, true, { resetFailureNotified: false });
+						continue;
+					}
 					this.#rollbackFailedTurn(messageSnapshot);
 					logger.debug("advisor turn failed", { err: String(err) });
-					// Classifier refusals (e.g. Anthropic Fable's `reasoning_extraction`,
-					// which flags harnesses that feed model thinking back as text) are
-					// payload-shape-bound: re-sending the identical batch predictably
-					// re-refuses. Degrade once — latch thinking off, re-prime, and requeue
-					// a re-rendered batch without thinking. Flipping `#includeThinking` to
-					// `false` here doubles as the one-shot guard: a refusal after the
-					// strip fails the `this.#includeThinking` check below and falls
-					// through to the normal consecutive-failure watchdog, so this cannot
-					// loop.
+					// Classifier refusals are payload-shape-bound: degrade once by
+					// stripping thinking blocks and re-priming.
 					if (this.#includeThinking && isRefusalError(err)) {
 						this.#includeThinking = false;
 						const queuedTurns = this.#pending.reduce((sum, b) => sum + b.turns, 0);
@@ -531,18 +577,13 @@ export class AdvisorRuntime {
 						continue;
 					}
 					this.#consecutiveFailures++;
+					this.#failing = true;
+					this.#wakeAllWaiters();
 					if (isPermanentAdvisorError(err)) {
 						this.#consecutivePermanentFailures++;
 						this.#consecutiveFailures = 0;
 						this.#seenContext.clear();
-						if (!this.#failureNotified) {
-							this.#failureNotified = true;
-							try {
-								this.host.notifyFailure?.(err);
-							} catch (notifyErr) {
-								logger.warn("advisor failure notification failed", { err: String(notifyErr) });
-							}
-						}
+						this.#notifyFailureOnce(err);
 						if (this.#consecutivePermanentFailures >= 2) {
 							this.#permanentlyDisabled = true;
 							this.#pending = [];
@@ -560,23 +601,27 @@ export class AdvisorRuntime {
 					}
 					if (!success && this.#consecutiveFailures >= 3) {
 						logger.warn("advisor failure repeated; dropping backlog", { err: String(err) });
-						if (!this.#failureNotified) {
-							this.#failureNotified = true;
-							try {
-								this.host.notifyFailure?.(err);
-							} catch (notifyErr) {
-								logger.warn("advisor failure notification failed", { err: String(notifyErr) });
-							}
-						}
+						this.#notifyFailureOnce(err);
 						this.#consecutiveFailures = 0;
-						// The dropped batch may carry primary-context we never delivered; drop
-						// the seen-state too so the next turn re-expands it instead of marking
-						// it "unchanged" against content the advisor never received.
+						this.#droppedBatches++;
 						this.#seenContext.clear();
+						if (this.#droppedBatches >= MAX_DROPPED_BATCH_CYCLES) {
+							this.#halted = true;
+							this.#pending = [];
+							this.#backlog = 0;
+							this.#wakeAllWaiters();
+							logger.warn("advisor halted for session after repeated dropped batches", {
+								droppedBatches: this.#droppedBatches,
+							});
+							break;
+						}
 						success = true;
 					} else if (!success) {
+						// Restore seenContext to pre-batch snapshot so re-primed retries stay accurate.
+						this.#seenContext = seenSnapshot;
 						this.#pending.unshift({ text: batch, turns: finalTurns });
-						await Bun.sleep(this.retryDelayMs);
+						const delayMs = this.#retryBackoffMs(this.#consecutiveFailures);
+						await this.#sleep(delayMs);
 					}
 				}
 
@@ -589,6 +634,39 @@ export class AdvisorRuntime {
 			this.#busy = false;
 		}
 	}
+
+	#notifyFailureOnce(err: unknown): void {
+		if (this.#failureNotified) return;
+		this.#failureNotified = true;
+		try {
+			this.host.notifyFailure?.(err);
+		} catch (notifyErr) {
+			logger.warn("advisor failure notification failed", { err: String(notifyErr) });
+		}
+	}
+
+	#retryBackoffMs(attempt: number): number {
+		const base = Math.max(0, this.retryDelayMs);
+		if (base === 0) return 0;
+		const scaled = Math.min(base * 16, base * 2 ** Math.max(0, attempt - 1));
+		return scaled;
+	}
+
+	#sleep(ms: number): Promise<void> {
+		if (ms <= 0 || this.disposed) return Promise.resolve();
+		const { promise, resolve } = Promise.withResolvers<void>();
+		const controller = new AbortController();
+		this.#sleepAbort = controller;
+		const finish = (): void => {
+			if (this.#sleepAbort === controller) this.#sleepAbort = undefined;
+			clearTimeout(timer);
+			controller.signal.removeEventListener("abort", finish);
+			resolve();
+		};
+		const timer = setTimeout(finish, ms);
+		controller.signal.addEventListener("abort", finish, { once: true });
+		return promise;
+	}
 }
 
 type TextualContent = string | readonly (TextContent | ImageContent)[];
@@ -596,7 +674,11 @@ type TextualContent = string | readonly (TextContent | ImageContent)[];
 export function isPermanentAdvisorError(error: unknown): boolean {
 	const text = error instanceof Error ? error.message : String(error);
 	if (/Cloud Code Assist API error\s*\(404\)/i.test(text)) return true;
-	if (/\b(?:not_found_error|model_not_found|invalid_model|unknown model|no endpoints found)\b/i.test(text)) {
+	if (
+		/\b(?:not_found_error|model_not_found|invalid_model|unknown model|no endpoints found|model not found|invalid_request_error)\b|is not supported when/i.test(
+			text,
+		)
+	) {
 		return true;
 	}
 	if (

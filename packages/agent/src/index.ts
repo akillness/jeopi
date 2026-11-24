@@ -6,6 +6,8 @@ export * from "./agent-loop";
 export * from "./append-only-context";
 // Compaction
 export * from "./compaction";
+// Output-token context-window budget fitting
+export * from "./output-budget";
 // Proxy utilities
 export * from "./proxy";
 // Replay policy

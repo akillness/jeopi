@@ -9,6 +9,7 @@ import type {
 } from "jeopi-agent-core";
 import { escapeXmlAttribute, escapeXmlText } from "jeopi-utils";
 import adviseDescription from "../prompts/advisor/advise-tool.md" with { type: "text" };
+import type { AdvisorEmissionGuard, AdvisorSuppressionReason } from "./emission-guard";
 
 const adviseSchema = type({
 	note: type("string").describe(
@@ -161,23 +162,53 @@ function advisorSeverityRank(severity: AdvisorSeverity | undefined): number {
 	return ADVISOR_SEVERITY_RANK[severity ?? "nit"];
 }
 
+export interface AdviseToolOptions {
+	/**
+	 * Shared emission gate owned by the session so `AdviseTool` acts as the
+	 * single admission authority and gives truthful acknowledgements when
+	 * filler, duplicates, or over-budget calls are suppressed.
+	 */
+	emissionGuard?: AdvisorEmissionGuard;
+}
+
+function suppressionAck(
+	reason: AdvisorSuppressionReason,
+	severity: AdvisorSeverity | undefined,
+	budgetPerUpdate: number,
+): string {
+	switch (reason) {
+		case "empty":
+			return "Ignored: empty advice note.";
+		case "noise":
+			return "Ignored: content-free status filler is not forwarded. Stay silent when there is no concrete issue.";
+		case "duplicate":
+			return `Duplicate advice ignored (${severity ?? "nit"}). Only re-send when escalating severity or adding a new finding.`;
+		case "budget":
+			return `Ignored: per-update note budget (${budgetPerUpdate}) reached for this review cycle. Reserve additional calls for 'blocker' issues.`;
+	}
+}
+
 export class AdviseTool implements AgentTool<typeof adviseSchema, AdviseDetails> {
 	readonly name = "advise";
 	readonly label = "Advise";
 	readonly description = adviseDescription;
 	readonly parameters = adviseSchema;
 	readonly intent = "omit" as const;
-	/** Highest delivered severity rank per normalized note. A new call passes
-	 *  through only when its rank strictly exceeds the recorded one (a real
-	 *  escalation: nit → concern → blocker), so an advisor cannot bypass dedupe
-	 *  by retagging the same text at a lower or equal severity. */
+	/** Highest delivered severity rank per normalized note (standalone fallback when no shared emissionGuard is passed). */
 	#deliveredNoteSeverities = new Map<string, number>();
+	readonly #emissionGuard?: AdvisorEmissionGuard;
 
-	constructor(private readonly onAdvice: (note: string, severity?: AdviseDetails["severity"]) => void) {}
+	constructor(
+		private readonly onAdvice: (note: string, severity?: AdviseDetails["severity"]) => void,
+		options?: AdviseToolOptions,
+	) {
+		this.#emissionGuard = options?.emissionGuard;
+	}
 
 	/** Clear delivered-note memory when the advisor starts a fresh conversation. */
 	resetDeliveredNotes(): void {
 		this.#deliveredNoteSeverities.clear();
+		this.#emissionGuard?.reset();
 	}
 
 	async execute(
@@ -187,6 +218,28 @@ export class AdviseTool implements AgentTool<typeof adviseSchema, AdviseDetails>
 		_onUpdate?: AgentToolUpdateCallback<AdviseDetails>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<AdviseDetails>> {
+		if (this.#emissionGuard) {
+			const decision = this.#emissionGuard.admit(args.note, args.severity ?? "nit");
+			if (!decision.allowed) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: suppressionAck(decision.reason, args.severity, this.#emissionGuard.budgetPerUpdate),
+						},
+					],
+					details: { note: args.note, severity: args.severity },
+					useless: true,
+				};
+			}
+			this.onAdvice(args.note, args.severity);
+			return {
+				content: [{ type: "text", text: decision.escalated ? "Escalated and recorded." : "Recorded." }],
+				details: { note: args.note, severity: args.severity },
+				useless: true,
+			};
+		}
+
 		const key = advisorNoteDedupeKey(args.note);
 		const rank = advisorSeverityRank(args.severity);
 		const previousRank = this.#deliveredNoteSeverities.get(key) ?? 0;

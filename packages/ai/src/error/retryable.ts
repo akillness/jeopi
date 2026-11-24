@@ -1,5 +1,8 @@
 import { isRetryableError, isUnexpectedSocketCloseMessage } from "jeopi-utils";
+import { getHeadersFromError, getShouldRetryFromHeaders } from "../utils/retry-after";
 import {
+	ALIYUN_MM_GATEWAY_PATTERN,
+	CODEX_HTTP_BODY_READ_ERROR_PATTERN,
 	isRetryableStreamEnvelopeError,
 	isTransientStreamDropError,
 	isTransientStreamParseError,
@@ -52,7 +55,12 @@ export function isProviderRetryableError(error: unknown, hooks: ProviderRetryabl
 	if (!(error instanceof Error)) return false;
 	if (hooks.isProviderTransient?.(error)) return true;
 	if (isUsageLimit(error)) return false;
+	const shouldRetry = getShouldRetryFromHeaders(getHeadersFromError(error));
+	if (shouldRetry !== undefined) return shouldRetry;
 	const httpStatus = status(error);
+	if (httpStatus === 400 && ALIYUN_MM_GATEWAY_PATTERN.test(error.message)) {
+		return true;
+	}
 	if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 && httpStatus !== 429) {
 		return false;
 	}
@@ -60,6 +68,7 @@ export function isProviderRetryableError(error: unknown, hooks: ProviderRetryabl
 	if (
 		isUnexpectedSocketCloseMessage(msg) ||
 		isTransientTransportMessage(msg) ||
+		CODEX_HTTP_BODY_READ_ERROR_PATTERN.test(msg) ||
 		TRANSIENT_TRANSPORT_PATTERN.test(msg) ||
 		PROVIDER_TRANSIENT_EXTRA_PATTERN.test(msg) ||
 		isTransientStreamParseError(error) ||

@@ -149,6 +149,7 @@ import {
 	type AdvisorAgent,
 	type AdvisorConfig,
 	AdvisorEmissionGuard,
+	AdvisorLoopGuard,
 	type AdvisorMessageDetails,
 	type AdvisorNote,
 	AdvisorOutputQuarantinedError,
@@ -157,6 +158,7 @@ import {
 	AdvisorTranscriptRecorder,
 	advisorTranscriptFilename,
 	buildAdvisorQuarantineSourceText,
+	evictStaleToolResults,
 	formatAdvisorBatchContent,
 	isAdvisorInterruptImmuneTurnActive,
 	isInterruptingSeverity,
@@ -271,8 +273,6 @@ import planModeToolDecisionReminderPrompt from "../prompts/system/plan-mode-tool
 import rewindReportTemplate from "../prompts/system/rewind-report.md" with { type: "text" };
 import sideChannelNoToolsReminder from "../prompts/system/side-channel-no-tools.md" with { type: "text" };
 import thinkingLoopRedirectTemplate from "../prompts/system/thinking-loop-redirect.md" with { type: "text" };
-import toolCallCycleRedirectTemplate from "../prompts/system/tool-call-cycle-redirect.md" with { type: "text" };
-import toolCallLoopRedirectTemplate from "../prompts/system/tool-call-loop-redirect.md" with { type: "text" };
 import ttsrInterruptTemplate from "../prompts/system/ttsr-interrupt.md" with { type: "text" };
 import ttsrToolReminderTemplate from "../prompts/system/ttsr-tool-reminder.md" with { type: "text" };
 import unexpectedStopRetryTemplate from "../prompts/system/unexpected-stop-retry.md" with { type: "text" };
@@ -371,6 +371,13 @@ import { EPHEMERAL_MODEL_CHANGE_ROLE } from "./session-entries";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
 import type { ShakeMode, ShakeResult } from "./shake-types";
+import {
+	buildToolCallLoopRedirectDetails,
+	renderCyclicalToolCallRedirect,
+	renderToolCallLoopRedirect,
+	TOOL_CALL_CYCLE_REDIRECT_TYPE,
+	TOOL_CALL_LOOP_REDIRECT_TYPE,
+} from "./tool-call-loop-redirect";
 import { ToolChoiceQueue } from "./tool-choice-queue";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";
@@ -475,8 +482,6 @@ const GEMINI_TOOL_REMINDER_TYPE = "gemini-tool-call-reminder";
 /** `customType` for the hidden redirect notice injected into a turn retried after a
  *  thinking/response loop. Steers the model off the repeated content; never displayed. */
 const THINKING_LOOP_REDIRECT_TYPE = "thinking-loop-redirect";
-const TOOL_CALL_LOOP_REDIRECT_TYPE = "tool-call-loop-redirect";
-const TOOL_CALL_CYCLE_REDIRECT_TYPE = "tool-call-cycle-redirect";
 
 function customMessageContentText(content: string | (TextContent | ImageContent)[]): string {
 	if (typeof content === "string") return content;
@@ -1089,6 +1094,7 @@ interface ActiveAdvisor {
 	/** Slug for the transcript filename/session id; "" → `__advisor.jsonl`. */
 	slug: string;
 	agent: Agent;
+	appendOnlyContext: AppendOnlyContextManager;
 	runtime: AdvisorRuntime;
 	adviseTool: AdviseTool;
 	emissionGuard: AdvisorEmissionGuard;
@@ -1099,6 +1105,26 @@ interface ActiveAdvisor {
 	agentUnsubscribe?: () => void;
 	model: Model;
 	thinkingLevel: ThinkingLevel;
+}
+
+/**
+ * Parse `advisor.syncBacklog` safely into a positive integer catch-up threshold.
+ * Returns `undefined` for `"off"` or malformed values (e.g., YAML boolean `true`)
+ * so `waitForCatchup` never receives `NaN` and stalls for 30s per turn.
+ */
+export function parseAdvisorSyncBacklogThreshold(raw: unknown): number | undefined {
+	if (raw === "off" || raw === false || raw === undefined || raw === null) return undefined;
+	if (raw === "strict") return 1;
+	if (typeof raw === "number") {
+		return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : undefined;
+	}
+	if (typeof raw === "string") {
+		const trimmed = raw.trim();
+		if (!/^\d+$/.test(trimmed)) return undefined;
+		const parsed = Number.parseInt(trimmed, 10);
+		return Number.isFinite(parsed) && parsed >= 1 ? parsed : undefined;
+	}
+	return undefined;
 }
 
 export interface FreshSessionResult {
@@ -2237,9 +2263,8 @@ export class AgentSession {
 				for (const a of this.#advisors) {
 					if (!a.runtime.disposed) a.runtime.onTurnEnd(messages);
 				}
-				const syncBacklog = this.settings.get("advisor.syncBacklog");
-				if (syncBacklog !== "off") {
-					const threshold = parseInt(syncBacklog, 10);
+				const threshold = parseAdvisorSyncBacklogThreshold(this.settings.get("advisor.syncBacklog"));
+				if (threshold !== undefined) {
 					// Parallel so the 30s catch-up budget is shared across advisors, not summed.
 					await Promise.all(this.#advisors.map(a => a.runtime.waitForCatchup(30000, threshold, signal)));
 				}
@@ -2543,8 +2568,12 @@ export class AgentSession {
 			const advisorName = config.name;
 			const advisorThinkingLevel = thinkingLevel ?? ThinkingLevel.Medium;
 
-			const emissionGuard = new AdvisorEmissionGuard();
-			const adviseTool = new AdviseTool((note, severity) => this.#routeAdvice(advisorRef, note, severity));
+			const emissionGuard = new AdvisorEmissionGuard({
+				budgetPerUpdate: this.settings.get("advisor.maxNotesPerUpdate"),
+			});
+			const adviseTool = new AdviseTool((note, severity) => this.#routeAdvice(advisorRef, note, severity, true), {
+				emissionGuard,
+			});
 
 			// `#advisorWatchdogPrompt` already carries WATCHDOG.md + YAML shared
 			// instructions; `config.instructions` adds this advisor's specialization.
@@ -2599,6 +2628,7 @@ export class AgentSession {
 					thinkingLevel: toReasoningEffort(advisorThinkingLevel),
 					tools: [adviseTool, ...tools],
 				},
+				convertToLlm: messages => convertToLlm(messages, advisorModel),
 				appendOnlyContext,
 				sessionId: advisorSessionId,
 				promptCacheKey: advisorPromptCacheKey,
@@ -2609,9 +2639,7 @@ export class AgentSession {
 				onPayload: this.#onPayload,
 				onResponse: this.#onResponse,
 				transformAssistantMessage: message => {
-					quarantinedAdvisorOutput = quarantineAdvisorUnsafeOutput(
-						message,
-						availableAdvisorToolNames,
+					quarantinedAdvisorOutput = quarantineAdvisorUnsafeOutput(message, availableAdvisorToolNames, () =>
 						buildAdvisorQuarantineSourceText(currentAdvisorInput, advisorAgent.state.messages),
 					);
 				},
@@ -2623,6 +2651,16 @@ export class AgentSession {
 				serviceTierResolver: advisorServiceTierResolver,
 			});
 			advisorAgent.setDisableReasoning(shouldDisableReasoning(advisorThinkingLevel));
+			const advisorLoopGuard = new AdvisorLoopGuard({
+				advisorName,
+				getConfig: () => ({
+					enabled: this.settings.get("model.toolCallLoopGuard.enabled"),
+					threshold: this.settings.get("model.toolCallLoopGuard.threshold"),
+					maxRedirectsBeforeStop: this.settings.get("model.toolCallLoopGuard.maxRedirectsBeforeStop"),
+					exemptTools: ["advise"],
+				}),
+			});
+			advisorLoopGuard.attach(advisorAgent);
 
 			const advisorAgentFacade: AdvisorAgent = {
 				prompt: async input => {
@@ -2640,12 +2678,14 @@ export class AgentSession {
 				},
 				abort: reason => advisorAgent.abort(reason),
 				reset: () => {
+					advisorLoopGuard.reset();
 					advisorAgent.reset();
 					appendOnlyContext.log.clear();
 				},
 				rollbackTo: count => {
 					// Drop the failed user batch + synthetic assistant-error turn
 					// `Agent.#runLoop` appended for a turn ending in `stopReason: "error"`.
+					advisorLoopGuard.reset();
 					const messages = advisorAgent.state.messages;
 					if (count < messages.length) {
 						messages.length = count;
@@ -2674,7 +2714,14 @@ export class AgentSession {
 					enqueueAdvice: (note, severity) => this.#routeAdvice(advisorRef, note, severity),
 					maintainContext: incomingTokens => this.#maintainAdvisorContext(advisorRef, incomingTokens),
 					obfuscator: this.#obfuscator,
-					beginAdvisorUpdate: () => advisorRef.emissionGuard.beginUpdate(),
+					beginAdvisorUpdate: () => {
+						advisorLoopGuard.reset();
+						advisorRef.emissionGuard.setBudgetPerUpdate(this.settings.get("advisor.maxNotesPerUpdate"));
+						advisorRef.emissionGuard.beginUpdate();
+					},
+					onTurnBegin: () => recorder.beginTurn(),
+					onTurnCommit: () => recorder.commitTurn(),
+					onTurnAbandon: () => recorder.abandonTurn(),
 					notifyFailure: error => {
 						const message = error instanceof Error ? error.message : String(error);
 						this.emitNotice(
@@ -2699,6 +2746,7 @@ export class AgentSession {
 				name: advisorName,
 				slug,
 				agent: advisorAgent,
+				appendOnlyContext,
 				runtime,
 				adviseTool,
 				emissionGuard,
@@ -2757,12 +2805,12 @@ export class AgentSession {
 	 * user interrupt auto-resume is suppressed while idle/unwinding (the note
 	 * becomes a preserved card re-entering on resume); a live-streaming turn is
 	 * steered in directly. A plain nit always rides the non-interrupting YieldQueue
-	 * aside. Suppression by the per-advisor emission guard drops the note silently —
-	 * the model still saw `Recorded.`, so it isn't tempted to rephrase the same note
-	 * past the dedupe.
+	 * aside. `AdviseTool` owns admission through the per-advisor emission guard and
+	 * returns explicit suppression acknowledgements; direct `enqueueAdvice` callers
+	 * without `admittedByTool` still pass through the same guard.
 	 */
-	#routeAdvice(advisor: ActiveAdvisor, note: string, severity?: AdvisorSeverity): void {
-		if (!advisor.emissionGuard.accept(note)) {
+	#routeAdvice(advisor: ActiveAdvisor, note: string, severity?: AdvisorSeverity, admittedByTool = false): void {
+		if (!admittedByTool && !advisor.emissionGuard.accept(note, severity)) {
 			logger.debug("advisor advice suppressed by emission guard", { severity, advisor: advisor.name });
 			return;
 		}
@@ -2920,7 +2968,7 @@ export class AgentSession {
 		const contextWindow = advisorModel.contextWindow ?? 0;
 		if (contextWindow <= 0) return false;
 
-		const messages = agent.state.messages;
+		let messages = agent.state.messages;
 		let contextTokens = incomingTokens;
 		for (const message of messages) {
 			contextTokens += estimateTokens(message);
@@ -2928,6 +2976,25 @@ export class AgentSession {
 
 		if (!shouldCompact(contextTokens, contextWindow, compactionSettings)) {
 			return false;
+		}
+
+		// 0. Evict bulky older advisor tool results before paying for promotion/compaction.
+		if (this.settings.get("advisor.evictStaleResults")) {
+			const evicted = evictStaleToolResults(messages);
+			if (evicted.evictedCount > 0) {
+				agent.replaceMessages(evicted.messages);
+				advisor.appendOnlyContext.resetSyncCursor();
+				messages = agent.state.messages;
+				contextTokens = Math.max(incomingTokens, contextTokens - evicted.savedTokens);
+				logger.debug("advisor evicted stale tool results", {
+					advisor: advisor.name,
+					evictedCount: evicted.evictedCount,
+					savedTokens: evicted.savedTokens,
+				});
+				if (!shouldCompact(contextTokens, contextWindow, compactionSettings)) {
+					return false;
+				}
+			}
 		}
 
 		// 1. Try promotion first
@@ -3793,6 +3860,9 @@ export class AgentSession {
 		// TTSR: Check for pattern matches on assistant text/thinking and tool argument deltas
 		if (event.type === "message_update" && this.#ttsrManager?.hasRules()) {
 			const assistantEvent = event.assistantMessageEvent;
+			if (assistantEvent.type === "start") {
+				this.#ttsrManager.resetBuffer();
+			}
 			let matchContext: TtsrMatchContext | undefined;
 			let streamingToolCall: ToolCall | undefined;
 
@@ -3821,22 +3891,6 @@ export class AgentSession {
 					}
 				}
 			}
-		}
-
-		if (
-			event.type === "message_update" &&
-			(event.assistantMessageEvent.type === "toolcall_start" ||
-				event.assistantMessageEvent.type === "toolcall_delta" ||
-				event.assistantMessageEvent.type === "toolcall_end")
-		) {
-			void this.#preCacheStreamingEditFile(event);
-		}
-
-		if (
-			event.type === "message_update" &&
-			(event.assistantMessageEvent.type === "toolcall_end" || event.assistantMessageEvent.type === "toolcall_delta")
-		) {
-			this.#maybeAbortStreamingEdit(event);
 		}
 
 		// Handle session persistence
@@ -4968,11 +5022,11 @@ export class AgentSession {
 		const retryToken = ++this.#ttsrRetryToken;
 		const generation = this.#promptGeneration;
 		this.#schedulePostPromptTask(
-			async () => {
+			async signal => {
 				// Wait for the interrupted run to finish settling its terminal assistant
 				// message and any aborted tool results before mutating history or continuing.
 				await this.agent.waitForIdle();
-				if (this.#ttsrRetryToken !== retryToken) {
+				if (signal.aborted || this.#ttsrRetryToken !== retryToken) {
 					this.#resolveTtsrResume();
 					return;
 				}
@@ -4989,8 +5043,10 @@ export class AgentSession {
 				this.#perToolTtsrInjections.clear();
 				const ttsrSettings = this.#ttsrManager?.getSettings();
 				if (ttsrSettings?.contextMode === "discard") {
-					// Remove only the aborted assistant turn and its paired tool results so
-					// any trailing steering/follow-up/custom messages survive the retry.
+					// Remove only the aborted assistant turn, its paired tool results,
+					// and any empty aborted tail assistant(s) or orphaned agent-attributed
+					// developer/hook-context messages immediately following it (#20052),
+					// while preserving any trailing user steering/follow-up messages.
 					const messages = this.agent.state.messages;
 					const abortedAssistant = messages[targetAssistantIndex];
 					const abortedToolCallIds = new Set<string>();
@@ -5005,12 +5061,24 @@ export class AgentSession {
 					for (let i = 0; i < messages.length; i++) {
 						if (i === targetAssistantIndex) continue;
 						const candidate = messages[i];
-						if (
-							i > targetAssistantIndex &&
-							candidate.role === "toolResult" &&
-							abortedToolCallIds.has(candidate.toolCallId)
-						) {
-							continue;
+						if (i > targetAssistantIndex) {
+							if (candidate.role === "toolResult" && abortedToolCallIds.has(candidate.toolCallId)) {
+								continue;
+							}
+							if (
+								candidate.role === "assistant" &&
+								candidate.stopReason === "aborted" &&
+								candidate.content.length === 0
+							) {
+								continue;
+							}
+							if (
+								candidate.role === "developer" &&
+								"attribution" in candidate &&
+								candidate.attribution === "agent"
+							) {
+								continue;
+							}
 						}
 						nextMessages.push(candidate);
 					}
@@ -5122,6 +5190,7 @@ export class AgentSession {
 
 	#resetStreamingEditState(): void {
 		this.#streamingEditAbortTriggered = false;
+		this.#lastStreamingEditToolCallId = undefined;
 		this.#streamingEditCheckedLineCounts.clear();
 		this.#streamingEditPrecheckedToolCallIds.clear();
 		this.#streamingEditFileCache.clear();
@@ -5176,28 +5245,14 @@ export class AgentSession {
 		detection: Exclude<ToolCallLoopDetection, { kind: "stalled_tool_call" }>,
 	): void {
 		if (detection.kind === "cyclical_tool_calls") {
-			const toolNames = detection.toolNames.join(" and ");
-			const content = prompt.render(toolCallCycleRedirectTemplate, {
-				tool_names: toolNames,
-				window_size: detection.windowSize,
-			});
+			const content = renderCyclicalToolCallRedirect(detection);
 			const details = { toolNames: detection.toolNames, windowSize: detection.windowSize };
 			logger.warn("cross-turn alternating tool-call cycle detected", { toolNames: detection.toolNames });
 			this.#appendRedirectMessage(TOOL_CALL_CYCLE_REDIRECT_TYPE, content, details, messages);
 			return;
 		}
-		const content = prompt.render(toolCallLoopRedirectTemplate, {
-			tool_name: detection.toolName,
-			count: detection.count,
-			arguments_summary: detection.argumentsSummary,
-			result_summary: detection.resultSummary || "(no text result)",
-		});
-		const details = {
-			toolName: detection.toolName,
-			count: detection.count,
-			argumentsSummary: detection.argumentsSummary,
-			resultSummary: detection.resultSummary,
-		};
+		const content = renderToolCallLoopRedirect(detection);
+		const details = buildToolCallLoopRedirectDetails(detection);
 		logger.warn("cross-turn tool-call loop detected", {
 			toolName: detection.toolName,
 			count: detection.count,

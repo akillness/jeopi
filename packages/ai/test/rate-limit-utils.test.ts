@@ -1,11 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { isUsageLimit } from "jeopi-ai/error/flags";
+import { classify, Flag, isUsageLimit } from "jeopi-ai/error/flags";
 import {
 	calculateRateLimitBackoffMs,
+	isBillingCapUsageLimit,
 	isUsageLimitOutcome,
 	isUsageLimitStatus,
 	parseRateLimitReason,
 } from "jeopi-ai/error/rate-limit";
+import { isProviderRetryableError } from "jeopi-ai/error/retryable";
+import { getShouldRetryFromHeaders } from "jeopi-ai/utils/retry-after";
 
 describe("parseRateLimitReason", () => {
 	it("classifies Google Quota exceeded as QUOTA_EXHAUSTED", () => {
@@ -188,5 +191,71 @@ describe("calculateRateLimitBackoffMs", () => {
 			expect(ms).toBeGreaterThanOrEqual(45_000);
 			expect(ms).toBeLessThanOrEqual(75_000);
 		}
+	});
+});
+
+describe("upstream rate-limit and retryability guards", () => {
+	it("treats OpenRouter 402 in-flight credit reservations as non-billing-cap", () => {
+		const msg =
+			"This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.";
+		expect(isBillingCapUsageLimit(402, msg)).toBe(false);
+		expect(isBillingCapUsageLimit(402, "Insufficient credits. Add more credits to continue.")).toBe(true);
+	});
+
+	it("classifies structured Google RPC RESOURCE_EXHAUSTED bodies accurately", () => {
+		const capacityErr = `Cloud Code Assist API error (429): ${JSON.stringify({
+			error: {
+				status: "RESOURCE_EXHAUSTED",
+				message: "No capacity available for model",
+				details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "MODEL_CAPACITY_EXHAUSTED" }],
+			},
+		})}`;
+		expect(parseRateLimitReason(capacityErr)).toBe("MODEL_CAPACITY_EXHAUSTED");
+		expect(isUsageLimitOutcome(429, capacityErr)).toBe(false);
+
+		const g1CreditsErr = JSON.stringify({
+			error: {
+				status: "RESOURCE_EXHAUSTED",
+				details: [
+					{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "INSUFFICIENT_G1_CREDITS_BALANCE" },
+				],
+			},
+		});
+		expect(parseRateLimitReason(g1CreditsErr)).toBe("INSUFFICIENT_G1_CREDITS_BALANCE");
+		expect(isUsageLimitOutcome(429, g1CreditsErr)).toBe(true);
+		expect(isBillingCapUsageLimit(429, g1CreditsErr)).toBe(true);
+	});
+
+	it("excludes concurrency limits and DashScope token-limit TPM throttles from account usage limits", () => {
+		const concurrent = "HTTP 429: too many concurrent requests for this key";
+		expect(parseRateLimitReason(concurrent)).toBe("CONCURRENT_LIMIT");
+		expect(isUsageLimitOutcome(429, concurrent)).toBe(false);
+		expect((classify(new Error(concurrent)) & Flag.Transient) !== 0).toBe(true);
+		expect((classify(new Error(concurrent)) & Flag.UsageLimit) !== 0).toBe(false);
+
+		const dashscope =
+			"You exceeded your current quota, please check your plan and billing details (https://help.aliyun.com/error-code#token-limit)";
+		expect(parseRateLimitReason(dashscope)).toBe("RATE_LIMIT_EXCEEDED");
+		expect(isUsageLimitOutcome(429, dashscope)).toBe(false);
+		expect(isBillingCapUsageLimit(429, dashscope)).toBe(false);
+	});
+
+	it("honors x-should-retry headers and classifies Aliyun MM 400 and Codex body read errors as retryable", () => {
+		expect(getShouldRetryFromHeaders({ "x-should-retry": "false" })).toBe(false);
+		expect(getShouldRetryFromHeaders({ "X-Should-Retry": "true" })).toBe(true);
+
+		const nonRetryable500 = Object.assign(new Error("500 Internal Server Error"), {
+			status: 500,
+			headers: { "x-should-retry": "false" },
+		});
+		expect(isProviderRetryableError(nonRetryable500)).toBe(false);
+
+		const aliyun400 = Object.assign(new Error("400 Failed to download multimodal content"), { status: 400 });
+		expect(isProviderRetryableError(aliyun400)).toBe(true);
+		expect((classify(aliyun400) & Flag.Transient) !== 0).toBe(true);
+
+		const codexBody = new Error("error occurred while reading the response body");
+		expect(isProviderRetryableError(codexBody)).toBe(true);
+		expect((classify(codexBody) & Flag.Transient) !== 0).toBe(true);
 	});
 });

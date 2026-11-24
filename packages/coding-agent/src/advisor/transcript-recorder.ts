@@ -3,6 +3,7 @@ import type { AgentMessage } from "jeopi-agent-core";
 import type { Message, UserMessage } from "jeopi-ai";
 import { logger } from "jeopi-utils";
 import { SessionManager } from "../session/session-manager";
+import { fingerprintMessage } from "./message-fingerprint";
 
 /**
  * Reserved transcript stem for advisor session files. Chosen so it cannot
@@ -34,23 +35,9 @@ export function isAdvisorTranscriptName(name: string): boolean {
 /**
  * Append-only persister for an advisor agent's transcript.
  *
- * The advisor is a passive reviewer with its own model usage, so — like a task
- * subagent — its turns are written to a JSONL inside the owning session's
- * artifacts dir (`<session>/__advisor.jsonl`, `<session>/<SubId>/__advisor.jsonl`
- * for subagent advisors). That single file gives the advisor model proper usage
- * attribution in `jeopi stats` (the stats parser scans the session dir
- * recursively) and a read-only transcript in the Agent Hub, without making the
- * advisor a registered, messageable peer.
- *
- * The target is derived from the *session file* (`getSessionFile()`), never
- * `getArtifactsDir()` — subagents adopt the parent's artifact manager, so the
- * artifacts dir points at the parent root and every subagent advisor would
- * collide. The file path is resolved synchronously when a message finalizes and
- * captured for the queued write, so a `/new`, resume, or session switch in
- * flight can never misattribute an old advisor turn into the new session's file.
- * On such a switch the previous writer is closed and the new file opened on the
- * next recorded turn. The recorder never truncates: the advisor's in-memory
- * context resets/compacts independently, but every billed turn is appended here.
+ * Includes positional replay-window deduplication (`beginTurn` / `commitTurn` /
+ * `abandonTurn`) so retrying an advisor turn after a transient failure or
+ * quarantine never writes duplicate user/assistant records into `__advisor.jsonl`.
  */
 export class AdvisorTranscriptRecorder {
 	#manager: SessionManager | undefined;
@@ -58,15 +45,12 @@ export class AdvisorTranscriptRecorder {
 	#filename: string;
 	/** Serializes the async open/close against synchronous appends so records land in order. */
 	#queue: Promise<void>;
+	/** Fingerprints written during the current in-flight advisor turn. */
+	#turnFingerprints: string[] = [];
+	/** Positional replay window from an abandoned turn: skips matching prefix on retry. */
+	#replayWindow: string[] | undefined;
+	#replayIndex = 0;
 
-	/**
-	 * @param filename Transcript filename within the session dir. Defaults to
-	 *   `__advisor.jsonl`; named advisors pass `__advisor.<slug>.jsonl` via
-	 *   {@link advisorTranscriptFilename}.
-	 * @param after Optional barrier the queue starts behind — used on the advisor
-	 *   on→off→on toggle so a fresh recorder's first `open` waits for the prior
-	 *   recorder's `close` and the two never hold the same file at once.
-	 */
 	constructor(
 		private readonly resolveSessionFile: () => string | undefined,
 		private readonly resolveCwd: () => string,
@@ -80,6 +64,42 @@ export class AdvisorTranscriptRecorder {
 					() => {},
 				)
 			: Promise.resolve();
+	}
+
+	/** Delay subsequent transcript writes behind an external barrier (e.g. session reset). */
+	blockWritesUntil(barrier: Promise<unknown>): void {
+		this.#enqueue(() =>
+			barrier.then(
+				() => {},
+				() => {},
+			),
+		);
+	}
+
+	/** Mark the start of an advisor review attempt. */
+	beginTurn(): void {
+		this.#turnFingerprints = [];
+		this.#replayIndex = 0;
+	}
+
+	/** Commit the current attempt and discard any prior replay dedupe window. */
+	commitTurn(): void {
+		this.#turnFingerprints = [];
+		this.#replayWindow = undefined;
+		this.#replayIndex = 0;
+	}
+
+	/**
+	 * Abandon an incomplete/failed attempt, preserving its persisted message
+	 * fingerprints as a positional replay window so an immediate retry skips
+	 * re-writing already-recorded prefix messages.
+	 */
+	abandonTurn(): void {
+		if (this.#turnFingerprints.length > 0) {
+			this.#replayWindow = this.#turnFingerprints;
+		}
+		this.#turnFingerprints = [];
+		this.#replayIndex = 0;
 	}
 
 	/**
@@ -97,13 +117,25 @@ export class AdvisorTranscriptRecorder {
 				persisted = message;
 				break;
 			case "user":
-				// Clone so the live advisor message stays untouched; mark synthetic so
-				// stats' user-message metrics skip these agent-internal review prompts.
 				persisted = { ...(message as UserMessage), synthetic: true, attribution: "agent" };
 				break;
 			default:
 				return;
 		}
+
+		const fp = fingerprintMessage(persisted);
+		if (this.#replayWindow && this.#replayIndex < this.#replayWindow.length) {
+			if (this.#replayWindow[this.#replayIndex] === fp) {
+				this.#replayIndex++;
+				this.#turnFingerprints.push(fp);
+				return;
+			}
+			// Diverged from prior abandoned attempt — exit replay suppression.
+			this.#replayWindow = undefined;
+			this.#replayIndex = 0;
+		}
+		this.#turnFingerprints.push(fp);
+
 		const sessionFile = this.resolveSessionFile();
 		if (!sessionFile?.endsWith(JSONL_SUFFIX)) return;
 		const file = path.join(sessionFile.slice(0, -JSONL_SUFFIX.length), this.#filename);

@@ -691,10 +691,11 @@ describe("GeminiHeaderRunDetector", () => {
 		expect(feedHeaders(runaway)).toBe(true);
 	});
 
-	test("does not trip on a legitimate 10-header debugging block (regression)", () => {
-		// A real, productive debugging stretch emitted 10 distinct progressing headers; never interrupt that.
+	test("does not trip on legitimate 10- or 24-header debugging blocks and trips at threshold (64)", () => {
+		// Productive debugging stretches up to 24+ headers must not be interrupted; runaway trips at 64.
 		expect(feedHeaders(distinctPlanningRunaway(10))).toBe(false);
-		expect(feedHeaders(distinctPlanningRunaway(24))).toBe(true);
+		expect(feedHeaders(distinctPlanningRunaway(24))).toBe(false);
+		expect(feedHeaders(distinctPlanningRunaway(GEMINI_HEADER_RUNAWAY_THRESHOLD))).toBe(true);
 	});
 
 	test("counts headers across intervening paragraphs (one summary = one header)", () => {
@@ -834,5 +835,34 @@ describe("thinking-loop cook fallback (result path)", () => {
 			waitSpy.mockRestore();
 			clearCustomApis();
 		}
+	});
+});
+
+describe("upstream thinking-loop detector upgrades", () => {
+	test("catches long exact suffix cycles (>60 chars) via Z-array detector", () => {
+		const detector = new ThinkingLoopDetector(false);
+		const longUnit =
+			"Checking the same failing hypothesis again without changing any parameter or reading any new source file in the repository. ";
+		expect(longUnit.length).toBeGreaterThan(100);
+		let hit: string | null = null;
+		for (let i = 0; i < 12 && !hit; i++) {
+			hit = detector.push(longUnit);
+		}
+		hit ??= detector.flush();
+		expect(hit).toContain("back-to-back");
+	});
+
+	test("exempts chunk-leading JSON strings and scalar arrays inside structured payloads", () => {
+		const detector = new ThinkingLoopDetector(true);
+		const payload = Array.from(
+			{ length: 20 },
+			(_, i) => `"item_${i}", "tags": ["alpha", "beta", ${i}], "score": ${i * 10}, "active": true`,
+		).join("\n\n");
+		let hit: string | null = null;
+		for (let i = 0; i < payload.length && !hit; i += 31) {
+			hit = detector.push(payload.slice(i, i + 31));
+		}
+		hit ??= detector.flush();
+		expect(hit).toBeNull();
 	});
 });

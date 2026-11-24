@@ -751,7 +751,10 @@ export class WorkflowLoopGuard {
 		totalTokens?: number;
 		cost?: { total?: number };
 	}): { stop?: WorkflowGuardStop; softWarning?: WorkflowGuardSoftWarning } {
-		if (!usage) return {};
+		if (!usage) {
+			const budgetStop = this.#checkBudgetStop();
+			return budgetStop ? { stop: budgetStop } : {};
+		}
 
 		const addPositive = (val: number | undefined): number =>
 			typeof val === "number" && Number.isFinite(val) && val > 0 ? val : 0;

@@ -6,7 +6,16 @@ import {
 	ProviderHttpError,
 	STREAM_ENVELOPE_ERROR_PREFIX,
 } from "./classes";
-import { is402BillingCapBody, isOpaqueStatusBody, matchesUsageLimitText, parseRateLimitReason } from "./rate-limit";
+import {
+	is402BillingCapBody,
+	isAccountScopedCapText,
+	isConcurrencyCapExclusion,
+	isDashScopeTokenLimitText,
+	isOpaqueStatusBody,
+	isUsageLimitStatus,
+	matchesUsageLimitText,
+	parseRateLimitReason,
+} from "./rate-limit";
 
 export const Flag = {
 	Class: 0x1000,
@@ -110,6 +119,11 @@ export const LLAMA_CPP_TOOL_CALL_PARSE_PATTERN =
 // error, also surfaced in text). Treated as transient — a retry usually lands
 // on a backend that has the model.
 const COPILOT_MODEL_NOT_SUPPORTED_PATTERN = /model_not_supported/i;
+// Aliyun Bailian / DashScope multimodal gateway occasionally rejects a valid
+// request with HTTP 400 and "Failed to download multimodal content" — transient.
+export const ALIYUN_MM_GATEWAY_PATTERN = /failed to download multimodal content/i;
+// Codex HTTP streaming body read transient failure.
+export const CODEX_HTTP_BODY_READ_ERROR_PATTERN = /error occurred while reading (?:the )?(?:response |http )?body/i;
 // Anthropic strict-tool grammar too large / schema too complex (400 invalid_request_error).
 const GRAMMAR_TOO_LARGE_PATTERN = /compiled grammar/i;
 const GRAMMAR_TOO_LARGE_DETAIL_PATTERN = /too large/i;
@@ -261,6 +275,7 @@ function isTransientErrorText(text: string): boolean {
 	return (
 		isUnexpectedSocketCloseMessage(text) ||
 		isStreamReadErrorText(text) ||
+		CODEX_HTTP_BODY_READ_ERROR_PATTERN.test(text) ||
 		(TRANSIENT_ENVELOPE_PATTERN.test(text) && TRANSIENT_ENVELOPE_BEFORE_START_PATTERN.test(text)) ||
 		TRANSIENT_TRANSPORT_PATTERN.test(text)
 	);
@@ -304,24 +319,42 @@ function isTerminalClientErrorStatus(code: number | undefined): boolean {
 function classifyText(errorMessage: string | undefined, errorStatus: number | undefined, api?: Api): number {
 	let kinds = 0;
 	if (errorMessage) {
-		if (matchesOverflowText(errorMessage)) kinds |= Flag.ContextOverflow;
-		if (isMalformedFunctionCallText(errorMessage)) kinds |= Flag.MalformedFunctionCall;
-		if (isProviderFinishErrorText(errorMessage)) kinds |= Flag.ProviderFinishError;
-		if (isContentBlockedText(errorMessage)) kinds |= Flag.ContentBlocked;
-		if (isAuthFailureText(errorMessage)) kinds |= Flag.AuthFailed;
-
 		const statusClean = errorStatus ? errorStatus : (status({ message: errorMessage }) ?? undefined);
 		const cleanMessage = errorMessage;
 		const isOpaque = isOpaqueStatusBody(cleanMessage);
+		const rateLimitReason = parseRateLimitReason(cleanMessage);
+		const isQuotaExhausted =
+			rateLimitReason === "QUOTA_EXHAUSTED" || rateLimitReason === "INSUFFICIENT_G1_CREDITS_BALANCE";
+		const isConcurrencyExcluded = isConcurrencyCapExclusion(statusClean, cleanMessage);
+
+		// A 429/402 whose body contains "too many tokens" or "token limit exceeded"
+		// is a TPM/usage-limit response, not a context-window overflow.
+		if (!isUsageLimitStatus(statusClean) && matchesOverflowText(errorMessage)) kinds |= Flag.ContextOverflow;
+		if (isMalformedFunctionCallText(errorMessage)) kinds |= Flag.MalformedFunctionCall;
+		if (isProviderFinishErrorText(errorMessage)) kinds |= Flag.ProviderFinishError;
+		if (isContentBlockedText(errorMessage)) kinds |= Flag.ContentBlocked;
+		// Account-scoped 403 caps and 403 concurrency limits are NOT dead credentials.
+		if (
+			isAuthFailureText(errorMessage) &&
+			!(statusClean === 403 && (isAccountScopedCapText(cleanMessage) || isConcurrencyExcluded))
+		) {
+			kinds |= Flag.AuthFailed;
+		}
 
 		const isLimitStatus = statusClean === 429;
 		const is402BillingCap = statusClean === 402 && is402BillingCapBody(cleanMessage);
 		if (
-			is402BillingCap ||
-			(statusClean !== 402 && matchesUsageLimitText(cleanMessage)) ||
-			(isLimitStatus && (isOpaque || parseRateLimitReason(cleanMessage) === "QUOTA_EXHAUSTED"))
+			!isConcurrencyExcluded &&
+			(is402BillingCap ||
+				(statusClean !== 402 && matchesUsageLimitText(cleanMessage)) ||
+				((statusClean === 403 || statusClean === undefined) && isAccountScopedCapText(cleanMessage)) ||
+				(isLimitStatus && (isOpaque || isQuotaExhausted)))
 		) {
 			kinds |= Flag.UsageLimit;
+		}
+
+		if (isConcurrencyExcluded || isDashScopeTokenLimitText(cleanMessage)) {
+			kinds |= Flag.Transient;
 		}
 
 		// Transport/timeout/truncation/stream-drop wording that rides on a terminal
@@ -338,8 +371,13 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 			kinds |= Flag.StaleResponsesItem;
 		}
 
-		// Copilot per-client routing flap is transient.
-		if (statusClean === 400 && COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(cleanMessage)) kinds |= Flag.Transient;
+		// Provider-specific transient 400 flaps: Copilot model_not_supported & Aliyun MM download.
+		if (
+			statusClean === 400 &&
+			(COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(cleanMessage) || ALIYUN_MM_GATEWAY_PATTERN.test(cleanMessage))
+		) {
+			kinds |= Flag.Transient;
+		}
 		if (matchesGrammarTooLarge(cleanMessage, statusClean)) kinds |= Flag.Grammar;
 		if (matchesFastModeUnsupported(cleanMessage, statusClean)) kinds |= Flag.FastModeUnsupported;
 	}
@@ -538,8 +576,7 @@ export function isTransientStreamParseError(error: unknown): boolean {
  * terminal event, with no JSON-parse signal and no retryable status attached.
  */
 const STREAM_DROP_PATTERN =
-	/stream disconnected before completion|(?:stream|websocket) closed before response\.completed|stream (?:was )?interrupted|stream ended before (?:terminal (?:chunk|completion event)|message_(?:start|delta|stop))|socket disconnected before secure tls connection/i;
-
+	/stream disconnected before completion|(?:stream|websocket) closed before response\.completed|stream (?:was )?interrupted|stream ended (?:before (?:terminal (?:chunk|completion event)|message_(?:start|delta|stop))|without a finish reason)|socket disconnected before secure tls connection/i;
 /** Transport stream-drop diagnostic (see {@link STREAM_DROP_PATTERN}). */
 export function isTransientStreamDropError(error: unknown): boolean {
 	if (typeof error === "string") return STREAM_DROP_PATTERN.test(error);

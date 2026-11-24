@@ -34,7 +34,15 @@ import { GrepTool } from "../tools/grep";
 import { ReadTool } from "../tools/read";
 import { formatBytes } from "../tools/render-utils";
 import { WriteTool } from "../tools/write";
-import type { ToolDefinition } from "./extensions/types";
+import type {
+	BashToolResultEvent,
+	EditToolResultEvent,
+	GrepToolResultEvent,
+	ReadToolResultEvent,
+	ToolDefinition,
+	ToolResultEvent,
+	WriteToolResultEvent,
+} from "./extensions/types";
 import { Type } from "./typebox";
 
 const TOOL_DEFINITION_MARKER = "__isToolDefinition";
@@ -644,3 +652,44 @@ export const SettingsManager = {
 export * from "../index";
 export { formatBytes as formatSize } from "../tools/render-utils";
 export { Type } from "./typebox";
+
+/** Narrow a `tool_result` event to the `bash` tool. */
+export function isBashToolResult(e: ToolResultEvent): e is BashToolResultEvent {
+	return e.toolName === "bash";
+}
+
+/** Narrow a `tool_result` event to the `read` tool. */
+export function isReadToolResult(e: ToolResultEvent): e is ReadToolResultEvent {
+	return e.toolName === "read";
+}
+
+/** Narrow a `tool_result` event to the `edit` tool. */
+export function isEditToolResult(e: ToolResultEvent): e is EditToolResultEvent {
+	return e.toolName === "edit";
+}
+
+/** Narrow a `tool_result` event to the `write` tool. */
+export function isWriteToolResult(e: ToolResultEvent): e is WriteToolResultEvent {
+	return e.toolName === "write";
+}
+
+/** Narrow a `tool_result` event to the `grep` tool. */
+export function isGrepToolResult(e: ToolResultEvent): e is GrepToolResultEvent {
+	return e.toolName === "grep";
+}
+
+/** Legacy `find` result event represented by the custom-event branch. */
+export type FindToolResultEvent = ToolResultEvent & { toolName: "find" };
+
+/** Narrow a `tool_result` event to the legacy `find` tool. */
+export function isFindToolResult(e: ToolResultEvent): e is FindToolResultEvent {
+	return e.toolName === "find";
+}
+
+/** Legacy `ls` result event represented by the custom-event branch. */
+export type LsToolResultEvent = ToolResultEvent & { toolName: "ls" };
+
+/** Narrow a `tool_result` event to the legacy `ls` tool. */
+export function isLsToolResult(e: ToolResultEvent): e is LsToolResultEvent {
+	return e.toolName === "ls";
+}

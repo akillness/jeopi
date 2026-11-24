@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added advisor runtime guards (`advisor/loop-guard.ts`, `advisor/message-fingerprint.ts`, `advisor/tool-result-eviction.ts`) for cyclical/repeated advisor tool-call loop detection, stable message fingerprinting, and stale bulky tool-result eviction.
+- Added `session/tool-call-loop-redirect.ts` and typed tool-result narrowing guards in `legacy-pi-coding-agent-shim.ts`.
+
+### Fixed
+
+- Hardened `AdvisorRuntime`, `AdvisorEmissionGuard`, `AdviseTool`, and `AdvisorTranscriptRecorder` (unified admission with severity escalation and Unicode preservation, `syncBacklog` threshold validation, consecutive quarantine ceilings, separated `rm -r -f` quarantine detection, and safe numeric config defaults) while preserving the 2-strike permanent-error circuit breaker, `advisor.maxConsecutiveBlockers`, and `advisor.includeThinking`.
+- Hardened `ExtensionRunner.emitToolResult` to ignore malformed non-array `content` and non-boolean `isError` values returned by `tool_result` handlers.
+- Wired unified retry-wait calculation and tool-call loop redirects into `AgentSession` and `settings-stream-fn.ts`, and refreshed the bundled legacy-pi module registry (`legacy-pi-bundled-registry.ts`, `legacy-pi-bundled-keys.ts`).
+
 ## [16.7.11] - 2026-11-23
 
 ### Added

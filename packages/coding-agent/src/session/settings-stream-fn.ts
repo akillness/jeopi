@@ -10,7 +10,7 @@
  * OpenRouter never saw `providers.openrouterVariant`, breaking sticky routing
  * and OpenRouter response-cache hits across advisor calls.
  */
-import type { StreamFn } from "jeopi-agent-core";
+import { fitOutputTokensToContextWindow, type StreamFn } from "jeopi-agent-core";
 import { type SimpleStreamOptions, streamSimple } from "jeopi-ai";
 import { isAnthropicFableOrMythosModel } from "jeopi-catalog/identity";
 import { type Settings, validateProviderMaxInFlightRequests } from "../config/settings";
@@ -51,8 +51,10 @@ export function createSettingsAwareStreamFn(settings: Settings, base: StreamFn =
 			isAnthropicFableOrMythosModel(model.id);
 		const fallbacks =
 			streamOptions?.fallbacks ?? (serverSideFallbackEnabled ? [{ model: "claude-opus-4-8" }] : undefined);
+		const fittedMaxTokens = fitOutputTokensToContextWindow(model, context, streamOptions?.maxTokens);
 		const merged: SimpleStreamOptions = {
 			...streamOptions,
+			...(fittedMaxTokens !== undefined ? { maxTokens: fittedMaxTokens } : {}),
 			openrouterVariant: streamOptions?.openrouterVariant ?? openrouterVariant,
 			antigravityEndpointMode: streamOptions?.antigravityEndpointMode ?? antigravityEndpointMode,
 			textVerbosity: streamOptions?.textVerbosity ?? textVerbosity,

@@ -7,7 +7,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { AssistantMessage, AssistantMessageEvent, Context, Usage } from "jeopi-ai/types";
-import { MAX_EMPTY_COMPLETION_RETRIES, withEmptyCompletionRetry } from "jeopi-ai/utils/empty-completion-retry";
+import {
+	MAX_EMPTY_COMPLETION_RETRIES,
+	transportExhaustedMessages,
+	withEmptyCompletionRetry,
+	withReplaySafeStreamRetry,
+} from "jeopi-ai/utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "jeopi-ai/utils/event-stream";
 
 const CTX = {} as Context;
@@ -254,5 +259,129 @@ describe("withEmptyCompletionRetry", () => {
 		inner.push({ type: "done", reason: "stop", message } as unknown as AssistantMessageEvent);
 		expect((await iterator.next()).value?.type).toBe("done");
 		expect(waited).toBe(false);
+	});
+});
+
+describe("withReplaySafeStreamRetry guards", () => {
+	it("does not prematurely commit on toolcall_start before argument delta arrives", async () => {
+		let attempts = 0;
+		const stream = withReplaySafeStreamRetry(
+			{},
+			CTX,
+			{ providerRetryWait: async () => {} },
+			() => {
+				attempts++;
+				if (attempts === 1) {
+					const empty = assistant();
+					const err: AssistantMessage = {
+						...empty,
+						stopReason: "error",
+						errorMessage: "Stream ended without a finish reason",
+					};
+					return streamFromEvents([
+						{ type: "start", partial: empty },
+						{ type: "toolcall_start", contentIndex: 0, partial: empty },
+						{ type: "error", reason: "error", error: err },
+					] as unknown as AssistantMessageEvent[]);
+				}
+				return contentAttempt();
+			},
+			{ retryProviderErrors: true, maxProviderErrorRetries: 1 },
+		);
+
+		const events = await drain(stream);
+		const result = await stream.result();
+		expect(attempts).toBe(2);
+		expect(events.some(e => e.type === "toolcall_start")).toBe(false);
+		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
+	});
+
+	it("skips provider-error replay when message is marked in transportExhaustedMessages", async () => {
+		let attempts = 0;
+		const stream = withReplaySafeStreamRetry(
+			{},
+			CTX,
+			{ providerRetryWait: async () => {} },
+			() => {
+				attempts++;
+				const err: AssistantMessage = {
+					...assistant(),
+					stopReason: "error",
+					errorStatus: 503,
+					errorMessage: "503 Service Unavailable",
+				};
+				transportExhaustedMessages.add(err);
+				return streamFromEvents([
+					{ type: "error", reason: "error", error: err },
+				] as unknown as AssistantMessageEvent[]);
+			},
+			{ retryProviderErrors: true, maxProviderErrorRetries: 2 },
+		);
+
+		const result = await stream.result();
+		expect(attempts).toBe(1);
+		expect(result.stopReason).toBe("error");
+	});
+
+	it("does not retry pause_turn stops or when acceptEmptyResponse is true", async () => {
+		let pauseAttempts = 0;
+		const pauseStream = withEmptyCompletionRetry({}, CTX, { providerRetryWait: async () => {} }, () => {
+			pauseAttempts++;
+			const message: AssistantMessage = {
+				...assistant(),
+				stopDetails: { type: "pause_turn" },
+			};
+			return streamFromEvents([{ type: "done", reason: "stop", message }] as unknown as AssistantMessageEvent[]);
+		});
+		await drain(pauseStream);
+		expect(pauseAttempts).toBe(1);
+
+		let acceptAttempts = 0;
+		const acceptStream = withEmptyCompletionRetry(
+			{},
+			CTX,
+			{ providerRetryWait: async () => {}, acceptEmptyResponse: true },
+			() => {
+				acceptAttempts++;
+				const message = assistant();
+				return streamFromEvents([{ type: "done", reason: "stop", message }] as unknown as AssistantMessageEvent[]);
+			},
+		);
+		await drain(acceptStream);
+		expect(acceptAttempts).toBe(1);
+	});
+
+	it("surfaces synchronous attempt() throws cleanly via outer stream", async () => {
+		const stream = withEmptyCompletionRetry({}, CTX, { providerRetryWait: async () => {} }, () => {
+			throw new Error("sync transport init failure");
+		});
+		await expect(stream.result()).rejects.toThrow("sync transport init failure");
+	});
+
+	it("still retries transient provider errors when acceptEmptyResponse is true", async () => {
+		let attempts = 0;
+		const stream = withReplaySafeStreamRetry(
+			{},
+			CTX,
+			{ acceptEmptyResponse: true, providerRetryWait: async () => {} },
+			() => {
+				attempts++;
+				if (attempts === 1) {
+					const err: AssistantMessage = {
+						...assistant(),
+						stopReason: "error",
+						errorMessage: "Stream ended without a finish reason",
+					};
+					return streamFromEvents([
+						{ type: "error", reason: "error", error: err },
+					] as unknown as AssistantMessageEvent[]);
+				}
+				return contentAttempt();
+			},
+			{ retryEmptyCompletion: true, retryProviderErrors: true, maxProviderErrorRetries: 1 },
+		);
+		const result = await stream.result();
+		expect(attempts).toBe(2);
+		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
 	});
 });

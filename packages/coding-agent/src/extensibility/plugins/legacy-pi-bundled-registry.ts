@@ -133,6 +133,7 @@ import * as bundledPiAiUtilsAbort from "jeopi-ai/utils/abort";
 import * as bundledPiAiUtilsAnthropicAuth from "jeopi-ai/utils/anthropic-auth";
 import * as bundledPiAiUtilsBlockSymbols from "jeopi-ai/utils/block-symbols";
 import * as bundledPiAiUtilsDeterministicId from "jeopi-ai/utils/deterministic-id";
+import * as bundledPiAiUtilsDsmlLeak from "jeopi-ai/utils/dsml-leak";
 import * as bundledPiAiUtilsEmptyCompletionRetry from "jeopi-ai/utils/empty-completion-retry";
 import * as bundledPiAiUtilsEventStream from "jeopi-ai/utils/event-stream";
 import * as bundledPiAiUtilsFences from "jeopi-ai/utils/fences";
@@ -150,6 +151,7 @@ import * as bundledPiAiUtilsProxy from "jeopi-ai/utils/proxy";
 import * as bundledPiAiUtilsRequestDebug from "jeopi-ai/utils/request-debug";
 import * as bundledPiAiUtilsRetry from "jeopi-ai/utils/retry";
 import * as bundledPiAiUtilsRetryAfter from "jeopi-ai/utils/retry-after";
+import * as bundledPiAiUtilsRetryWait from "jeopi-ai/utils/retry-wait";
 import * as bundledPiAiUtilsSchema from "jeopi-ai/utils/schema";
 import * as bundledPiAiUtilsSchemaAdapt from "jeopi-ai/utils/schema/adapt";
 import * as bundledPiAiUtilsSchemaCompatibility from "jeopi-ai/utils/schema/compatibility";
@@ -425,6 +427,7 @@ import * as bundledPiCodingAgentExportHtml from "jeopi-cli/export/html";
 import * as bundledPiCodingAgentExportHtmlWebPalette from "jeopi-cli/export/html/web-palette";
 import * as bundledPiCodingAgentExportShare from "jeopi-cli/export/share";
 import * as bundledPiCodingAgentExportTtsr from "jeopi-cli/export/ttsr";
+import * as bundledPiCodingAgentExtensibilityContextGuard from "jeopi-cli/extensibility/context-guard";
 import * as bundledPiCodingAgentExtensibilityCustomCommands from "jeopi-cli/extensibility/custom-commands";
 import * as bundledPiCodingAgentExtensibilityCustomCommandsBundledCiGreen from "jeopi-cli/extensibility/custom-commands/bundled/ci-green";
 import * as bundledPiCodingAgentExtensibilityCustomCommandsBundledReview from "jeopi-cli/extensibility/custom-commands/bundled/review";
@@ -753,6 +756,7 @@ import * as bundledPiCodingAgentSessionSnapcompactInline from "jeopi-cli/session
 import * as bundledPiCodingAgentSessionSnapcompactSavingsJournal from "jeopi-cli/session/snapcompact-savings-journal";
 import * as bundledPiCodingAgentSessionSqlSessionStorage from "jeopi-cli/session/sql-session-storage";
 import * as bundledPiCodingAgentSessionStreamingOutput from "jeopi-cli/session/streaming-output";
+import * as bundledPiCodingAgentSessionToolCallLoopRedirect from "jeopi-cli/session/tool-call-loop-redirect";
 import * as bundledPiCodingAgentSessionToolChoiceQueue from "jeopi-cli/session/tool-choice-queue";
 import * as bundledPiCodingAgentSessionTurnPersistence from "jeopi-cli/session/turn-persistence";
 import * as bundledPiCodingAgentSessionUnexpectedStopClassifier from "jeopi-cli/session/unexpected-stop-classifier";
@@ -1266,6 +1270,7 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 	"@oh-my-pi/pi-ai/utils/deterministic-id": bundledPiAiUtilsDeterministicId as unknown as Readonly<
 		Record<string, unknown>
 	>,
+	"@oh-my-pi/pi-ai/utils/dsml-leak": bundledPiAiUtilsDsmlLeak as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-ai/utils/empty-completion-retry": bundledPiAiUtilsEmptyCompletionRetry as unknown as Readonly<
 		Record<string, unknown>
 	>,
@@ -1293,6 +1298,7 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 	"@oh-my-pi/pi-ai/utils/proxy": bundledPiAiUtilsProxy as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-ai/utils/request-debug": bundledPiAiUtilsRequestDebug as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-ai/utils/retry-after": bundledPiAiUtilsRetryAfter as unknown as Readonly<Record<string, unknown>>,
+	"@oh-my-pi/pi-ai/utils/retry-wait": bundledPiAiUtilsRetryWait as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-ai/utils/retry": bundledPiAiUtilsRetry as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-ai/utils/sdk-stream-timeout": bundledPiAiUtilsSdkStreamTimeout as unknown as Readonly<
 		Record<string, unknown>
@@ -2068,6 +2074,8 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 	"@oh-my-pi/pi-coding-agent/export/html/web-palette": bundledPiCodingAgentExportHtmlWebPalette as unknown as Readonly<
 		Record<string, unknown>
 	>,
+	"@oh-my-pi/pi-coding-agent/extensibility/context-guard":
+		bundledPiCodingAgentExtensibilityContextGuard as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-coding-agent/extensibility/legacy-pi-ai-shim":
 		bundledPiCodingAgentExtensibilityLegacyPiAiShim as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-coding-agent/extensibility/legacy-pi-coding-agent-shim":
@@ -2799,6 +2807,8 @@ export const BUNDLED_PI_REGISTRY: Readonly<Record<string, Readonly<Record<string
 		bundledPiCodingAgentSessionSqlSessionStorage as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-coding-agent/session/streaming-output":
 		bundledPiCodingAgentSessionStreamingOutput as unknown as Readonly<Record<string, unknown>>,
+	"@oh-my-pi/pi-coding-agent/session/tool-call-loop-redirect":
+		bundledPiCodingAgentSessionToolCallLoopRedirect as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-coding-agent/session/tool-choice-queue":
 		bundledPiCodingAgentSessionToolChoiceQueue as unknown as Readonly<Record<string, unknown>>,
 	"@oh-my-pi/pi-coding-agent/session/turn-persistence":

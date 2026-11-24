@@ -440,7 +440,7 @@ export const SETTINGS_SCHEMA = {
 	},
 	"advisor.syncBacklog": {
 		type: "enum",
-		values: ["off", "1", "3", "5"] as const,
+		values: ["off", "strict", "1", "3", "5"] as const,
 		default: "off",
 		ui: {
 			tab: "model",
@@ -487,6 +487,34 @@ export const SETTINGS_SCHEMA = {
 				{ value: "3", label: "3 blockers", description: "Pause after 3 consecutive blockers without user input." },
 				{ value: "5", label: "5 blockers", description: "Pause after 5 consecutive blockers without user input." },
 			],
+			condition: "advisorEnabled",
+		},
+	},
+	"advisor.maxNotesPerUpdate": {
+		type: "number",
+		default: 2,
+		ui: {
+			tab: "model",
+			group: "Advisor",
+			label: "Advisor Max Notes Per Update",
+			description: "Maximum non-blocker notes an advisor may emit per review cycle (1–10; blockers are exempt).",
+			options: [
+				{ value: "1", label: "1 note" },
+				{ value: "2", label: "2 notes", description: "Default." },
+				{ value: "3", label: "3 notes" },
+				{ value: "5", label: "5 notes" },
+			],
+			condition: "advisorEnabled",
+		},
+	},
+	"advisor.evictStaleResults": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "model",
+			group: "Advisor",
+			label: "Advisor Evict Stale Tool Results",
+			description: "Evict bulky older advisor tool results before triggering expensive full advisor compaction.",
 			condition: "advisorEnabled",
 		},
 	},

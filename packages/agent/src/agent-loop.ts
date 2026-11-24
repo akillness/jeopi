@@ -28,6 +28,7 @@ import {
 	wrapInbandToolStream,
 } from "jeopi-ai/dialect";
 import * as AIError from "jeopi-ai/error";
+import { isDsmlLeakRecoveryTarget, removeDsmlToolMarkupLeak } from "jeopi-ai/utils/dsml-leak";
 import {
 	createHarmonyAuditEvent,
 	detectHarmonyLeakInAssistantMessage,
@@ -41,6 +42,7 @@ import {
 import { preferredDialect } from "jeopi-catalog/identity";
 import { logger, sanitizeText, structuredCloneJSON } from "jeopi-utils";
 import { INTENT_FIELD } from "jeopi-wire";
+import dsmlToolCallLeakPrompt from "./prompts/dsml-tool-call-leak.md" with { type: "text" };
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
 import {
 	type AgentTelemetry,
@@ -838,6 +840,7 @@ async function runLoopBody(
 		let harmonyTruncateResumeCount = 0;
 		let pausedTurnContinuations = 0;
 		let lengthTruncateContinuations = 0;
+		let dsmlLeakNudges = 0;
 		const transientToolTurnRecoveries = { count: 0 };
 
 		// Soft tool requirement lifecycle (reminder → escalate; see SoftToolRequirement).
@@ -1257,6 +1260,9 @@ async function runLoopBody(
 					workflowGuard?.noteUserSteer();
 					armStallTimer();
 				}
+				if (!dsmlLeakMessages.has(message)) {
+					dsmlLeakNudges = 0;
+				}
 				if (hasMoreToolCalls) {
 					// Mid-work: fold any non-interrupting asides into the next turn alongside steering.
 					const asides = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
@@ -1270,10 +1276,28 @@ async function runLoopBody(
 							return;
 						}
 					}
-					// Stop boundary: only steering (live user input) forces another turn here. Leave
-					// asides for the outer drain below so a passive aside can't trigger an extra model
-					// turn ahead of a queued follow-up — the outer drain batches asides + follow-ups together.
-					pendingMessages = [...pendingMessages, ...steering];
+					if (
+						dsmlLeakMessages.has(message) &&
+						steering.length === 0 &&
+						!signal?.aborted &&
+						!stallTimedOut &&
+						dsmlLeakNudges < MAX_DSML_LEAK_NUDGES
+					) {
+						dsmlLeakNudges++;
+						pendingMessages = [
+							...pendingMessages,
+							{
+								role: "user",
+								content: [{ type: "text", text: dsmlToolCallLeakPrompt.trim() }],
+								timestamp: Date.now(),
+							},
+						];
+					} else {
+						// Stop boundary: only steering (live user input) forces another turn here. Leave
+						// asides for the outer drain below so a passive aside can't trigger an extra model
+						// turn ahead of a queued follow-up — the outer drain batches asides + follow-ups together.
+						pendingMessages = [...pendingMessages, ...steering];
+					}
 				}
 			}
 
@@ -1638,6 +1662,7 @@ async function streamAssistantResponse(
 						}
 						finalMessage = applyLeakedToolCallSalvage(finalMessage, nativeWireTools, config);
 						finalMessage = snapshotAssistantMessage(finalMessage);
+						stripLeakedDsmlMarkup(finalMessage, config);
 						// Expand inline macros (and any other registered rewrite) on the
 						// finalized message before it reaches the context, the UI, or tool
 						// dispatch — so a single mutation is the source of truth for all three.
@@ -1741,6 +1766,7 @@ async function streamAssistantResponse(
 			}
 			trailing = applyLeakedToolCallSalvage(trailing, nativeWireTools, config);
 			trailing = snapshotAssistantMessage(trailing);
+			stripLeakedDsmlMarkup(trailing, config);
 			if (addedPartial) {
 				context.messages[context.messages.length - 1] = trailing;
 				stream.push({ type: "message_end", message: snapshotAssistantMessage(trailing) });
@@ -1839,6 +1865,19 @@ function applyLeakedToolCallSalvage(
 		tools: salvaged.calls.map(call => call.name),
 	});
 	return salvaged.message;
+}
+
+const MAX_DSML_LEAK_NUDGES = 2;
+const dsmlLeakMessages = new WeakSet<AssistantMessage>();
+
+function stripLeakedDsmlMarkup(message: AssistantMessage, config: AgentLoopConfig): void {
+	if (!isDsmlLeakRecoveryTarget(config.model)) return;
+	if (!removeDsmlToolMarkupLeak(message)) return;
+	logger.warn("Stripped leaked DSML tool-call markup from assistant message", {
+		model: config.model.id,
+		provider: config.model.provider,
+	});
+	dsmlLeakMessages.add(message);
 }
 
 function emitDiscardedHarmonyPartial(
@@ -2394,6 +2433,26 @@ async function executeToolCalls(
  * Create a tool result for a tool call that was aborted or errored before execution.
  * Maintains the tool_use/tool_result pairing required by the API.
  */
+function syntheticDetailsFor(
+	reason: "aborted" | "error" | "skipped" | "length",
+	errorMessage?: string,
+): Record<string, unknown> {
+	const source =
+		reason === "error"
+			? "assistant_stop_error"
+			: reason === "aborted"
+				? "assistant_stop_aborted"
+				: reason === "length"
+					? "assistant_stop_length"
+					: "tool_call_skipped";
+	return {
+		__synthetic: true,
+		source,
+		executed: false,
+		...(reason === "error" && errorMessage ? { upstreamError: errorMessage } : {}),
+	};
+}
+
 function createAbortedToolResult(
 	toolCall: Extract<AssistantMessage["content"][number], { type: "toolCall" }>,
 	stream: EventStream<AgentEvent, AgentMessage[]>,
@@ -2408,9 +2467,10 @@ function createAbortedToolResult(
 				: reason === "skipped"
 					? "Tool call was not executed because the assistant ended its turn"
 					: "Tool execution failed due to an error";
+	const details = syntheticDetailsFor(reason, errorMessage);
 	const result: AgentToolResult<any> = {
 		content: [{ type: "text", text: errorMessage ? `${message}: ${errorMessage}` : `${message}.` }],
-		details: {},
+		details,
 	};
 
 	stream.push({
@@ -2433,7 +2493,7 @@ function createAbortedToolResult(
 		toolCallId: toolCall.id,
 		toolName: toolCall.name,
 		content: result.content,
-		details: {},
+		details,
 		isError: true,
 		timestamp: Date.now(),
 	};

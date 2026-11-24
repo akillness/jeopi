@@ -1,0 +1,1 @@
+Your previous response printed raw tool-call markup (`<｜DSML｜…>`) as text instead of invoking a tool, so nothing ran. The leaked markup has been stripped from the transcript. Issue the tool call through the structured tool interface now, or answer in plain text without tool-call markup.

@@ -1,172 +1,188 @@
 /**
- * Per-session policy gate for advisor `advise()` calls.
+ * Per-advisor emission gate.
  *
- * The advisor system prompt tells the watcher model:
- *
- * > at most one `advise` per update
- * > NEVER repeat advice you already gave, and NEVER send the same advice twice
- *
- * Real advisor models violate this. Issue #3520 captured a session where
- * `__advisor.jsonl` recorded 309 `advise` calls covering 92 unique notes —
- * 114× `Stop.`, 52× `No issue; continue.`, 41× `Done.` — flooding the primary
- * transcript with `<advisory severity="blocker">Stop.</advisory>` after the
- * task was already complete. The fix is to make the rules load-bearing in code
- * instead of prose: silently drop duplicates, content-free self-talk, and
- * over-budget calls at the `enqueueAdvice` boundary so the primary stays
- * clean even when the advisor misbehaves.
- *
- * The gate is intentionally invisible to the advisor model — `AdviseTool`
- * still returns `Recorded.` for a suppressed call. Surfacing "suppressed"
- * back into advisor context risks the model rephrasing the same useless note
- * to bypass the dedupe ("Stop.", then "Halt." then "Stop now.").
+ * Prevents an advisor from flooding the primary session with:
+ * - content-free acknowledgement / status filler ("Stop.", "Done.", "LGTM", ...)
+ * - duplicate notes across turns (normalized for casing/punctuation), while
+ *   still allowing rank escalation (`nit` -> `concern` -> `blocker`)
+ * - burst spam beyond the per-update note budget (with `blocker` exempt from
+ *   the cap)
  */
 
-/**
- * Case-insensitive, punctuation-folded normalization. Collapses every run of
- * non-letter / non-digit characters into a single space and trims, so
- * `"Stop."`, `"*Stop*"`, and `"  stop  "` all key to `stop`, while
- * `"No issue; continue."` keys to `no issue continue`.
- *
- * Exported for tests.
- */
+export type AdvisorEmissionSeverity = "nit" | "concern" | "blocker";
+
+export type AdvisorSuppressionReason = "empty" | "noise" | "duplicate" | "budget";
+
+export type AdvisorEmissionDecision =
+	| { allowed: true; escalated: boolean }
+	| { allowed: false; reason: AdvisorSuppressionReason };
+
+export interface AdvisorEmissionGuardOptions {
+	/** Maximum dedupe keys retained before oldest-first eviction. Default: 256. */
+	capacity?: number;
+	/** Maximum non-blocker notes admitted per advisor update cycle. Default: 1. */
+	budgetPerUpdate?: number;
+	/** Suppress content-free filler notes ("Stop.", "Done.", "LGTM", ...). Default: true. */
+	suppressFiller?: boolean;
+}
+
+const DEFAULT_CAPACITY = 256;
+const DEFAULT_BUDGET_PER_UPDATE = 1;
+export const MAX_ADVISOR_NOTES_PER_UPDATE = 10;
+
+const SEVERITY_RANK: Record<AdvisorEmissionSeverity, number> = {
+	nit: 1,
+	concern: 2,
+	blocker: 3,
+};
+
+/** Normalize a note to its canonical dedupe / noise-match key. */
 export function normalizeAdvisorNote(note: string): string {
 	return note
 		.toLowerCase()
-		.normalize("NFKC")
 		.replace(/[^\p{L}\p{N}]+/gu, " ")
 		.trim();
 }
 
-/**
- * Normalized phrases the advisor occasionally emits that carry no concrete
- * actionable content. Each must be the output of {@link normalizeAdvisorNote}
- * so a single membership check covers every punctuation/casing variant
- * (`"Stop."`, `"stop"`, `"STOP!"`).
- *
- * The list is conservative — only short, content-free filler the reporter
- * observed driving primary-transcript pollution. A genuine `blocker` like
- * `"Stop: 'await' missing on writeStream.end() will lose buffered writes."`
- * does not match.
- */
-const SUPPRESSED_NORMALIZED_PHRASES: Record<string, true> = {
-	// Self-stop noise — telling the agent to "stop" without a reason is useless.
-	stop: true,
-	"stop here": true,
-	"stop now": true,
-	halt: true,
-	abort: true,
-	// Completion self-talk — the agent already finished the task.
-	done: true,
-	"task done": true,
-	"task complete": true,
-	complete: true,
-	finished: true,
-	ok: true,
-	okay: true,
-	"ok done": true,
-	// "Nothing to flag" — silence is the correct expression of "no concerns".
-	"no issue": true,
-	"no issues": true,
-	"no issue continue": true,
-	"no concerns": true,
-	"no concern": true,
-	"nothing to add": true,
-	"nothing to flag": true,
-	"nothing to report": true,
-	"no notes": true,
-	"no further input": true,
-	"no further input needed": true,
-	"no further input required": true,
-	"no further watcher input": true,
-	"no further watcher input needed": true,
-	"no further advice": true,
-	"no further advice needed": true,
-	// Endorsements — equivalent to silence.
-	lgtm: true,
-	"looks good": true,
-	"all good": true,
-	"agent is on track": true,
-	"agent on track": true,
-	"on track": true,
-	continue: true,
-	"carry on": true,
-};
+const SUPPRESSED_NOTES = new Set<string>([
+	"stop",
+	"done",
+	"ok",
+	"okay",
+	"ack",
+	"acknowledged",
+	"noted",
+	"lgtm",
+	"looks good",
+	"looks good to me",
+	"all good",
+	"on track",
+	"no issues",
+	"no issue",
+	"no issues found",
+	"no concerns",
+	"no concern",
+	"nothing to add",
+	"nothing to report",
+	"nothing further",
+	"continue",
+	"carry on",
+	"proceed",
+	"keep going",
+	"no issue continue",
+	"no issues continue",
+	"no action needed",
+	"no changes needed",
+	"no advice",
+	"no advice needed",
+	"no further input",
+	"no further input needed",
+	"no further advice",
+	"no further advice needed",
+	"no further watcher input needed",
+	"no further advisor input needed",
+	"standing by",
+	"watching",
+	"monitoring",
+]);
 
-/**
- * Bounds the dedupe history. Sessions with very long advisor activity could
- * otherwise grow the set without bound. The reporter's pathological session
- * had 92 unique notes; 4096 leaves headroom while staying tiny (≤ ~256 KB of
- * normalized strings even at long max).
- */
-const DEFAULT_HISTORY_CAPACITY = 4096;
+export function isAdvisorNoiseNote(normalizedKey: string): boolean {
+	return SUPPRESSED_NOTES.has(normalizedKey);
+}
 
-/**
- * Decides whether an advisor `advise()` call should reach the primary agent.
- *
- * Enforces — in this order — the noise filter, session-scoped exact-text
- * dedupe (FIFO-evicted at {@link DEFAULT_HISTORY_CAPACITY}), and a per-update
- * rate limit of one accepted note per advisor model prompt. Suppressed calls
- * never consume the per-update budget — a noise call doesn't burn the slot
- * for a real concern that follows in the same update.
- *
- * Reset on advisor reset (compaction, session switch, `/new`) via
- * {@link reset}. Per-update gate is cleared at the start of every advisor
- * `agent.prompt()` cycle via {@link beginUpdate}.
- */
 export class AdvisorEmissionGuard {
-	#seen = new Set<string>();
-	/** Insertion-order log to drive FIFO eviction without an extra Map. */
-	#seenOrder: string[] = [];
-	#consumedThisUpdate = false;
 	readonly #capacity: number;
+	readonly #suppressFiller: boolean;
+	#budgetPerUpdate: number;
+	/** Canonical key -> highest admitted severity rank (insertion-ordered LRU). */
+	readonly #seen = new Map<string, number>();
+	/** Non-blocker new notes admitted in the current update cycle. */
+	#emittedInUpdate = 0;
 
-	constructor(opts: { capacity?: number } = {}) {
-		this.#capacity = opts.capacity ?? DEFAULT_HISTORY_CAPACITY;
+	constructor(options?: AdvisorEmissionGuardOptions) {
+		const rawCapacity = options?.capacity;
+		this.#capacity =
+			typeof rawCapacity === "number" && Number.isFinite(rawCapacity)
+				? Math.max(1, Math.floor(rawCapacity))
+				: DEFAULT_CAPACITY;
+		this.#suppressFiller = options?.suppressFiller ?? true;
+		this.#budgetPerUpdate = this.#normalizeBudget(options?.budgetPerUpdate ?? DEFAULT_BUDGET_PER_UPDATE);
 	}
 
-	/**
-	 * Drop all dedupe and per-update state. Called from
-	 * `AgentSession#resetAdvisorSessionState()` whenever the advisor runtime is
-	 * reset — same boundary as `yieldQueue.clear("advisor")`, so a re-primed
-	 * advisor can re-raise old issues (the primary transcript was rewritten).
-	 */
+	#normalizeBudget(value: number): number {
+		if (value === Number.POSITIVE_INFINITY) return Number.POSITIVE_INFINITY;
+		if (!Number.isFinite(value)) return DEFAULT_BUDGET_PER_UPDATE;
+		return Math.max(1, Math.min(MAX_ADVISOR_NOTES_PER_UPDATE, Math.floor(value)));
+	}
+
+	get budgetPerUpdate(): number {
+		return this.#budgetPerUpdate;
+	}
+
+	setBudgetPerUpdate(budget: number): void {
+		this.#budgetPerUpdate = this.#normalizeBudget(budget);
+	}
+
+	get admittedCount(): number {
+		return this.#emittedInUpdate;
+	}
+
+	/** Reset the per-update budget counter at the start of each advisor update cycle. */
+	beginUpdate(): void {
+		this.#emittedInUpdate = 0;
+	}
+
+	/** Clear all dedupe history and per-update state (e.g. after compaction or session switch). */
 	reset(): void {
 		this.#seen.clear();
-		this.#seenOrder.length = 0;
-		this.#consumedThisUpdate = false;
+		this.#emittedInUpdate = 0;
 	}
 
 	/**
-	 * Clear the per-update rate-limit gate. Called by `AdvisorRuntime` right
-	 * before each `agent.prompt(batch)` invocation so the next advisor model
-	 * cycle starts with a fresh budget of one advise.
-	 */
-	beginUpdate(): void {
-		this.#consumedThisUpdate = false;
-	}
-
-	/**
-	 * Whether the proposed note should reach the primary. On `true` the gate
-	 * has already recorded the note (consumed the per-update budget and added
-	 * it to the dedupe history) — caller delivers the note. On `false` the
-	 * caller drops it.
+	 * Evaluate and record a note admission decision.
 	 *
-	 * Empty / whitespace-only notes are suppressed; the model's
-	 * tool-args contract still requires a non-empty string but defense-in-depth.
+	 * - Empty and content-free filler notes are rejected without consuming budget.
+	 * - Previously admitted notes are rejected unless the new `severity` strictly
+	 *   escalates the recorded rank (`nit` -> `concern` -> `blocker`).
+	 * - `blocker` notes bypass the per-update budget cap; non-blocker notes are
+	 *   capped at `budgetPerUpdate` per update cycle.
 	 */
-	accept(note: string): boolean {
+	admit(note: string, severity: AdvisorEmissionSeverity = "nit"): AdvisorEmissionDecision {
 		const key = normalizeAdvisorNote(note);
-		if (!key) return false;
-		if (SUPPRESSED_NORMALIZED_PHRASES[key]) return false;
-		if (this.#seen.has(key)) return false;
-		if (this.#consumedThisUpdate) return false;
-		this.#consumedThisUpdate = true;
-		this.#seen.add(key);
-		this.#seenOrder.push(key);
-		if (this.#seenOrder.length > this.#capacity) {
-			const stale = this.#seenOrder.shift();
-			if (stale !== undefined) this.#seen.delete(stale);
+		if (!key) return { allowed: false, reason: "empty" };
+		if (this.#suppressFiller && isAdvisorNoiseNote(key)) {
+			return { allowed: false, reason: "noise" };
 		}
-		return true;
+
+		const rank = SEVERITY_RANK[severity] ?? SEVERITY_RANK.nit;
+		const prevRank = this.#seen.get(key);
+		if (prevRank !== undefined && rank <= prevRank) {
+			return { allowed: false, reason: "duplicate" };
+		}
+
+		const escalated = prevRank !== undefined && rank > prevRank;
+		if (!escalated && severity !== "blocker" && this.#emittedInUpdate >= this.#budgetPerUpdate) {
+			return { allowed: false, reason: "budget" };
+		}
+
+		if (prevRank !== undefined) {
+			this.#seen.delete(key);
+		}
+		this.#seen.set(key, rank);
+		while (this.#seen.size > this.#capacity) {
+			const oldest = this.#seen.keys().next().value;
+			if (oldest === undefined) break;
+			this.#seen.delete(oldest);
+		}
+
+		if (!escalated && severity !== "blocker") {
+			this.#emittedInUpdate++;
+		}
+		return { allowed: true, escalated };
+	}
+
+	/** Backwards-compatible boolean admission check. */
+	accept(note: string, severity: AdvisorEmissionSeverity = "nit"): boolean {
+		return this.admit(note, severity).allowed;
 	}
 }

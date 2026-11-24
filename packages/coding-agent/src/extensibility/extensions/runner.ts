@@ -694,19 +694,33 @@ export class ExtensionRunner {
 					ext,
 					extensionHandlerTimeoutMs,
 				)) as ToolResultEventResult | undefined;
-				if (!handlerResult) continue;
+				if (!handlerResult || typeof handlerResult !== "object") continue;
 
 				if (handlerResult.content !== undefined) {
-					currentEvent.content = handlerResult.content;
-					modified = true;
+					if (Array.isArray(handlerResult.content)) {
+						currentEvent.content = handlerResult.content;
+						modified = true;
+					} else {
+						logger.warn("Ignoring malformed tool_result hook content (expected array)", {
+							source: ext.path,
+							toolName: currentEvent.toolName,
+						});
+					}
 				}
 				if (handlerResult.details !== undefined) {
 					currentEvent.details = handlerResult.details;
 					modified = true;
 				}
 				if (handlerResult.isError !== undefined) {
-					currentEvent.isError = handlerResult.isError;
-					modified = true;
+					if (typeof handlerResult.isError === "boolean") {
+						currentEvent.isError = handlerResult.isError;
+						modified = true;
+					} else {
+						logger.warn("Ignoring malformed tool_result hook isError (expected boolean)", {
+							source: ext.path,
+							toolName: currentEvent.toolName,
+						});
+					}
 				}
 			}
 		}

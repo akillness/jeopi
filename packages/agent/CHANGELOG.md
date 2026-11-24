@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `output-budget.ts` and `prompts/dsml-tool-call-leak.md` in `agentLoop` to enforce turn output-token budgets and recover from leaked DeepSeek DSML tool-call markup with a targeted corrective retry.
+
+### Fixed
+
+- Hardened `replay-policy.ts` and `workflow-guard.ts` message replay sanitization and loop-guard invariants while preserving existing step/cost/output-token circuit breakers.
+
 ## [16.7.11] - 2026-11-23
 
 ### Changed
