@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.13] - 2026-11-24
+
 ### Changed
 
 - Defaulted `model.workflowGuard.maxOutputTokensPerRun` to `-1` (Auto, matching the active model's configured `contextWindow`) instead of a hardcoded `64,000` cap, and dynamically re-synced the workflow-guard output budget across model switches and session restores.

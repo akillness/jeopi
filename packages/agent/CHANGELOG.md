@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [16.7.13] - 2026-11-24
+
 ### Added
 
 - Added `getMaxOutputTokens` dynamic budget resolver to `WorkflowLoopGuardConfig` so `WorkflowLoopGuard` evaluates per-run output-token soft warnings and hard stops against live model `contextWindow` changes.

@@ -21,7 +21,7 @@
     },
     "packages/agent": {
       "name": "jeopi-agent-core",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
         "jeopi-ai": "catalog:",
@@ -39,7 +39,7 @@
     },
     "packages/ai": {
       "name": "jeopi-ai",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/catalog": {
       "name": "jeopi-catalog",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "arktype": "catalog:",
@@ -69,7 +69,7 @@
     },
     "packages/coding-agent": {
       "name": "jeopi-cli",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "bin": {
         "jeopi": "dist/cli.js",
       },
@@ -148,7 +148,7 @@
     },
     "packages/hashline": {
       "name": "jeopi-hashline",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "dependencies": {
         "diff": "catalog:",
         "lru-cache": "catalog:",
@@ -159,7 +159,7 @@
     },
     "packages/mnemopi": {
       "name": "jeopi-mnemopi",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
@@ -186,7 +186,7 @@
     },
     "packages/natives": {
       "name": "jeopi-natives",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
@@ -194,7 +194,7 @@
     },
     "packages/snapcompact": {
       "name": "jeopi-snapcompact",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "dependencies": {
         "jeopi-ai": "catalog:",
         "jeopi-natives": "catalog:",
@@ -207,7 +207,7 @@
     },
     "packages/stats": {
       "name": "jeopi-stats",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "bin": {
         "jeopi-stats": "./src/index.ts",
       },
@@ -233,7 +233,7 @@
     },
     "packages/swarm-extension": {
       "name": "jeopi-swarm-extension",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "bin": {
         "jeopi-swarm": "src/cli.ts",
       },
@@ -259,7 +259,7 @@
     },
     "packages/tui": {
       "name": "jeopi-tui",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "dependencies": {
         "jeopi-natives": "catalog:",
         "jeopi-utils": "catalog:",
@@ -300,7 +300,7 @@
     },
     "packages/utils": {
       "name": "jeopi-utils",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "dependencies": {
         "handlebars": "catalog:",
         "jeopi-natives": "catalog:",
@@ -313,7 +313,7 @@
     },
     "packages/wire": {
       "name": "jeopi-wire",
-      "version": "16.7.12",
+      "version": "16.7.13",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
@@ -377,18 +377,18 @@
     "fflate": "0.8.3",
     "ghostty-web": "^0.4.0",
     "handlebars": "^4.7.9",
-    "jeopi-agent-core": "16.7.12",
-    "jeopi-ai": "16.7.12",
-    "jeopi-catalog": "16.7.12",
-    "jeopi-cli": "16.7.12",
-    "jeopi-hashline": "16.7.12",
-    "jeopi-mnemopi": "16.7.12",
-    "jeopi-natives": "16.7.12",
-    "jeopi-snapcompact": "16.7.12",
-    "jeopi-stats": "16.7.12",
-    "jeopi-tui": "16.7.12",
-    "jeopi-utils": "16.7.12",
-    "jeopi-wire": "16.7.12",
+    "jeopi-agent-core": "16.7.13",
+    "jeopi-ai": "16.7.13",
+    "jeopi-catalog": "16.7.13",
+    "jeopi-cli": "16.7.13",
+    "jeopi-hashline": "16.7.13",
+    "jeopi-mnemopi": "16.7.13",
+    "jeopi-natives": "16.7.13",
+    "jeopi-snapcompact": "16.7.13",
+    "jeopi-stats": "16.7.13",
+    "jeopi-tui": "16.7.13",
+    "jeopi-utils": "16.7.13",
+    "jeopi-wire": "16.7.13",
     "linkedom": "^0.18.12",
     "lint-staged": "^17.0.7",
     "lru-cache": "11.5.1",
@@ -511,7 +511,7 @@
 
     "@huggingface/jinja": ["@huggingface/jinja@0.5.13", "", {}, "sha512-jM17MqFily1iyT/1LD3r5w8/CZiyapVB0+7vOw48PfVtzyKsXStmHE4jVTyDAD05Tqv3un1xrS9ILUU1ugQAYQ=="],
 
-    "@huggingface/tasks": ["@huggingface/tasks@0.22.22", "", {}, "sha512-NeCyoRi2cgNh+u+dVOWzqKZObBbpDIJRPDtFH/bf8QIXcwFXzyU/80UHxiuPc8cfJ1Yp9BWnJLNBHeCHJX23Eg=="],
+    "@huggingface/tasks": ["@huggingface/tasks@0.22.23", "", {}, "sha512-3PIrDdQQtLobtaRoHeY2DtewwyB1RZWfq25lbXqoIsHQ6HhCih+Xgv+a8+usk/RWyi6mGlKlyG+hEHfXReyGDg=="],
 
     "@huggingface/tokenizers": ["@huggingface/tokenizers@0.2.0", "", {}, "sha512-LidMHe1FpcSYH4vcSjXooda34pC0M8m1gmDOv7SQi6Iv+ib1zX7J3sHBCC9/3FPCkn2k1b55FneVqMRxrr99pg=="],
 
