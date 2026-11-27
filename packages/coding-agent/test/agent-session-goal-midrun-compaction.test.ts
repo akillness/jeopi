@@ -63,7 +63,7 @@ describe("AgentSession mid-run threshold compaction", () => {
 
 	async function createHarness(
 		settingsOverride: Record<string, unknown> = {},
-		options: { extensionRunner?: ExtensionRunner; toolOutput?: string } = {},
+		options: { extensionRunner?: ExtensionRunner; toolOutput?: string; toolName?: string } = {},
 	): Promise<{
 		session: AgentSession;
 		observedContexts: string[][];
@@ -91,10 +91,11 @@ describe("AgentSession mid-run threshold compaction", () => {
 		});
 		const sessionManager = SessionManager.inMemory(tempDir.path());
 
+		const toolName = options.toolName ?? "bash";
 		const mockBashTool: AgentTool = {
-			name: "bash",
-			label: "Bash",
-			description: "Mock bash tool",
+			name: toolName,
+			label: toolName === "bash" ? "Bash" : toolName,
+			description: `Mock ${toolName} tool`,
 			parameters: type({}),
 			execute: async () => ({ content: [{ type: "text" as const, text: options.toolOutput ?? "tool output" }] }),
 		};
@@ -113,7 +114,7 @@ describe("AgentSession mid-run threshold compaction", () => {
 					? {
 							role: "assistant" as const,
 							content: [
-								{ type: "toolCall" as const, id: `tc-${index}`, name: "bash", arguments: { cmd: "pwd" } },
+								{ type: "toolCall" as const, id: `tc-${index}`, name: toolName, arguments: { cmd: "pwd" } },
 							],
 							api: "anthropic-messages" as const,
 							provider: "anthropic" as const,
@@ -225,7 +226,9 @@ describe("AgentSession mid-run threshold compaction", () => {
 		const runner = await createCompactionRunner();
 		const harness = await createHarness(
 			{},
-			{ extensionRunner: runner, toolOutput: "oversized output ".repeat(3000) },
+			// Use the protected "skill" tool name so aggressive shake cannot offload this
+			// output and mid-run compaction genuinely runs out of headroom.
+			{ extensionRunner: runner, toolOutput: "oversized output ".repeat(3000), toolName: "skill" },
 		);
 		({ session } = harness);
 		const { observedContexts } = harness;
@@ -265,6 +268,76 @@ describe("AgentSession mid-run threshold compaction", () => {
 		expect(observedContexts.slice(1).flat().join("\n")).toContain("queued follow-up");
 	});
 
+	it("rescues an oversized mid-run tool result via artifact-backed shake and continues the tool loop", async () => {
+		const runner = await createCompactionRunner();
+		const { session, observedContexts } = await createHarness(
+			{},
+			{ extensionRunner: runner, toolOutput: "oversized output ".repeat(3000) },
+		);
+		const notices: string[] = [];
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+		});
+		await session.prompt("work on the release");
+		expect(notices.some(message => message.includes("Compaction freed too little context"))).toBe(false);
+		expect(notices.some(message => message.includes("dead-end recovery"))).toBe(true);
+		expect(observedContexts).toHaveLength(2);
+		const nextContext = observedContexts[1];
+		expect(nextContext.join("\n")).toContain("COMPACTED");
+		expect(nextContext.join("\n")).toContain("artifact://");
+		const call = nextContext.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = nextContext.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+	});
+
+	it("compacts earlier turns mid-run when a trailing tool result exceeds effectiveKeepRecentTokens", async () => {
+		const runner = await createCompactionRunner();
+		// With 50k billed prompt tokens and ~12k estimated entries, effectiveKeepRecentTokens
+		// scales well below the ~4.2k trailing tool output. Previously findCutPoint fell back
+		// to cutPoints[0] and prepareCompaction returned undefined, halting the tool loop.
+		const { session, sessionManager, observedContexts } = await createHarness(
+			{
+				"compaction.thresholdTokens": 15_000,
+				"compaction.keepRecentTokens": 8_000,
+			},
+			{ extensionRunner: runner, toolOutput: "recent output ".repeat(1200) },
+		);
+		const now = Date.now();
+		sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "earlier task ".repeat(800) }],
+			timestamp: now - 4000,
+		});
+		sessionManager.appendMessage({
+			role: "assistant",
+			content: [{ type: "text", text: "earlier response ".repeat(800) }],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "claude-sonnet-4-5",
+			usage: highUsage(10_000),
+			stopReason: "stop",
+			timestamp: now - 3000,
+		});
+		session.agent.replaceMessages(session.buildDisplaySessionContext().messages);
+
+		const notices: string[] = [];
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event.message);
+		});
+		await session.prompt("work on the release");
+
+		expect(notices.some(message => message.includes("Compaction freed too little context"))).toBe(false);
+		expect(observedContexts).toHaveLength(2);
+		const nextContext = observedContexts[1];
+		expect(nextContext.join("\n")).toContain("COMPACTED");
+		expect(nextContext.join("\n")).toContain("recent output");
+		expect(nextContext.join("\n")).not.toContain("earlier response");
+		const call = nextContext.findIndex(message => message.includes('"id":"tc-0"'));
+		const result = nextContext.findIndex(message => message.includes('"toolCallId":"tc-0"'));
+		expect(call).toBeGreaterThanOrEqual(0);
+		expect(result).toBeGreaterThan(call);
+	});
 	it("continues with paired tool messages when compaction leaves headroom", async () => {
 		const runner = await createCompactionRunner();
 		const { session, observedContexts } = await createHarness({}, { extensionRunner: runner });

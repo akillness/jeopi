@@ -1123,4 +1123,183 @@ describe("AgentSession auto-compaction progress guard", () => {
 		const recovery = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes("dead-end recovery"));
 		expect(recovery.length).toBe(0);
 	});
+
+	it("!preparation threshold dead-end is rescued by real artifact-backed shake even with a stale assistant usage anchor", async () => {
+		const now = Date.now();
+		session.settings.set("compaction.thresholdTokens", 76384);
+		session.settings.set("compaction.thresholdPercent", -1);
+		session.settings.set("compaction.keepRecentTokens", 10000);
+		session.settings.set("compaction.reserveTokens", 16384);
+
+		// A prior compaction keeps `[A0, T0(600k)]`. Only `finalAssistant` lands after
+		// the compaction entry, so `prepareCompaction` naturally returns `undefined`
+		// while `T0` stays live and `finalAssistant` creates a stale 190k provider anchor.
+		session.sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "run big tool" }],
+			timestamp: now - 3000,
+		});
+		const assistantEntryId = session.sessionManager.appendMessage({
+			role: "assistant",
+			content: [{ type: "toolCall", id: "call-big", name: "bash", arguments: { command: "cat big" } }],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "claude-sonnet-4-5-20250929",
+			stopReason: "toolUse",
+			usage: {
+				input: 1000,
+				output: 100,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 1100,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			timestamp: now - 2000,
+		});
+		session.sessionManager.appendMessage({
+			role: "toolResult",
+			toolCallId: "call-big",
+			toolName: "bash",
+			content: [{ type: "text", text: "x".repeat(600_000) }],
+			isError: false,
+			timestamp: now - 1000,
+		});
+		session.sessionManager.appendCompaction("prior summary", undefined, assistantEntryId, 1000);
+		session.agent.replaceMessages(session.buildDisplaySessionContext().messages);
+
+		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+		const notices = collectNotices();
+		const endEvents: Array<{ action?: string; skipped?: boolean; willRetry?: boolean }> = [];
+
+		const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_end") {
+				endEvents.push({ action: event.action, skipped: event.skipped, willRetry: event.willRetry });
+				onCompactionDone();
+			}
+		});
+
+		const finalAssistant = highUsageAssistant();
+		session.agent.emitExternalEvent({ type: "message_end", message: finalAssistant });
+		session.agent.emitExternalEvent({ type: "agent_end", messages: [finalAssistant] });
+
+		await compactionDone;
+		await session.waitForIdle();
+
+		expect(endEvents.some(e => e.action === "shake" && e.skipped === false && e.willRetry === false)).toBe(true);
+		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
+		expect(noProgress.length).toBe(0);
+		const recovery = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes("dead-end recovery"));
+		expect(recovery.length).toBe(1);
+		expect(recovery[0].level).toBe("info");
+		expect(promptSpy).toHaveBeenCalledTimes(1);
+
+		const shakenTool = session.agent.state.messages.find(m => m.role === "toolResult");
+		expect(shakenTool).toBeDefined();
+		const toolText =
+			shakenTool && "content" in shakenTool && Array.isArray(shakenTool.content)
+				? shakenTool.content.map(b => (b.type === "text" ? b.text : "")).join("")
+				: "";
+		expect(toolText).toContain("artifact://");
+	});
+
+	it("!preparation overflow dead-end is rescued by real shake and schedules retry without restoring error turn", async () => {
+		const now = Date.now();
+		session.settings.set("compaction.keepRecentTokens", 10000);
+		session.settings.set("compaction.reserveTokens", 16384);
+
+		// Compaction sits at the tail keeping `[A0, T0(600k)]`. After the failed overflow
+		// turn is dropped, the compaction entry is last so `prepareCompaction` naturally
+		// returns `undefined`, and real artifact-backed shake rescues the overflow.
+		session.sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "run big tool" }],
+			timestamp: now - 3000,
+		});
+		const assistantEntryId = session.sessionManager.appendMessage({
+			role: "assistant",
+			content: [{ type: "toolCall", id: "call-big-2", name: "bash", arguments: { command: "cat big" } }],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "claude-sonnet-4-5-20250929",
+			stopReason: "toolUse",
+			usage: {
+				input: 1000,
+				output: 100,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 1100,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			timestamp: now - 2000,
+		});
+		session.sessionManager.appendMessage({
+			role: "toolResult",
+			toolCallId: "call-big-2",
+			toolName: "bash",
+			content: [{ type: "text", text: "y".repeat(600_000) }],
+			isError: false,
+			timestamp: now - 1000,
+		});
+		session.sessionManager.appendCompaction("prior summary", undefined, assistantEntryId, 1000);
+		session.agent.replaceMessages(session.buildDisplaySessionContext().messages);
+
+		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
+		vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+		const notices = collectNotices();
+		const endEvents: Array<{ action?: string; skipped?: boolean; willRetry?: boolean }> = [];
+
+		const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_end") {
+				endEvents.push({ action: event.action, skipped: event.skipped, willRetry: event.willRetry });
+				onCompactionDone();
+			}
+		});
+
+		const errAssistant = overflowAssistant();
+		session.agent.emitExternalEvent({ type: "message_end", message: errAssistant });
+		session.agent.emitExternalEvent({ type: "agent_end", messages: [errAssistant] });
+
+		await compactionDone;
+		await session.waitForIdle();
+
+		expect(endEvents.some(e => e.action === "shake" && e.willRetry === true && e.skipped === false)).toBe(true);
+		expect(continueSpy).toHaveBeenCalledTimes(1);
+		const lastMsg = session.agent.state.messages[session.agent.state.messages.length - 1];
+		expect(lastMsg?.role === "assistant" && "stopReason" in lastMsg && lastMsg.stopReason === "error").toBe(false);
+		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
+		expect(noProgress.length).toBe(0);
+	});
+
+	it("!preparation overflow fixed-context dead-end emits fixed-context warning instead of recent-turn warning", async () => {
+		// Make fixed system prompt exceed the 200k recovery band (~175k tokens > 136k).
+		session.agent.setSystemPrompt(["s".repeat(700_000)]);
+		const userEntryId = session.sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "short" }],
+			timestamp: Date.now() - 1000,
+		});
+		session.sessionManager.appendCompaction("prior summary", undefined, userEntryId, 100);
+		session.agent.replaceMessages(session.buildDisplaySessionContext().messages);
+
+		const notices = collectNotices();
+		const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_end") onCompactionDone();
+		});
+
+		const errAssistant = overflowAssistant();
+		session.agent.emitExternalEvent({ type: "message_end", message: errAssistant });
+		session.agent.emitExternalEvent({ type: "agent_end", messages: [errAssistant] });
+
+		await compactionDone;
+		await session.waitForIdle();
+
+		const fixedWarnings = notices.filter(
+			n => n.source === NOTICE_SOURCE && n.level === "warning" && n.message.includes("non-message context"),
+		);
+		expect(fixedWarnings.length).toBe(1);
+	});
 });

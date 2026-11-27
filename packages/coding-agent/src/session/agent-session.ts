@@ -1747,6 +1747,8 @@ export class AgentSession {
 	#handoffAbortController: AbortController | undefined = undefined;
 	#skipPostTurnMaintenanceAssistantTimestamp: number | undefined = undefined;
 	#midRunCompactionBlocked = false;
+	#anchorTokensFreed = new Map<string, number>();
+	#staleImageAnchorEntryIds = new Set<string>();
 
 	// Retry state
 	#retryAbortController: AbortController | undefined = undefined;
@@ -9186,6 +9188,8 @@ export class AgentSession {
 		this.#criticGateState = undefined;
 		this.#approvedPlanHash = undefined;
 		this.#midRunCompactionBlocked = false;
+		this.#anchorTokensFreed.clear();
+		this.#staleImageAnchorEntryIds.clear();
 		this.#skipPostTurnMaintenanceAssistantTimestamp = undefined;
 		this.#resetAdvisorSessionState();
 		this.#reconnectToAgent();
@@ -10072,6 +10076,33 @@ export class AgentSession {
 		return `[reduced completed ${candidate.toolName} output (~${candidate.tokens} tokens) — recover: ${refs.join(" | ")}]`;
 	}
 
+	#findCurrentEpochAnchorEntry(branchEntries: SessionEntry[]): { entry: SessionEntry; index: number } | undefined {
+		const latestCompaction = getLatestCompactionEntry(branchEntries);
+		const compactionIndex = latestCompaction ? branchEntries.lastIndexOf(latestCompaction) : -1;
+		for (let i = branchEntries.length - 1; i > compactionIndex; i--) {
+			const entry = branchEntries[i];
+			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+			const assistant = entry.message;
+			if (assistant.stopReason === "aborted" || assistant.stopReason === "error") continue;
+			if (!assistant.usage || calculateContextTokens(assistant.usage) <= 0) continue;
+			return { entry, index: i };
+		}
+		return undefined;
+	}
+
+	#adjustedAssistantUsageTokens(assistant: AssistantMessage): number {
+		const branchEntries = this.sessionManager.getBranch();
+		for (let i = branchEntries.length - 1; i >= 0; i--) {
+			const entry = branchEntries[i];
+			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+			if (entry.message !== assistant && entry.message.timestamp !== assistant.timestamp) continue;
+			if (this.#staleImageAnchorEntryIds.has(entry.id)) return 0;
+			const anchorFreed = this.#anchorTokensFreed.get(entry.id) ?? 0;
+			return Math.max(0, calculateContextTokens(assistant.usage) - anchorFreed);
+		}
+		return calculateContextTokens(assistant.usage);
+	}
+
 	/**
 	 * Strip image content blocks from every message on the current branch and
 	 * persist the rewrite. Walks `SessionManager.getBranch()` in place — both
@@ -10086,13 +10117,15 @@ export class AgentSession {
 	 */
 	async dropImages(): Promise<{ removed: number }> {
 		const branchEntries = this.sessionManager.getBranch();
+		const anchor = this.#findCurrentEpochAnchorEntry(branchEntries);
 		let removed = 0;
-		for (const entry of branchEntries) {
+		let touchedBeforeOrAtAnchor = false;
+		for (let i = 0; i < branchEntries.length; i++) {
+			const entry = branchEntries[i];
+			let entryRemoved = 0;
 			if (entry.type === "message") {
-				removed += stripImagesFromMessage(entry.message);
-				continue;
-			}
-			if (entry.type === "custom_message" && typeof entry.content !== "string") {
+				entryRemoved = stripImagesFromMessage(entry.message);
+			} else if (entry.type === "custom_message" && typeof entry.content !== "string") {
 				const kept: typeof entry.content = [];
 				let dropped = 0;
 				for (const part of entry.content) {
@@ -10107,18 +10140,31 @@ export class AgentSession {
 						kept.push({ type: "text", text: "[image removed]" });
 					}
 					entry.content = kept;
-					removed += dropped;
+					entryRemoved = dropped;
+				}
+			}
+			if (entryRemoved > 0) {
+				removed += entryRemoved;
+				if (anchor && i <= anchor.index) {
+					touchedBeforeOrAtAnchor = true;
 				}
 			}
 		}
 		if (removed === 0) {
 			return { removed: 0 };
 		}
+		if (anchor && touchedBeforeOrAtAnchor) {
+			this.#staleImageAnchorEntryIds.add(anchor.entry.id);
+		}
 		await this.sessionManager.rewriteEntries();
 		const sessionContext = this.buildDisplaySessionContext();
 		this.agent.replaceMessages(sessionContext.messages);
+		this.#setPendingContextSnapshot(undefined);
 		this.#resetAllAdvisorRuntimes();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
+		if (!this.isStreaming) {
+			this.#midRunCompactionBlocked = false;
+		}
 		return { removed };
 	}
 
@@ -10171,7 +10217,30 @@ export class AgentSession {
 			return { region, replacement };
 		});
 
+		const usageBeforeShake = this.getContextUsage({ contextWindow: this.model?.contextWindow ?? 0 })?.tokens ?? 0;
+		const anchor = this.#findCurrentEpochAnchorEntry(branchEntries);
 		applyShakeRegions(items);
+
+		const tokensFreed = Math.max(0, originalTokens - replacementTokens);
+		if (anchor && tokensFreed > 0) {
+			const entriesUpToAnchor = new Set<SessionEntry>();
+			for (let i = 0; i <= anchor.index; i++) {
+				entriesUpToAnchor.add(branchEntries[i]);
+			}
+			let anchorFreed = 0;
+			for (const { region, replacement } of items) {
+				if (entriesUpToAnchor.has(region.entry)) {
+					const repTokens = replacement.length > 0 ? countTokens(replacement) : 0;
+					anchorFreed += Math.max(0, region.tokens - repTokens);
+				}
+			}
+			if (anchorFreed > 0) {
+				this.#anchorTokensFreed.set(
+					anchor.entry.id,
+					(this.#anchorTokensFreed.get(anchor.entry.id) ?? 0) + anchorFreed,
+				);
+			}
+		}
 
 		await this.sessionManager.rewriteEntries();
 		const sessionContext = this.buildDisplaySessionContext();
@@ -10180,11 +10249,15 @@ export class AgentSession {
 		this.#resetAllAdvisorRuntimes();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 
+		if (tokensFreed > 0 && !this.isStreaming && this.#compactionCreatedHeadroom({ usageBeforeShake, tokensFreed })) {
+			this.#midRunCompactionBlocked = false;
+		}
+
 		return {
 			mode,
 			toolResultsDropped,
 			blocksDropped,
-			tokensFreed: Math.max(0, originalTokens - replacementTokens),
+			tokensFreed,
 			artifactId,
 		};
 	}
@@ -10908,7 +10981,7 @@ export class AgentSession {
 
 		if (!(await this.#persistTurnMessagesForMidRunCompaction(context))) return;
 
-		const billedContextTokens = calculateContextTokens(lastAssistant.usage);
+		const billedContextTokens = this.#adjustedAssistantUsageTokens(lastAssistant);
 		const storedContextTokens = this.#estimateStoredContextTokens();
 		const contextTokens = compactionContextTokens(billedContextTokens, storedContextTokens);
 		if (!shouldCompact(contextTokens, contextWindow, compactionSettings)) return;
@@ -11128,7 +11201,7 @@ export class AgentSession {
 		// (the floor applied below) drive the decision instead.
 		const assistantUsageContextTokens = assistantPredatesCompaction
 			? 0
-			: calculateContextTokens(assistantMessage.usage);
+			: this.#adjustedAssistantUsageTokens(assistantMessage);
 		const storedContextTokens = this.#estimateStoredContextTokens();
 		// Pruning frees bytes for the NEXT prompt; it does not change the size of
 		// the prompt the LLM just billed for. Earlier revisions subtracted the
@@ -12667,17 +12740,25 @@ export class AgentSession {
 		return COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION;
 	}
 
-	#compactionCreatedHeadroom(): boolean {
+	#residualContextTokens(
+		contextWindow: number,
+		shakeAdjustment?: { usageBeforeShake: number; tokensFreed: number },
+	): number {
+		const liveProviderTokens = this.getContextUsage({ contextWindow })?.tokens ?? 0;
+		const providerTokens =
+			shakeAdjustment && shakeAdjustment.tokensFreed > 0
+				? Math.min(liveProviderTokens, Math.max(0, shakeAdjustment.usageBeforeShake - shakeAdjustment.tokensFreed))
+				: liveProviderTokens;
+		return compactionContextTokens(providerTokens, this.#estimateStoredContextTokens());
+	}
+
+	#compactionCreatedHeadroom(shakeAdjustment?: { usageBeforeShake: number; tokensFreed: number }): boolean {
 		const contextWindow = this.model?.contextWindow ?? 0;
 		if (contextWindow <= 0) return true;
 		const compactionSettings = this.settings.getGroup("compaction");
-		const residualTokens = compactionContextTokens(
-			this.getContextUsage({ contextWindow })?.tokens ?? 0,
-			this.#estimateStoredContextTokens(),
-		);
+		const residualTokens = this.#residualContextTokens(contextWindow, shakeAdjustment);
 		const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
 		const recoveryBand = Math.floor(thresholdTokens * COMPACTION_RECOVERY_BAND);
-		// Residual at/below the band is authoritative headroom: the band sits
 		// strictly under the compaction threshold, so the next turn cannot
 		// re-trip threshold compaction regardless of how little this pass shaved.
 		// Don't add a secondary "smaller than the trigger" guard — when stale/
@@ -12711,14 +12792,11 @@ export class AgentSession {
 	 * When the model/window is unknown we cannot evaluate the budget, so we
 	 * optimistically allow the retry (preserving prior behavior).
 	 */
-	#compactionCreatedRetryFit(): boolean {
+	#compactionCreatedRetryFit(shakeAdjustment?: { usageBeforeShake: number; tokensFreed: number }): boolean {
 		const contextWindow = this.model?.contextWindow ?? 0;
 		if (contextWindow <= 0) return true;
 		const compactionSettings = this.settings.getGroup("compaction");
-		const residualTokens = compactionContextTokens(
-			this.getContextUsage({ contextWindow })?.tokens ?? 0,
-			this.#estimateStoredContextTokens(),
-		);
+		const residualTokens = this.#residualContextTokens(contextWindow, shakeAdjustment);
 		const fitBudget = Math.max(0, contextWindow - resolveBudgetReserveTokens(contextWindow, compactionSettings));
 		return residualTokens <= fitBudget;
 	}
@@ -12955,6 +13033,68 @@ export class AgentSession {
 			);
 			const preparation = prepareCompaction(pathEntries, compactionSettings, autoCompactionCandidates);
 			if (!preparation) {
+				if (reason !== "idle" && !autoCompactionSignal.aborted && !fallbackFromShake) {
+					const contextWindow = this.model?.contextWindow ?? 0;
+					const liveBefore = this.getContextUsage({ contextWindow })?.tokens ?? 0;
+					const usageBeforeShake =
+						liveBefore > 0 &&
+						typeof options.triggerContextTokens === "number" &&
+						Number.isFinite(options.triggerContextTokens)
+							? Math.min(liveBefore, options.triggerContextTokens)
+							: liveBefore;
+					const rescue = await this.#tryShakeRescueForDeadEnd(autoCompactionSignal);
+					if (rescue) {
+						if (willRetry) {
+							const messages = this.agent.state.messages;
+							const lastMsg = messages[messages.length - 1];
+							if (lastMsg?.role === "assistant") {
+								const lastAssistant = lastMsg as AssistantMessage;
+								const shouldDrop =
+									lastAssistant.stopReason === "error" ||
+									(reason === "incomplete" && lastAssistant.stopReason === "length");
+								if (shouldDrop) {
+									this.agent.replaceMessages(messages.slice(0, -1));
+								}
+							}
+						}
+						const shakeAdjustment = { usageBeforeShake, tokensFreed: rescue.tokensFreed };
+						const rescued = willRetry
+							? this.#compactionCreatedRetryFit(shakeAdjustment)
+							: this.#compactionCreatedHeadroom(shakeAdjustment);
+						if (rescued) {
+							this.#emitShakeRescueNotice(rescue);
+							const willRetryRescued = willRetry && !suppressContinuation;
+							await this.#emitSessionEvent({
+								type: "auto_compaction_end",
+								action: "shake",
+								result: undefined,
+								aborted: false,
+								willRetry: willRetryRescued,
+								skipped: false,
+							});
+							let continuationScheduled = false;
+							if (willRetryRescued) {
+								this.#scheduleAgentContinue({ delayMs: 100, generation });
+								continuationScheduled = true;
+							} else if (!willRetry && shouldAutoContinue) {
+								this.#scheduleAutoContinuePrompt(generation);
+								continuationScheduled = true;
+							} else if (!suppressContinuation && this.agent.hasQueuedMessages()) {
+								this.#scheduleAgentContinue({
+									delayMs: 100,
+									generation,
+									shouldContinue: () => this.agent.hasQueuedMessages(),
+								});
+								continuationScheduled = true;
+							}
+							return {
+								...(continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_NONE),
+								historyRewritten: true,
+								headroomAvailable: true,
+							};
+						}
+					}
+				}
 				await this.#emitSessionEvent({
 					type: "auto_compaction_end",
 					action,
@@ -12980,7 +13120,11 @@ export class AgentSession {
 				if (noProgressDeadEnd) {
 					this.emitNotice(
 						"warning",
-						compactionDeadEndWarning("shrink it (e.g. clear large tool output)"),
+						this.#fixedContextExceedsRecoveryBand()
+							? FIXED_CONTEXT_DEAD_END_WARNING
+							: compactionDeadEndWarning(
+									"clear large tool output, run `/shake images` to drop attached images,",
+								),
 						"compaction",
 					);
 				}
@@ -13346,8 +13490,12 @@ export class AgentSession {
 				// so use the looser fit budget.
 				let retryFits = this.#compactionCreatedRetryFit();
 				if (!retryFits && !fallbackFromShake) {
+					// Last-resort tail reduction before declaring dead-end (skipped when
+					// fallbackFromShake — shake already ran and fell back).
+					const usageBeforeShake =
+						this.getContextUsage({ contextWindow: this.model?.contextWindow ?? 0 })?.tokens ?? 0;
 					const rescue = await this.#tryShakeRescueForDeadEnd(autoCompactionSignal);
-					if (rescue && this.#compactionCreatedRetryFit()) {
+					if (rescue && this.#compactionCreatedRetryFit({ usageBeforeShake, tokensFreed: rescue.tokensFreed })) {
 						retryFits = true;
 						this.#emitShakeRescueNotice(rescue);
 					}
@@ -13369,8 +13517,12 @@ export class AgentSession {
 				// from re-entering the same oversized context.
 				let hasHeadroom = this.#compactionCreatedHeadroom();
 				if (!hasHeadroom && !fallbackFromShake) {
+					// Last-resort tail reduction before pausing maintenance (skipped when
+					// fallbackFromShake — shake already ran and fell back).
+					const usageBeforeShake =
+						this.getContextUsage({ contextWindow: this.model?.contextWindow ?? 0 })?.tokens ?? 0;
 					const rescue = await this.#tryShakeRescueForDeadEnd(autoCompactionSignal);
-					if (rescue && this.#compactionCreatedHeadroom()) {
+					if (rescue && this.#compactionCreatedHeadroom({ usageBeforeShake, tokensFreed: rescue.tokensFreed })) {
 						hasHeadroom = true;
 						this.#emitShakeRescueNotice(rescue);
 					}
@@ -15556,6 +15708,8 @@ export class AgentSession {
 				await this.#resetMemoryContextForNewTranscript();
 			}
 			this.#midRunCompactionBlocked = false;
+			this.#anchorTokensFreed.clear();
+			this.#staleImageAnchorEntryIds.clear();
 			this.#skipPostTurnMaintenanceAssistantTimestamp = undefined;
 			this.#reconnectToAgent();
 			try {
@@ -16127,6 +16281,7 @@ export class AgentSession {
 		};
 
 		interface AnchorCandidate {
+			entryId?: string;
 			assistant: AssistantMessage;
 			promptTokens: number;
 			resolvedIndex: number;
@@ -16149,7 +16304,17 @@ export class AgentSession {
 				if (entry.type === "message" && isValidProviderAssistant(entry.message)) {
 					const promptTokens = readPromptTokens(entry.message);
 					if (promptTokens !== null) {
+						if (this.#staleImageAnchorEntryIds.has(entry.id)) {
+							staleCompactionAnchor = {
+								entryId: entry.id,
+								assistant: entry.message,
+								promptTokens,
+								resolvedIndex: -1,
+							};
+							break;
+						}
 						currentEpochAnchor = {
+							entryId: entry.id,
 							assistant: entry.message,
 							promptTokens,
 							resolvedIndex: resolveMessageIndex(entry.message),
@@ -16256,11 +16421,16 @@ export class AgentSession {
 			for (let i = activeAnchor.resolvedIndex + 1; i < resolvedActiveMessages.length; i++) {
 				tailTokens += estimateTokens(resolvedActiveMessages[i]);
 			}
+			const anchorFreed = activeAnchor.entryId ? (this.#anchorTokensFreed.get(activeAnchor.entryId) ?? 0) : 0;
+			const adjustedPromptTokens = Math.max(0, activeAnchor.promptTokens - anchorFreed);
 			usedTokens =
-				activeAnchor.promptTokens +
+				adjustedPromptTokens +
 				Math.max(0, currentNonMessageTokens - nonMessageTokens) +
 				tailTokens +
 				pendingMessagesTokens;
+			if (anchorFreed > 0) {
+				usedTokens = Math.max(usedTokens, currentNonMessageTokens + messagesTokens);
+			}
 		} else if (pending) {
 			anchored = true;
 			contextEstimateKind = pending.estimateKind;

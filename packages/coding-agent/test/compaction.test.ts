@@ -1114,6 +1114,113 @@ describe("findCutPoint", () => {
 			expect(result.turnStartIndex).toBe(2); // Turn 2 starts at index 2
 		}
 	});
+
+	it("should cut at the owning assistant when trailing toolResult exceeds keepRecentTokens", () => {
+		const largeToolOutput = "x".repeat(8000); // ~2000 estimated tokens
+		const entries: SessionEntry[] = [
+			createMessageEntry(createUserMessage("Turn 1")), // 0
+			createMessageEntry(createAssistantMessage("A1", createMockUsage(100, 50))), // 1
+			createMessageEntry(createUserMessage("Turn 2")), // 2
+			createMessageEntry({
+				role: "assistant",
+				content: [{ type: "toolCall", id: "tc-1", name: "read", arguments: { path: "big.txt" } }],
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: "claude-sonnet-4-5",
+				usage: createMockUsage(200, 50),
+				stopReason: "toolUse",
+				timestamp: Date.now(),
+			}), // 3 (last valid cut point)
+			createMessageEntry({
+				role: "toolResult",
+				toolCallId: "tc-1",
+				toolName: "read",
+				content: [{ type: "text", text: largeToolOutput }],
+				isError: false,
+				timestamp: Date.now(),
+			}), // 4
+		];
+
+		const result = findCutPoint(entries, 0, entries.length, 500);
+		expect(result.firstKeptEntryIndex).toBe(3);
+		expect(result.isSplitTurn).toBe(true);
+		expect(result.turnStartIndex).toBe(2);
+
+		const preparation = prepareCompaction(entries, {
+			...DEFAULT_COMPACTION_SETTINGS,
+			keepRecentTokens: 500,
+		});
+		expect(preparation).toBeDefined();
+		expect(preparation!.firstKeptEntryId).toBe(entries[3].id);
+		expect(preparation!.isSplitTurn).toBe(true);
+		expect(preparation!.messagesToSummarize.length).toBe(2); // Turn 1 user + A1
+		expect(preparation!.turnPrefixMessages.length).toBe(1); // Turn 2 user
+	});
+
+	it("should keep all parallel toolResults paired with their assistant when combined size exceeds keepRecentTokens", () => {
+		const mediumOutput = "y".repeat(2000); // ~500 estimated tokens each
+		const entries: SessionEntry[] = [
+			createMessageEntry(createUserMessage("Single turn task")), // 0
+			createMessageEntry({
+				role: "assistant",
+				content: [{ type: "toolCall", id: "tc-0", name: "read", arguments: { path: "a.txt" } }],
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: "claude-sonnet-4-5",
+				usage: createMockUsage(100, 50),
+				stopReason: "toolUse",
+				timestamp: Date.now(),
+			}), // 1
+			createMessageEntry({
+				role: "toolResult",
+				toolCallId: "tc-0",
+				toolName: "read",
+				content: [{ type: "text", text: "ok" }],
+				isError: false,
+				timestamp: Date.now(),
+			}), // 2
+			createMessageEntry({
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "tc-1", name: "read", arguments: { path: "b.txt" } },
+					{ type: "toolCall", id: "tc-2", name: "read", arguments: { path: "c.txt" } },
+				],
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: "claude-sonnet-4-5",
+				// promptTokens > estimatedTokens to exercise ratio scaling
+				usage: createMockUsage(5000, 100),
+				stopReason: "toolUse",
+				timestamp: Date.now(),
+			}), // 3 (last valid cut point)
+			createMessageEntry({
+				role: "toolResult",
+				toolCallId: "tc-1",
+				toolName: "read",
+				content: [{ type: "text", text: mediumOutput }],
+				isError: false,
+				timestamp: Date.now(),
+			}), // 4
+			createMessageEntry({
+				role: "toolResult",
+				toolCallId: "tc-2",
+				toolName: "read",
+				content: [{ type: "text", text: mediumOutput }],
+				isError: false,
+				timestamp: Date.now(),
+			}), // 5
+		];
+
+		const preparation = prepareCompaction(entries, {
+			...DEFAULT_COMPACTION_SETTINGS,
+			keepRecentTokens: 800,
+		});
+		expect(preparation).toBeDefined();
+		expect(preparation!.firstKeptEntryId).toBe(entries[3].id);
+		expect(preparation!.isSplitTurn).toBe(true);
+		expect(preparation!.messagesToSummarize.length).toBe(0);
+		expect(preparation!.turnPrefixMessages.length).toBe(3); // user + step1 assistant + step1 toolResult
+	});
 });
 
 describe("buildSessionContext", () => {
